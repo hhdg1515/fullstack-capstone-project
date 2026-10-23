@@ -2,7 +2,7 @@ const { MongoClient } = require('mongodb');
 const { lookup } = require('dns').promises;
 const { createHash } = require('crypto');
 const { readDatabaseConfig } = require('../config');
-const { PreparationError } = require('../services/identity-indexes');
+const { PreparationError } = require('../services/database-indexes');
 
 async function readPreparationTarget(env, allowRemote) {
     if (!env.MONGO_DB_NAME) throw new PreparationError('Preparation requires an explicit MONGO_DB_NAME; there is no administration default.');

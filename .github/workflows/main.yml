@@ -38,7 +38,7 @@ jobs:
       - name: Verify Docker is available for isolated MongoDB tests
         run: docker info
 
-      - name: Run backend API, identity, and database preparation tests
+      - name: Run backend API, identity, plan, and database preparation tests
         run: npm test
 
   client_build:
@@ -62,10 +62,11 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Test frontend identity and account flows
+      - name: Test frontend identity, account, and plan flows
         run: npm test -- --watchAll=false --runInBand
         env:
           CI: "true"
+          TZ: America/Los_Angeles
 
       - name: Build frontend
         run: npm run build

@@ -6,6 +6,7 @@ const createGiftRoutes = require('./routes/giftRoutes');
 const createSearchRoutes = require('./routes/searchRoutes');
 const createAuthRoutes = require('./routes/authRoutes');
 const createMeRoutes = require('./routes/meRoutes');
+const createPlanRoutes = require('./routes/planRoutes');
 const { createIdentityService } = require('./services/identity');
 const { createIdentityMiddleware } = require('./middleware/identity');
 
@@ -28,6 +29,7 @@ function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', sec
     app.use('/api/search', createSearchRoutes({ connectToDatabase }));
     app.use('/api/auth', createAuthRoutes({ identity, auth, authLimit }));
     app.use('/api/me', createMeRoutes({ identity, auth }));
+    app.use('/api/move-out-plans', createPlanRoutes({ connectToDatabase, auth }));
     app.use((err, req, res, next) => {
         // Driver/validator errors can contain emails, input, or connection details.
         logger.error({ event: 'request_failed' }, 'Request failed');

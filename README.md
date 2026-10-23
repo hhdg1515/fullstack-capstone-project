@@ -1,6 +1,6 @@
-# GiftLink — Identity & Access Foundation
+# GiftLink — Move-out Plans
 
-GiftLink remains a React, Express, Node.js, and MongoDB native-driver application. Milestone 1 adds revocable authentication sessions and account management while preserving public gift browsing/search and all 16 bundled demo records. Move-out plans, bulk management, pickup coordination, messaging, and geographical APIs are not implemented.
+GiftLink remains a React, Express, Node.js, and MongoDB native-driver application. Milestone 2 adds private Move-out Plans on top of Milestone 1's revocable sessions and account management. Residents can organize a move with a deadline, city, neighborhood, and optional title before adding any items. Public gift browsing/search and all 16 bundled demo records are preserved. Bulk listing, pickup coordination, messaging, payments, property integrations, and geographical APIs are not implemented.
 
 ## Requirements
 
@@ -54,7 +54,7 @@ REACT_APP_BACKEND_URL=http://localhost:3060
 
 Open the React application using `http://localhost:3000`. If using `127.0.0.1` instead, use it consistently for the browser, `APP_ORIGIN`, and frontend backend URL. Do not mix hostnames: cookies are host-scoped. Actual `.env` files are ignored; process settings override dotenv values. Frontend values are read at startup/build time.
 
-### Prepare identity indexes explicitly
+### Prepare database indexes explicitly
 
 Database initialization is separate from demo seeding. **Verify the provider project/service, cluster/endpoints, database, and environment before approving any index creation.** The tool cannot identify your provider account or decide which cluster is intended.
 
@@ -84,12 +84,15 @@ The tool rechecks the live target and accounts before creating:
 
 - A binary/simple-collation unique `users.email` index. The application stores this field trimmed and lowercased, and login uses the same binary comparison.
 - A TTL index on `sessions.expiresAt`; expiration is also enforced on every authenticated request.
+- A non-unique compound `moveOutPlans` index on `{ ownerId: 1, moveOutDeadline: 1, _id: 1 }` for private owner listings in deadline order.
 
 Equivalent existing indexes, including ones with different names, are retained. Repeated initialization is safe. Incompatible names, keys, uniqueness, sparse/partial/collation settings, or TTL values block preparation; the command never drops indexes or changes them with `collMod`. It never normalizes, deletes, merges, or claims accounts. Resolve email/index conflicts through a separately reviewed migration with backups and authorized access; the report intentionally does not identify private accounts. A missing/blank/non-string email is an invalid-email conflict. Other existing email syntax is not automatically revalidated or repaired.
 
 Pause application writers during preparation. Preflight cannot prevent concurrent account/index changes, and multiple index creations are not a transaction. If a later creation fails, an earlier one may exist: inspect and preview again, without dropping anything automatically. Creating the TTL index enables MongoDB's background removal of already expired **sessions**; account records are preserved. Email inspection scans all accounts and keeps normalized comparison values in memory, so schedule and size the operator process appropriately for a large database.
 
-Normal server startup only **checks** these indexes; it never creates them, imports demo data, or migrates accounts. Startup fails closed if required indexes are missing. Prepare a new database before starting the backend; it will still have no gifts until a separate, permitted seed/import operation.
+Normal server startup only **checks** these indexes; it never creates them, imports demo data, or migrates accounts/plans. Startup fails closed if required indexes are missing. Prepare a new database before starting the backend; it will still have no gifts or plan documents until an explicit seed operation or authenticated plan creation.
+
+**Upgrading from Milestone 1:** run the same preview/approval workflow before starting this backend. The preview retains compatible email/session indexes and reports creation of the new plan index. Initialization preserves existing accounts, sessions, plans, and gift documents; it does not attach demo gifts to plans. The preparation implementation is now named `services/database-indexes.js`, `util/database-target.js`, and `util/prepare-database.js`; the documented `npm run db:prepare` interface and remote safeguards are unchanged.
 
 ### Remote MongoDB and deployment preparation
 
@@ -140,8 +143,8 @@ MongoDB and required indexes must be ready before Express listens. The API root 
 | Variable | Purpose/default |
 | --- | --- |
 | `MONGO_URL` | Required server/utility MongoDB URI. |
-| `MONGO_DB_NAME` | Application database selection, independent of the URI path. Server defaults to `giftdb`; identity preparation requires an explicit value. |
-| `DB_ENVIRONMENT` | Required for identity preparation: exactly `development`, `staging`, or `production`. Independent of runtime `NODE_ENV`; does not itself enable writes. |
+| `MONGO_DB_NAME` | Application database selection, independent of the URI path. Server defaults to `giftdb`; database preparation requires an explicit value. |
+| `DB_ENVIRONMENT` | Required for database preparation: exactly `development`, `staging`, or `production`. Independent of runtime `NODE_ENV`; does not itself enable writes. |
 | `APP_ORIGIN` | Exact browser application origin, without trailing slash/path. Defaults to `http://localhost:3000` in development; explicitly required as HTTPS in production. Also controls CSRF and credentialed CORS. |
 | `SESSION_TTL_SECONDS` | Fixed session lifetime, default 28,800 seconds (8 hours), allowed range 300–604,800. No sliding extension. |
 | `PORT` | Backend port, default `3060`. |
@@ -191,6 +194,45 @@ AuthContext validates `/api/me` on load and window focus. It represents loading,
 
 The account page is now registered at `/app/profile`; login preserves an intended account destination. Account updates and logout display failures rather than claiming success. Public browse/search/detail pages do not require authentication. Existing styling is retained. Unused legacy external JavaScript/CSS includes were removed from the React entry HTML.
 
+## Move-out Plans
+
+Select **My Plans** in the navigation and sign in. `/app/plans` lists your plans in deadline order; create directly at `/app/plans/new`. Each plan links to a detail view and an edit form. Creation needs only a deadline, city, and neighborhood; the title is optional. You may create multiple plans. There is no address, tenancy, HOA, item, or mapping requirement, and no multi-step onboarding.
+
+All plans are private to their owner. The interface supports session checks, loading, an empty dashboard, field validation, retries, save progress, and expired-session login prompts. Unsaved edits survive background validation of the same account. Private fetched data is discarded when switching accounts/routes, and stale requests cannot replace the current account's data.
+
+### Model and date policy
+
+`moveOutPlans` stores:
+
+| Field | Meaning |
+| --- | --- |
+| `_id` | MongoDB ObjectId, returned as string `id`. |
+| `ownerId` | Account ObjectId derived from the authenticated session. Never accepted from the caller or included in plan responses. |
+| `title` | Optional trimmed single-line text, at most 120 characters; omitted/cleared titles are stored as `""`. |
+| `moveOutDeadline` | Required real calendar date, exactly `YYYY-MM-DD`, stored as a string. |
+| `city`, `neighborhood` | Required trimmed single-line labels, 1–100 characters each. Free text; no external lookup or location taxonomy. |
+| `status` | Created as `active`; owners may edit to `active`, `completed`, or `cancelled`. |
+| `createdAt`, `updatedAt` | Server-generated BSON dates, serialized as UTC ISO timestamps. Creation time is immutable. |
+
+Deadlines represent calendar dates, without a pickup time or timezone conversion. New plans and changed deadlines must be today or later using the current **UTC date** on the backend; the form explains and follows that boundary. Impossible dates, timestamps, offsets, scalar-type mismatches, and unsupported fields are rejected. Date display explicitly preserves the calendar day across browser timezones.
+
+Passing the deadline does not automatically change status, hide, or delete a plan. Owners may still edit its other details, keep its unchanged past deadline, or select a new current/future deadline. Status changes are manual and reversible; there is no speculative workflow or automatic item lifecycle. A later product decision may adopt a neighborhood timezone or a precise deadline time, which would require an explicit model/validation change.
+
+### Private plan API
+
+All endpoints require the existing valid session cookie; writes also require the existing Origin/CSRF/JSON protocol. Responses use `Cache-Control: no-store`.
+
+| Endpoint | Behavior |
+| --- | --- |
+| `POST /api/move-out-plans` | `{ moveOutDeadline, city, neighborhood, title? }` → `201 { plan }` plus a Location header. Ownership, status, and timestamps are server-derived. |
+| `GET /api/move-out-plans` | `200 { plans: [...] }` for the current owner only, sorted by deadline then ID. Query parameters cannot select another owner. |
+| `GET /api/move-out-plans/:id` | `200 { plan }` for an owned plan. |
+| `PATCH /api/move-out-plans/:id` | Nonempty partial update of title/deadline/city/neighborhood/status → `200 { plan }`. |
+
+A plan DTO contains only `id`, `title`, `moveOutDeadline`, `city`, `neighborhood`, `status`, `createdAt`, and `updatedAt`. Private contact, address, password, and session fields are excluded by database inclusion projections and response serialization. Read and update queries include both the plan ID and the authenticated owner ID; updates never trust a supplied owner. Missing, malformed, and other users' plan IDs share `404 PLAN_NOT_FOUND`. Validation uses `400 VALIDATION_FAILED` with field messages without submitted values. Missing/expired sessions use `401`; invalid write origins use `403`.
+
+These plans group the purpose of a move without becoming individual listings. Item association/creation, bulk upload, reservations, pickup addresses, public plan discovery, deletion/archival, and pagination/filtering are outside this milestone. Existing gifts remain independent and publicly browsable.
+
 ## Public gift API compatibility
 
 `GET /api/gifts`, `GET /api/gifts/:id`, and `GET /api/search` remain public with the same listing/detail/search behavior and legacy IDs. The original fixture JSON and images are intact. Public responses allowlist existing listing fields; arbitrary private fields are not returned.
@@ -214,7 +256,7 @@ The command only accepts loopback `mongodb://` targets, refuses production/SRV/p
 cd giftlink-backend
 npm run lint
 npm test
-# Public API and identity integration suites only:
+# Public API, identity and private-plan integration suites:
 npm run test:integration
 # Guarded database preparation suite (also included in npm test):
 npm run test:preparation
@@ -224,11 +266,11 @@ Backend suites create fresh Docker MongoDB containers and random databases. Befo
 
 ```bash
 cd giftlink-frontend
-CI=true npm test -- --watchAll=false --runInBand
+CI=true TZ=America/Los_Angeles npm test -- --watchAll=false --runInBand
 CI=true REACT_APP_BACKEND_URL= npm run build
 ```
 
-GitHub Actions runs frozen installs, backend lint and isolated tests, frontend account/session tests, and the strict frontend build on PRs to `main` and pushes to `main`. It uses no application/production credentials and does not deploy.
+GitHub Actions runs frozen installs, backend lint and isolated API/identity/plan/preparation tests, frontend account/session/plan tests in a non-UTC timezone, and the strict frontend build on PRs to `main` and pushes to `main`. It uses no application/production credentials and does not deploy.
 
 ## Migration and remaining limitations
 
@@ -239,7 +281,7 @@ GitHub Actions runs frozen installs, backend lint and isolated tests, frontend a
 - Legacy bcrypt hashes consider only the first 72 bytes of overlong passwords. A future reviewed password-reset/rehash strategy can retire this compatibility behavior; existing accounts are not silently rewritten.
 - Logout revokes the current session. Password reset, email verification/change, MFA, global session management, and automated account recovery are not implemented. Duplicate-registration feedback can reveal that an email is registered; login errors are generic and rate-limited.
 - HttpOnly prevents reading the session token through JavaScript; it does not make XSS harmless. A production CSP and broader content/upload/abuse controls need review before public launch. Account and pickup-location data should never be added to listing DTOs.
-- Existing listing search remains a simple unpaginated implementation. Future plan/item/request/conversation authorization must use server-side resource ownership/participant predicates; those features are outside this milestone.
+- Existing listing search and the private plan list remain unpaginated. Plans now enforce server-side ownership; future item/request/conversation authorization must use server-side ownership/participant predicates. Those features are outside this milestone.
 - The optional sentiment example still lacks its logger; its test command and the nested importer test command remain course placeholders. The actual importer is covered by backend seed tests.
 - No merge, deployment, production index creation, or production database modification is included.
 

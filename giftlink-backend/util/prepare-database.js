@@ -1,6 +1,6 @@
 const { createDatabase } = require('../models/db');
-const { inspectIdentityIndexes, prepareIdentityIndexes, PreparationError } = require('../services/identity-indexes');
-const { readPreparationTarget, inspectTarget } = require('./identity-target');
+const { inspectDatabaseIndexes, prepareDatabaseIndexes, PreparationError } = require('../services/database-indexes');
+const { readPreparationTarget, inspectTarget } = require('./database-target');
 
 function parseArguments(argv) {
     const args = {};
@@ -36,7 +36,7 @@ async function main({ argv = process.argv.slice(2), env = process.env, log = con
         if (args['--apply'] && args['--confirm-target'] !== inspected.fingerprint) {
             throw new PreparationError('Target fingerprint does not match. Verify the project/cluster/database and run a fresh preview; no indexes were created.');
         }
-        const plan = await inspectIdentityIndexes(db);
+        const plan = await inspectDatabaseIndexes(db);
         log(JSON.stringify({ mode: args['--apply'] ? 'apply' : 'dry-run', plan }));
         if (!plan.ready) throw new PreparationError('Preparation blocked. Review account conflict counts or incompatible indexes securely. Use a separately reviewed migration; no accounts were changed.');
         if (args['--apply']) {
@@ -44,14 +44,14 @@ async function main({ argv = process.argv.slice(2), env = process.env, log = con
             if ((await inspectTarget(db, target)).fingerprint !== inspected.fingerprint) {
                 throw new PreparationError('Target changed during inspection. Run a fresh preview; no indexes were created.');
             }
-            await prepareIdentityIndexes(db);
-            log('Required identity indexes are ready. No accounts or demo gifts were imported or rewritten.');
+            await prepareDatabaseIndexes(db);
+            log('Required database indexes are ready. No accounts, plans or demo gifts were imported or rewritten.');
         } else log('Read-only preview complete. No indexes or documents were changed. Review the target before approving --apply.');
         return { target: inspected, plan };
     } catch (error) {
         if (error instanceof PreparationError) throw error;
         // Connection, auth and server errors can contain credentials or document values.
-        throw new PreparationError('Identity preparation failed. Check connectivity, TLS, permissions and target configuration securely; no account repair was attempted.');
+        throw new PreparationError('Database preparation failed. Check connectivity, TLS, permissions and target configuration securely; no account repair was attempted.');
     } finally {
         if (database) {
             try { await database.close(); }
@@ -62,7 +62,7 @@ async function main({ argv = process.argv.slice(2), env = process.env, log = con
 if (require.main === module) {
     require('dotenv').config();
     main().catch(error => {
-        console.error(error instanceof PreparationError ? error.message : 'Identity preparation failed; inspect connectivity and permissions securely.');
+        console.error(error instanceof PreparationError ? error.message : 'Database preparation failed; inspect connectivity and permissions securely.');
         process.exitCode = 1;
     });
 }

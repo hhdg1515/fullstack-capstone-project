@@ -1,7 +1,6 @@
 const { randomBytes, createHash } = require('crypto');
 const { ObjectId } = require('mongodb');
 const bcrypt = require('bcryptjs');
-const { prepareIdentityIndexes, assertIdentityIndexes } = require('./identity-indexes');
 
 const tokenHash = token => createHash('sha256').update(token).digest('hex');
 const normalizeEmail = email => email.trim().toLowerCase();
@@ -60,4 +59,4 @@ function createIdentityService({ connectToDatabase, sessionTtlSeconds = 28800 })
     return { register, login, revoke, issue, authenticate, update };
 }
 
-module.exports = { createIdentityService, prepareIdentityIndexes, assertIdentityIndexes, privateUser, publicUser, tokenHash };
+module.exports = { createIdentityService, privateUser, publicUser, tokenHash };

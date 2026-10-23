@@ -6,14 +6,16 @@ class PreparationError extends Error {
 
 const definitions = [
     { collection: 'users', name: 'users_email_unique', key: { email: 1 }, options: { unique: true, collation: { locale: 'simple' } } },
-    { collection: 'sessions', name: 'sessions_expiry', key: { expiresAt: 1 }, options: { expireAfterSeconds: 0, collation: { locale: 'simple' } } }
+    { collection: 'sessions', name: 'sessions_expiry', key: { expiresAt: 1 }, options: { expireAfterSeconds: 0, collation: { locale: 'simple' } } },
+    { collection: 'moveOutPlans', name: 'move_out_plans_owner_deadline', key: { ownerId: 1, moveOutDeadline: 1, _id: 1 },
+        options: { collation: { locale: 'simple' } } }
 ];
 const sameKey = (index, definition) => JSON.stringify(index.key) === JSON.stringify(definition.key);
 function compatible(index, definition) {
     if (!sameKey(index, definition) || index.partialFilterExpression || index.sparse ||
         (index.collation && index.collation.locale !== 'simple')) return false;
-    return definition.collection === 'users' ? index.unique === true && index.expireAfterSeconds === undefined :
-        !index.unique && index.expireAfterSeconds === 0;
+    return Boolean(index.unique) === Boolean(definition.options.unique) &&
+        index.expireAfterSeconds === definition.options.expireAfterSeconds;
 }
 const hasCompatible = (indexes, definition) => indexes.some(index => compatible(index, definition));
 const hasConflict = (indexes, definition) => indexes.some(index =>
@@ -27,7 +29,7 @@ async function listIndexes(db, collection) {
     }
 }
 
-async function inspectIdentityIndexes(db) {
+async function inspectDatabaseIndexes(db) {
     const operations = [];
     const conflicts = [];
     for (const definition of definitions) {
@@ -61,10 +63,10 @@ async function inspectIdentityIndexes(db) {
     return { operations, accounts, conflicts, ready: conflicts.length === 0 };
 }
 
-async function prepareIdentityIndexes(db) {
+async function prepareDatabaseIndexes(db) {
     // Reinspect immediately before creating anything; never repair account data,
     // drop indexes, or change TTL options with collMod.
-    const plan = await inspectIdentityIndexes(db);
+    const plan = await inspectDatabaseIndexes(db);
     if (!plan.ready) throw new PreparationError('Index preparation blocked. Review the preview counts and incompatible indexes; email conflicts require a separately reviewed normalization migration. No accounts were changed.');
     for (const operation of plan.operations) {
         if (operation.action === 'create') {
@@ -80,14 +82,14 @@ async function prepareIdentityIndexes(db) {
     return plan;
 }
 
-async function assertIdentityIndexes(db) {
+async function assertDatabaseIndexes(db) {
     try {
         for (const definition of definitions) {
             if (!hasCompatible(await listIndexes(db, definition.collection), definition)) throw new Error('Missing index');
         }
     } catch (error) {
-        throw new Error('Identity indexes are required. Verify the target and run npm run db:prepare; existing data was not changed');
+        throw new Error('Database indexes are required. Verify the target and run npm run db:prepare; existing data was not changed');
     }
 }
 
-module.exports = { inspectIdentityIndexes, prepareIdentityIndexes, assertIdentityIndexes, PreparationError };
+module.exports = { inspectDatabaseIndexes, prepareDatabaseIndexes, assertDatabaseIndexes, PreparationError };

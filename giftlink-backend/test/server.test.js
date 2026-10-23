@@ -13,7 +13,8 @@ const { readServerConfig } = require('../config');
 describe('server bootstrap and configuration', function () {
     const logger = pino({ level: 'silent' });
     const indexedDb = { collection: name => ({ indexes: async () => name === 'users' ?
-        [{ key: { email: 1 }, unique: true }] : [{ key: { expiresAt: 1 }, expireAfterSeconds: 0 }] }) };
+        [{ key: { email: 1 }, unique: true }] : name === 'sessions' ? [{ key: { expiresAt: 1 }, expireAfterSeconds: 0 }] :
+        [{ key: { ownerId: 1, moveOutDeadline: 1, _id: 1 } }] }) };
 
     afterEach(function () {
         sinon.restore();
@@ -52,11 +53,20 @@ describe('server bootstrap and configuration', function () {
         assert.equal(listen.callCount, 0);
         assert.equal(database.close.callCount, 1);
     });
-    it('refuses missing identity indexes without creating indexes or listening', async function () {
+    it('refuses missing database indexes without creating indexes or listening', async function () {
         const indexes = sinon.stub().resolves([]);
         const database = { connect: sinon.stub().resolves({ collection: () => ({ indexes }) }), close: sinon.stub().resolves() };
         const listen = sinon.spy(express.application, 'listen');
-        await assert.rejects(startServer({ port: 0 }, { database, logger }), /Identity indexes are required/);
+        await assert.rejects(startServer({ port: 0 }, { database, logger }), /Database indexes are required/);
+        assert.equal(listen.callCount, 0);
+        assert.equal(database.close.callCount, 1);
+    });
+
+    it('requires the new plan index even when identity indexes already exist', async function () {
+        const database = { connect: async () => ({ collection: name => ({ indexes: async () =>
+            name === 'moveOutPlans' ? [] : indexedDb.collection(name).indexes() }) }), close: sinon.stub().resolves() };
+        const listen = sinon.spy(express.application, 'listen');
+        await assert.rejects(startServer({ port: 0 }, { database, logger }), /Database indexes are required/);
         assert.equal(listen.callCount, 0);
         assert.equal(database.close.callCount, 1);
     });
