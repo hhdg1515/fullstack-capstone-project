@@ -95,4 +95,71 @@ router.post('/login', async (req, res) => {
     }
 });
 
+
+router.put('/update', [
+    body('name').isString().trim().notEmpty().withMessage('Name is required')
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        logger.error({ errors: errors.array() }, 'Validation errors in update request');
+        return res.status(400).json({ errors: errors.array() });
+    }
+
+    try {
+        const email = req.headers.email;
+        if (typeof email !== 'string' || !email.trim()) {
+            logger.error('Email not found in the request headers');
+            return res.status(400).json({ error: 'Email not found in the request headers' });
+        }
+
+        const authorization = req.headers.authorization || '';
+        const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+        if (!token) {
+            return res.status(401).json({ error: 'Authentication required' });
+        }
+        if (!JWT_SECRET) {
+            logger.error('JWT_SECRET is not configured');
+            return res.status(500).json({ error: 'Internal server error' });
+        }
+
+        let decoded;
+        try {
+            decoded = jwt.verify(token, JWT_SECRET);
+        } catch (error) {
+            return res.status(401).json({ error: 'Invalid or expired token' });
+        }
+
+        const db = await connectToDatabase();
+        const collection = db.collection('users');
+        const normalizedEmail = email.trim().toLowerCase();
+        const existingUser = await collection.findOne({ email: normalizedEmail });
+
+        if (!existingUser) {
+            logger.error('User not found');
+            return res.status(404).json({ error: 'User not found' });
+        }
+        if (!decoded.user || decoded.user.id !== existingUser._id.toString()) {
+            return res.status(403).json({ error: 'Not authorized to update this user' });
+        }
+
+        const updatedUser = await collection.findOneAndUpdate(
+            { _id: existingUser._id },
+            { $set: { firstName: req.body.name.trim(), updatedAt: new Date() } },
+            { returnDocument: 'after' }
+        );
+
+        if (!updatedUser) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const payload = { user: { id: updatedUser._id.toString() } };
+        const authtoken = jwt.sign(payload, JWT_SECRET);
+        logger.info('User updated successfully');
+        return res.json({ authtoken });
+    } catch (error) {
+        logger.error({ err: error }, 'Update failed');
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 module.exports = router;
