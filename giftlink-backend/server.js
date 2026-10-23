@@ -1,14 +1,14 @@
 const createApp = require('./app');
 const { createDatabase } = require('./models/db');
 const { readServerConfig } = require('./config');
-const { assertIdentityIndexes } = require('./services/identity');
+const { assertDatabaseIndexes } = require('./services/database-indexes');
 
 async function startServer(config, { database = createDatabase(config), logger = require('./logger') } = {}) {
     let server;
     try {
         // A failed database connection must never leave an HTTP listener running.
         const db = await database.connect();
-        await assertIdentityIndexes(db);
+        await assertDatabaseIndexes(db);
         const app = createApp({ connectToDatabase: database.connect, appOrigin: config.appOrigin,
             secureCookies: config.secureCookies, sessionTtlSeconds: config.sessionTtlSeconds, logger });
         server = await new Promise((resolve, reject) => {
@@ -52,7 +52,7 @@ async function main() {
 
 if (require.main === module) {
     main().catch(() => {
-        console.error('Server startup failed. Verify configuration, MongoDB connectivity, and prepared identity indexes.');
+        console.error('Server startup failed. Verify configuration, MongoDB connectivity, and prepared database indexes.');
         process.exitCode = 1;
     });
 }

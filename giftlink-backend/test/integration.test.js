@@ -10,12 +10,12 @@ describe('existing API contracts against isolated MongoDB', function () {
     let isolated;
     let db;
     let app;
-    const { prepareIdentityIndexes } = require('../services/identity');
+    const { prepareDatabaseIndexes } = require('../services/database-indexes');
 
     before(async function () {
         isolated = await createIsolatedMongo();
         db = isolated.db;
-        await prepareIdentityIndexes(db);
+        await prepareDatabaseIndexes(db);
         app = createApp({
             connectToDatabase: async () => db,
             logger: pino({ level: 'silent' })

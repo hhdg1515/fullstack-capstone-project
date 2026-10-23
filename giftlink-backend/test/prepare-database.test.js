@@ -5,15 +5,15 @@ const sinon = require('sinon');
 const { MongoClient } = require('mongodb');
 const bcrypt = require('bcryptjs');
 const { createIsolatedMongo } = require('./helpers/isolated-mongo');
-const { main, parseArguments } = require('../util/prepare-identity');
-const { readPreparationTarget, inspectTarget } = require('../util/identity-target');
-const { inspectIdentityIndexes, assertIdentityIndexes } = require('../services/identity-indexes');
+const { main, parseArguments } = require('../util/prepare-database');
+const { readPreparationTarget, inspectTarget } = require('../util/database-target');
+const { inspectDatabaseIndexes, assertDatabaseIndexes } = require('../services/database-indexes');
 const { createIdentityService } = require('../services/identity');
 
 const remoteEnv = { MONGO_URL: 'mongodb+srv://operator:secret@cluster.example.invalid/',
     MONGO_DB_NAME: 'marketplace', DB_ENVIRONMENT: 'staging' };
 
-describe('identity preparation target policy (no database connections)', function () {
+describe('database preparation target policy (no database connections)', function () {
     afterEach(function () { sinon.restore(); });
     it('parses SRV and multiple remote endpoints without connecting or revealing credentials', async function () {
         const connect = sinon.stub(MongoClient.prototype, 'connect').throws(new Error('Unexpected connection'));
@@ -65,7 +65,7 @@ describe('identity preparation target policy (no database connections)', functio
             ['--confirm-db'], ['--confirm-db', 'giftdb'], ['--unknown']]) assert.throws(() => parseArguments(args));
     });
     it('sanitizes CLI configuration errors', function () {
-        assert.throws(() => execFileSync(process.execPath, ['util/prepare-identity.js', '--allow-remote'], {
+        assert.throws(() => execFileSync(process.execPath, ['util/prepare-database.js', '--allow-remote'], {
             cwd: path.resolve(__dirname, '..'), timeout: 5000, stdio: 'pipe',
             env: { MONGO_URL: 'mongodb://private-user:private-password@/bad', MONGO_DB_NAME: 'safe_db', DB_ENVIRONMENT: 'production' }
         }), error => error.status === 1 && !/private-user|private-password/.test(error.stderr.toString()) && /Invalid MongoDB configuration/.test(error.stderr.toString()));
@@ -74,7 +74,7 @@ describe('identity preparation target policy (no database connections)', functio
 
 // Only this helper's verified disposable MongoDB receives writes. Remote policy
 // tests inject this connection explicitly; example.invalid is never contacted.
-describe('identity index preparation on verified isolated MongoDB', function () {
+describe('database index preparation on verified isolated MongoDB', function () {
     this.timeout(180000);
     let isolated;
     let db;
@@ -87,11 +87,11 @@ describe('identity index preparation on verified isolated MongoDB', function () 
     const apply = result => main({ env, argv: approve(result), log });
     const snapshot = async () => ({ collections: await db.listCollections().toArray(),
         users: await db.collection('users').find({}).toArray(), sessions: await db.collection('sessions').find({}).toArray(),
-        gifts: await db.collection('gifts').find({}).toArray() });
+        gifts: await db.collection('gifts').find({}).toArray(), plans: await db.collection('moveOutPlans').find({}).toArray() });
     before(async function () { isolated = await createIsolatedMongo(); db = isolated.db; });
     after(async function () { if (isolated) await isolated.close(); });
     beforeEach(async function () {
-        for (const name of ['users', 'sessions', 'gifts']) {
+        for (const name of ['users', 'sessions', 'gifts', 'moveOutPlans']) {
             try { await db.collection(name).drop(); } catch (error) { if (error.code !== 26) throw error; }
         }
         env = { MONGO_URL: isolated.mongoUrl, MONGO_DB_NAME: isolated.dbName, DB_ENVIRONMENT: 'development' };
@@ -102,7 +102,7 @@ describe('identity index preparation on verified isolated MongoDB', function () 
         const before = await snapshot();
         const result = await main({ env, argv: [], log });
         assert.equal(result.plan.ready, true);
-        assert.deepEqual(result.plan.operations.map(operation => operation.action), ['create', 'create']);
+        assert.deepEqual(result.plan.operations.map(operation => operation.action), ['create', 'create', 'create']);
         assert.deepEqual(await snapshot(), before);
         assert.match(output.join('\n'), /dry-run/);
         assert.equal((await preview()).target.fingerprint, result.target.fingerprint);
@@ -116,8 +116,8 @@ describe('identity index preparation on verified isolated MongoDB', function () 
         const target = JSON.parse(report.split('\n').find(line => line.startsWith('{"target":'))).target;
         assert.deepEqual(await db.listCollections().toArray(), []);
         const result = run(approve({ target }));
-        assert.match(result, /Required identity indexes are ready/);
-        await assertIdentityIndexes(db);
+        assert.match(result, /Required database indexes are ready/);
+        await assertDatabaseIndexes(db);
         assert.equal(await db.collection('gifts').countDocuments(), 0);
     });
     it('requires matching database/environment before opening a connection', async function () {
@@ -139,19 +139,35 @@ describe('identity index preparation on verified isolated MongoDB', function () 
     });
     it('creates only the required indexes, preserves accounts, never imports gifts, and repeats safely', async function () {
         await db.collection('users').insertOne({ email: 'private@example.test', password: 'unchanged-hash', firstName: 'Existing' });
+        await db.collection('moveOutPlans').insertOne({ ownerId: 'existing-owner', title: 'Existing private plan', moveOutDeadline: '2028-01-01' });
         const before = await snapshot();
         const result = await preview();
         assert.deepEqual(await snapshot(), before);
         await apply(result);
-        await assertIdentityIndexes(db);
+        await assertDatabaseIndexes(db);
         const firstIndexes = { users: await db.collection('users').indexes(), sessions: await db.collection('sessions').indexes() };
         await apply(await preview());
         assert.deepEqual({ users: await db.collection('users').indexes(), sessions: await db.collection('sessions').indexes() }, firstIndexes);
         assert.deepEqual(await db.collection('users').find({}).toArray(), before.users);
+        assert.deepEqual(await db.collection('moveOutPlans').find({}).toArray(), before.plans);
         assert.equal(await db.collection('gifts').countDocuments(), 0);
         assert.ok(!(await db.listCollections().toArray()).some(collection => collection.name === 'gifts'));
         assert.ok(!output.join('\n').includes('private@example.test'));
-        assert.deepEqual((await preview()).plan.operations.map(operation => operation.action), ['keep', 'keep']);
+        assert.deepEqual((await preview()).plan.operations.map(operation => operation.action), ['keep', 'keep', 'keep']);
+    });
+    it('previews and adds the plan index to a Milestone 1 database without rewriting its collections', async function () {
+        await db.collection('users').createIndex({ email: 1 }, { name: 'users_email_unique', unique: true });
+        await db.collection('sessions').createIndex({ expiresAt: 1 }, { name: 'sessions_expiry', expireAfterSeconds: 0 });
+        const before = await snapshot();
+        const result = await preview();
+        assert.deepEqual(result.plan.operations.map(operation => operation.action), ['keep', 'keep', 'create']);
+        assert.deepEqual(await snapshot(), before);
+        assert.equal((await db.listCollections().toArray()).length, 2);
+        await apply(result);
+        await assertDatabaseIndexes(db);
+        assert.deepEqual(await db.collection('users').indexes(), [{ v: 2, key: { _id: 1 }, name: '_id_' },
+            { v: 2, key: { email: 1 }, name: 'users_email_unique', unique: true }]);
+        assert.deepEqual(await db.collection('moveOutPlans').find({}).toArray(), []);
     });
     it('reports duplicate normalized identities, invalid and non-normalized emails using counts only', async function () {
         await db.collection('users').insertMany([{ email: 'private@example.test', firstName: 'One' },
@@ -170,7 +186,7 @@ describe('identity index preparation on verified isolated MongoDB', function () 
     it('blocks exact duplicate emails even when all values are normalized', async function () {
         await db.collection('users').insertMany([{ email: 'duplicate@example.test' }, { email: 'duplicate@example.test' }]);
         const before = await snapshot();
-        const plan = await inspectIdentityIndexes(db);
+        const plan = await inspectDatabaseIndexes(db);
         assert.equal(plan.accounts.duplicateGroups, 1);
         assert.equal(plan.accounts.nonNormalizedEmail, 0);
         await assert.rejects(apply({ target: await inspectTarget(db, await readPreparationTarget(env)) }), /Preparation blocked/);
@@ -185,7 +201,9 @@ describe('identity index preparation on verified isolated MongoDB', function () 
                 partialFilterExpression: { email: 'private-filter@example.test' } } },
             { collection: 'users', key: { email: 1 }, options: { name: 'legacy_email', unique: true, collation: { locale: 'en', strength: 2 } } },
             { collection: 'sessions', key: { expiresAt: 1 }, options: { name: 'sessions_expiry', expireAfterSeconds: 0, unique: true } },
-            { collection: 'sessions', key: { expiresAt: 1 }, options: { name: 'sessions_expiry', expireAfterSeconds: 60 } }
+            { collection: 'sessions', key: { expiresAt: 1 }, options: { name: 'sessions_expiry', expireAfterSeconds: 60 } },
+            { collection: 'moveOutPlans', key: { ownerId: 1, moveOutDeadline: 1, _id: 1 }, options: { name: 'legacy_plan', unique: true } },
+            { collection: 'moveOutPlans', key: { ownerId: 1 }, options: { name: 'move_out_plans_owner_deadline' } }
         ]) {
             await db.collection(incompatible.collection).createIndex(incompatible.key, incompatible.options);
             const before = await snapshot();
@@ -203,7 +221,7 @@ describe('identity index preparation on verified isolated MongoDB', function () 
     it('creates binary email indexes even when the collection has a non-simple default collation', async function () {
         await db.createCollection('users', { collation: { locale: 'en', strength: 1 } });
         await apply(await preview());
-        await assertIdentityIndexes(db);
+        await assertDatabaseIndexes(db);
         const index = (await db.collection('users').indexes()).find(index => index.name === 'users_email_unique');
         assert.ok(!index.collation || index.collation.locale === 'simple');
     });
@@ -211,10 +229,11 @@ describe('identity index preparation on verified isolated MongoDB', function () 
         await db.createCollection('users', { collation: { locale: 'en', strength: 1 } });
         await db.collection('users').createIndex({ email: 1 }, { name: 'custom_email', unique: true, collation: { locale: 'simple' } });
         await db.collection('sessions').createIndex({ expiresAt: 1 }, { name: 'custom_expiry', expireAfterSeconds: 0 });
+        await db.collection('moveOutPlans').createIndex({ ownerId: 1, moveOutDeadline: 1, _id: 1 }, { name: 'custom_plan_owner' });
         const result = await preview();
-        assert.deepEqual(result.plan.operations.map(operation => operation.action), ['keep', 'keep']);
+        assert.deepEqual(result.plan.operations.map(operation => operation.action), ['keep', 'keep', 'keep']);
         await apply(result);
-        await assertIdentityIndexes(db);
+        await assertDatabaseIndexes(db);
         assert.equal((await db.collection('users').indexes()).length, 2);
         const password = 'test-password';
         await db.collection('users').insertMany([{ email: 'user@example.test', password: await bcrypt.hash(password, 4) },
@@ -236,7 +255,7 @@ describe('identity index preparation on verified isolated MongoDB', function () 
         await assert.rejects(main({ env: prodEnv, argv: ['--allow-remote'].concat(approve(result, prodEnv)), log, databaseFactory: factory }), /fingerprint does not match/);
         assert.deepEqual(await snapshot(), before);
         await main({ env: stagedEnv, argv: ['--allow-remote'].concat(approve(result, stagedEnv)), log, databaseFactory: factory });
-        await assertIdentityIndexes(db);
+        await assertDatabaseIndexes(db);
         const prodPreview = await main({ env: prodEnv, argv: ['--allow-remote', '--dry-run'], log, databaseFactory: factory });
         await main({ env: prodEnv, argv: ['--allow-remote'].concat(approve(prodPreview, prodEnv)), log, databaseFactory: factory });
         assert.ok(!/operator|secret|mongodb\+srv:\/\//.test(output.join('\n')));

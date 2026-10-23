@@ -4,7 +4,8 @@ const bcrypt = require('bcryptjs');
 const pino = require('pino');
 const createApp = require('../app');
 const { createIsolatedMongo } = require('./helpers/isolated-mongo');
-const { prepareIdentityIndexes, assertIdentityIndexes, tokenHash, publicUser } = require('../services/identity');
+const { tokenHash, publicUser } = require('../services/identity');
+const { prepareDatabaseIndexes, assertDatabaseIndexes } = require('../services/database-indexes');
 const { createLogger } = require('../logger');
 
 const origin = 'http://localhost:3000';
@@ -22,7 +23,7 @@ describe('identity and access against verified isolated MongoDB', function () {
     let app;
     before(async function () {
         isolated = await createIsolatedMongo(); db = isolated.db;
-        await prepareIdentityIndexes(db);
+        await prepareDatabaseIndexes(db);
     });
     after(async function () { if (isolated) await isolated.close(); });
     beforeEach(async function () {
@@ -231,13 +232,13 @@ describe('identity and access against verified isolated MongoDB', function () {
         assert.equal(response.body.error.code, 'RATE_LIMITED');
     });
     it('checks and prepares indexes repeatably only on the verified test target', async function () {
-        await assertIdentityIndexes(db);
-        await prepareIdentityIndexes(db);
-        await assertIdentityIndexes(db);
+        await assertDatabaseIndexes(db);
+        await prepareDatabaseIndexes(db);
+        await assertDatabaseIndexes(db);
     });
     it('refuses non-normalized legacy emails without modifying accounts', async function () {
         await db.collection('users').insertOne({ email: 'UPPER@EXAMPLE.TEST' });
-        await assert.rejects(prepareIdentityIndexes(db), /reviewed normalization migration/);
+        await assert.rejects(prepareDatabaseIndexes(db), /reviewed normalization migration/);
         assert.equal((await db.collection('users').findOne({})).email, 'UPPER@EXAMPLE.TEST');
     });
     it('refuses existing duplicate emails instead of deleting or merging accounts', async function () {
@@ -245,11 +246,11 @@ describe('identity and access against verified isolated MongoDB', function () {
         await db.collection('users').insertMany([{ email: details.email, firstName: 'One' }, { email: details.email, firstName: 'Two' }]);
         const before = await db.collection('users').find({}).toArray();
         try {
-            await assert.rejects(prepareIdentityIndexes(db), /Index preparation blocked/);
+            await assert.rejects(prepareDatabaseIndexes(db), /Index preparation blocked/);
             assert.deepEqual(await db.collection('users').find({}).toArray(), before);
         } finally {
             await db.collection('users').deleteMany({});
-            await prepareIdentityIndexes(db);
+            await prepareDatabaseIndexes(db);
         }
     });
 });

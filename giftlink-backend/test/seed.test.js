@@ -6,7 +6,7 @@ const { MongoClient } = require('mongodb');
 const request = require('supertest');
 const { seedDemoGifts, validateSeedTarget, main } = require('../util/import-mongo');
 const { startServer } = require('../server');
-const { prepareIdentityIndexes } = require('../services/identity');
+const { prepareDatabaseIndexes } = require('../services/database-indexes');
 const fixtures = require('../util/import-mongo/gifts.json').docs;
 const { createIsolatedMongo } = require('./helpers/isolated-mongo');
 
@@ -18,7 +18,7 @@ describe('explicit demo seed safety', function () {
     before(async function () {
         isolated = await createIsolatedMongo();
         db = isolated.db;
-        await prepareIdentityIndexes(db);
+        await prepareDatabaseIndexes(db);
     });
 
     after(async function () { if (isolated) await isolated.close(); });
