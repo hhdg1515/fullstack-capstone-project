@@ -55,4 +55,44 @@ router.post('/register', [
     }
 });
 
+
+router.post('/login', async (req, res) => {
+    try {
+        if (!JWT_SECRET) {
+            logger.error('JWT_SECRET is not configured');
+            return res.status(500).json({ error: 'Internal server error' });
+        }
+
+        const { email, password } = req.body;
+        if (typeof email !== 'string' || !email.trim() || typeof password !== 'string' || !password) {
+            return res.status(400).json({ error: 'Email and password are required' });
+        }
+
+        const db = await connectToDatabase();
+        const collection = db.collection('users');
+        const theUser = await collection.findOne({ email: email.trim().toLowerCase() });
+
+        if (!theUser) {
+            logger.error('User not found');
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const result = await bcryptjs.compare(password, theUser.password);
+        if (!result) {
+            logger.error('Passwords do not match');
+            return res.status(404).json({ error: 'Wrong password' });
+        }
+
+        const payload = { user: { id: theUser._id.toString() } };
+        const userName = theUser.firstName;
+        const userEmail = theUser.email;
+        const authtoken = jwt.sign(payload, JWT_SECRET);
+        logger.info('User logged in successfully');
+        return res.status(200).json({ authtoken, userName, userEmail });
+    } catch (e) {
+        logger.error({ err: e }, 'Login failed');
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 module.exports = router;
