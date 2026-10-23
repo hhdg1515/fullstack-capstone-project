@@ -1,76 +1,38 @@
-import React, { useState } from 'react';
-import { urlConfig } from '../../config';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAppContext } from '../../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
 import './RegisterPage.css';
 
-function RegisterPage() {
-    const [firstName, setFirstName] = useState('');
-    const [lastName, setLastName] = useState('');
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [showerr, setShowerr] = useState('');
-    const navigate = useNavigate();
-    const { setIsLoggedIn, setUserName } = useAppContext();
-
-    const handleRegister = async () => {
-        setShowerr('');
-        try {
-            const response = await fetch(`${urlConfig.backendUrl}/api/auth/register`, {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ firstName, lastName, email, password })
-            });
-
-            const json = await response.json();
-            if (!response.ok || !json.authtoken) {
-                setShowerr(json.error || json.message || 'Registration failed. Please check your details.');
-                return;
-            }
-
-            sessionStorage.setItem('auth-token', json.authtoken);
-            sessionStorage.setItem('name', firstName);
-            sessionStorage.setItem('email', json.email);
-            setIsLoggedIn(true);
-            setUserName(firstName);
-            navigate('/app');
-        } catch (e) {
-            console.error('Registration request failed:', e);
-            setShowerr('Unable to register right now. Please try again.');
-        }
-    };
-
-    return (
-        <div className="container mt-5">
-            <div className="row justify-content-center">
-                <div className="col-md-6 col-lg-4">
-                    <div className="register-card p-4 border rounded">
-                        <h2 className="text-center mb-4 font-weight-bold">Register</h2>
-                        <div className="mb-3">
-                            <label htmlFor="firstName" className="form-label">FirstName</label>
-                            <input id="firstName" type="text" className="form-control" placeholder="Enter your firstName" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-                        </div>
-                        <div className="mb-3">
-                            <label htmlFor="lastName" className="form-label">LastName</label>
-                            <input id="lastName" type="text" className="form-control" placeholder="Enter your lastName" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-                        </div>
-                        <div className="mb-3">
-                            <label htmlFor="email" className="form-label">Email</label>
-                            <input id="email" type="email" className="form-control" placeholder="Enter your email" value={email} onChange={(e) => setEmail(e.target.value)} />
-                            {showerr && <div className="text-danger mt-2" role="alert">{showerr}</div>}
-                        </div>
-                        <div className="mb-4">
-                            <label htmlFor="password" className="form-label">Password</label>
-                            <input id="password" type="password" className="form-control" placeholder="Enter your password" value={password} onChange={(e) => setPassword(e.target.value)} />
-                        </div>
-                        <button className="btn btn-primary w-100 mb-3" onClick={handleRegister}>Register</button>
-                        <p className="mt-4 text-center">
-                            Already a member? <a href="/app/login" className="text-primary">Login</a>
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
+export default function RegisterPage() {
+  const { register, isLoggedIn, status } = useAppContext();
+  const navigate = useNavigate();
+  const [details, setDetails] = useState({ firstName: '', lastName: '', email: '', password: '' });
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (isLoggedIn) navigate('/app', { replace: true }); }, [isLoggedIn, navigate]);
+  const submit = async event => {
+    event.preventDefault();
+    setError('');
+    setBusy(true);
+    try { await register(details); }
+    catch (failure) {
+      setError(failure.fields?.map(field => `${field.field}: ${field.message}`).join('. ') || failure.message);
+    } finally { setBusy(false); setDetails(previous => ({ ...previous, password: '' })); }
+  };
+  return <div className="container mt-5"><div className="row justify-content-center"><div className="col-md-6 col-lg-4">
+    <form className="register-card p-4 border rounded" onSubmit={submit}>
+      <h2 className="text-center mb-4">Register</h2>
+      {['firstName', 'lastName', 'email', 'password'].map(field => <div className="mb-3" key={field}>
+        <label htmlFor={field} className="form-label">{{ firstName: 'First name', lastName: 'Last name', email: 'Email', password: 'Password' }[field]}</label>
+        <input id={field} type={field === 'password' ? 'password' : field === 'email' ? 'email' : 'text'}
+          autoComplete={{ firstName: 'given-name', lastName: 'family-name', email: 'username', password: 'new-password' }[field]}
+          required minLength={field === 'password' ? 12 : undefined} maxLength={field.includes('Name') ? 80 : field === 'email' ? 254 : undefined}
+          className="form-control" value={details[field]} onChange={event => setDetails({ ...details, [field]: event.target.value })} />
+      </div>)}
+      <p>Use a password of at least 12 characters, at most 72 UTF-8 bytes.</p>
+      {error && <p className="text-danger" role="alert">{error}</p>}
+      <button className="btn btn-primary w-100" disabled={busy || status === 'loading'}>{busy ? 'Registering…' : 'Register'}</button>
+      <p className="mt-4">Already a member? <Link to="/app/login">Login</Link></p>
+    </form>
+  </div></div></div>;
 }
-export default RegisterPage;

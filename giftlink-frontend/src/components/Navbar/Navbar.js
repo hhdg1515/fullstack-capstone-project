@@ -1,18 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAppContext } from '../../context/AuthContext';
 
 export default function Navbar() {
-    const { isLoggedIn, setIsLoggedIn, userName, setUserName } = useAppContext();
+    const { isLoggedIn, userName, logout, status } = useAppContext();
+    const [error, setError] = useState('');
+    const [busy, setBusy] = useState(false);
     const navigate = useNavigate();
 
-    const handleLogout = () => {
-        sessionStorage.removeItem('auth-token');
-        sessionStorage.removeItem('name');
-        sessionStorage.removeItem('email');
-        setIsLoggedIn(false);
-        setUserName('');
-        navigate('/app');
+    const handleLogout = async () => {
+        setBusy(true); setError('');
+        try { await logout(); navigate('/app'); }
+        catch { setError('Logout could not be confirmed. Please try again.'); }
+        finally { setBusy(false); }
     };
 
     const profileSection = () => {
@@ -29,7 +29,7 @@ export default function Navbar() {
                     <li className="nav-item"><Link className="nav-link" to="/app/search">Search</Link></li>
                 </ul>
                 <ul className="navbar-nav ml-auto">
-                    {isLoggedIn ? (
+                    {status === 'loading' ? <li role="status">Checking session…</li> : isLoggedIn ? (
                         <>
                             <li className="nav-item">
                                 <button type="button" className="nav-link btn btn-link text-dark" onClick={profileSection}>
@@ -37,7 +37,7 @@ export default function Navbar() {
                                 </button>
                             </li>
                             <li className="nav-item">
-                                <button type="button" className="nav-link btn btn-link login-btn" onClick={handleLogout}>Logout</button>
+                                <button type="button" className="nav-link btn btn-link login-btn" onClick={handleLogout} disabled={busy}>{busy ? 'Logging out…' : 'Logout'}</button>
                             </li>
                         </>
                     ) : (
@@ -48,6 +48,7 @@ export default function Navbar() {
                     )}
                 </ul>
             </div>
+            {error && <p role="alert">{error}</p>}
         </nav>
     );
 }

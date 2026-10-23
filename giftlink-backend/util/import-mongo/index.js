@@ -65,8 +65,8 @@ async function main({ argv = process.argv.slice(2), env = process.env, log = con
 
 if (require.main === module) {
     require('dotenv').config();
-    main().catch((error) => {
-        console.error('Demo seeding failed:', error.message);
+    main().catch(() => {
+        console.error('Demo seeding failed. Check the local target, confirmation, and database connection.');
         process.exitCode = 1;
     });
 }

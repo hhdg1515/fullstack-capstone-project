@@ -1,133 +1,30 @@
-import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import './Profile.css'
-import {urlConfig} from '../../config';
+import React, { useEffect, useState } from 'react';
 import { useAppContext } from '../../context/AuthContext';
+import './Profile.css';
 
-const Profile = () => {
-  const [userDetails, setUserDetails] = useState({});
- const [updatedDetails, setUpdatedDetails] = useState({});
- const {setUserName} = useAppContext();
- const [changed, setChanged] = useState("");
-
- const [editMode, setEditMode] = useState(false);
-  const navigate = useNavigate();
-  useEffect(() => {
-    const authtoken = sessionStorage.getItem("auth-token");
-    if (!authtoken) {
-      navigate("/app/login");
-    } else {
-      fetchUserProfile();
-    }
-  }, [navigate]);
-
-  const fetchUserProfile = async () => {
-    try {
-      const authtoken = sessionStorage.getItem("auth-token");
-      const email = sessionStorage.getItem("email");
-      const name=sessionStorage.getItem('name');
-      if (name || authtoken) {
-                const storedUserDetails = {
-                  name: name,
-                  email:email
-                };
-
-                setUserDetails(storedUserDetails);
-                setUpdatedDetails(storedUserDetails);
-              }
-} catch (error) {
-  console.error(error);
-  // Handle error case
+export default function Profile() {
+  const { user, updateProfile } = useAppContext();
+  const [details, setDetails] = useState({ firstName: user.firstName, lastName: user.lastName });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  useEffect(() => { setDetails({ firstName: user.firstName, lastName: user.lastName }); }, [user.firstName, user.lastName]);
+  const submit = async event => {
+    event.preventDefault(); setBusy(true); setError(''); setMessage('');
+    try { await updateProfile(details); setMessage('Account updated.'); }
+    catch (failure) { setError(failure.fields?.map(field => `${field.field}: ${field.message}`).join('. ') || failure.message); }
+    finally { setBusy(false); }
+  };
+  return <div className="profile-container"><h1>Your account</h1>
+    <p><b>Email:</b> {user.email}</p>
+    <form onSubmit={submit}>
+      {['firstName', 'lastName'].map(field => <label key={field} htmlFor={field}>
+        {field === 'firstName' ? 'First name' : 'Last name'}
+        <input id={field} required maxLength={80} value={details[field]} onChange={event => setDetails({ ...details, [field]: event.target.value })} />
+      </label>)}
+      {error && <p role="alert">{error}</p>}
+      {message && <p role="status">{message}</p>}
+      <button disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+    </form>
+  </div>;
 }
-};
-
-const handleEdit = () => {
-setEditMode(true);
-};
-
-const handleInputChange = (e) => {
-setUpdatedDetails({
-  ...updatedDetails,
-  [e.target.name]: e.target.value,
-});
-};
-const handleSubmit = async (e) => {
-  e.preventDefault();
-
-  try {
-    const authtoken = sessionStorage.getItem("auth-token");
-    const email = sessionStorage.getItem("email");
-
-    if (!authtoken || !email) {
-      navigate("/app/login");
-      return;
-    }
-
-    const payload = { ...updatedDetails };
-    const response = await fetch(`${urlConfig.backendUrl}/api/auth/update`, {
-      //Step 1: Task 1
-      //Step 1: Task 2
-      //Step 1: Task 3
-    });
-
-    if (response.ok) {
-      // Update the user details in session storage
-      //Step 1: Task 4
-      //Step 1: Task 5
-      setUserDetails(updatedDetails);
-      setEditMode(false);
-      // Display success message to the user
-      setChanged("Name Changed Successfully!");
-      setTimeout(() => {
-        setChanged("");
-        navigate("/");
-      }, 1000);
-
-    } else {
-      // Handle error case
-      throw new Error("Failed to update profile");
-    }
-  } catch (error) {
-    console.error(error);
-    // Handle error case
-  }
-};
-
-return (
-<div className="profile-container">
-  {editMode ? (
-<form onSubmit={handleSubmit}>
-<label>
-  Email
-  <input
-    type="email"
-    name="email"
-    value={userDetails.email}
-    disabled // Disable the email field
-  />
-</label>
-<label>
-   Name
-   <input
-     type="text"
-     name="name"
-     value={updatedDetails.name}
-     onChange={handleInputChange}
-   />
-</label>
-
-<button type="submit">Save</button>
-</form>
-) : (
-<div className="profile-details">
-<h1>Hi, {userDetails.name}</h1>
-<p> <b>Email:</b> {userDetails.email}</p>
-<button onClick={handleEdit}>Edit</button>
-<span style={{color:'green',height:'.5cm',display:'block',fontStyle:'italic',fontSize:'12px'}}>{changed}</span>
-</div>
-)}
-</div>
-);
-};
-
-export default Profile;

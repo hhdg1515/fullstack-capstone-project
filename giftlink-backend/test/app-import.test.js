@@ -26,7 +26,6 @@ describe('application construction', function () {
                     connections += 1;
                     throw new Error('Application construction attempted database access');
                 },
-                jwtSecret: 'isolated-import-test-key',
                 logger: pino({ level: 'silent' })
             });
             assert.equal(typeof app, 'function');

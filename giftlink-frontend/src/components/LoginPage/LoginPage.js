@@ -1,96 +1,40 @@
-import React, { useState, useEffect } from 'react';
-import { urlConfig } from '../../config';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAppContext } from '../../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
 import './LoginPage.css';
 
-function LoginPage() {
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [incorrect, setIncorrect] = useState('');
-    const navigate = useNavigate();
-    const bearerToken = sessionStorage.getItem('auth-token');
-    const { setIsLoggedIn, setUserName } = useAppContext();
-
-    useEffect(() => {
-        if (sessionStorage.getItem('auth-token')) {
-            navigate('/app');
-        }
-    }, [navigate]);
-
-    const handleLogin = async (e) => {
-        if (e) e.preventDefault();
-        setIncorrect('');
-
-        try {
-            const res = await fetch(`${urlConfig.backendUrl}/api/auth/login`, {
-                method: 'POST',
-                headers: {
-                    'content-type': 'application/json',
-                    'Authorization': bearerToken ? `Bearer ${bearerToken}` : '',
-                },
-                body: JSON.stringify({ email, password })
-            });
-
-            const json = await res.json();
-            if (res.ok && json.authtoken) {
-                sessionStorage.setItem('auth-token', json.authtoken);
-                sessionStorage.setItem('name', json.userName);
-                sessionStorage.setItem('email', json.userEmail);
-                setIsLoggedIn(true);
-                setUserName(json.userName);
-                navigate('/app');
-            } else {
-                setEmail('');
-                setPassword('');
-                setIncorrect(json.error || 'Wrong password. Try again.');
-            }
-        } catch (error) {
-            console.error('Login request failed:', error);
-            setIncorrect('Unable to log in right now. Please try again.');
-        }
-    };
-
-    return (
-        <div className="container mt-5">
-            <div className="row justify-content-center">
-                <div className="col-md-6 col-lg-4">
-                    <div className="login-card p-4 border rounded">
-                        <h2 className="text-center mb-4 font-weight-bold">Login</h2>
-                        <div className="mb-3">
-                            <label htmlFor="email" className="form-label">Email</label>
-                            <input
-                                id="email"
-                                type="email"
-                                className="form-control"
-                                placeholder="Enter your email"
-                                value={email}
-                                onChange={(e) => { setEmail(e.target.value); setIncorrect(''); }}
-                            />
-                        </div>
-                        <div className="mb-4">
-                            <label htmlFor="password" className="form-label">Password</label>
-                            <input
-                                id="password"
-                                type="password"
-                                className="form-control"
-                                placeholder="Enter your password"
-                                value={password}
-                                onChange={(e) => { setPassword(e.target.value); setIncorrect(''); }}
-                            />
-                            <span className="text-danger" role="alert" style={{ display: 'block', fontStyle: 'italic', fontSize: '12px' }}>
-                                {incorrect}
-                            </span>
-                        </div>
-                        <button className="btn btn-primary w-100 mb-3" onClick={handleLogin}>Login</button>
-                        <p className="mt-4 text-center">
-                            New here? <a href="/app/register" className="text-primary">Register Here</a>
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
+export default function LoginPage() {
+  const { login, isLoggedIn, sessionMessage, status } = useAppContext();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const requested = location.state?.from;
+  const destination = typeof requested === 'string' && requested.startsWith('/app/') &&
+    !['/app/login', '/app/register'].includes(requested) ? requested : '/app';
+  useEffect(() => { if (isLoggedIn) navigate(destination, { replace: true }); }, [isLoggedIn, navigate, destination]);
+  const submit = async event => {
+    event.preventDefault();
+    setError('');
+    setBusy(true);
+    try { await login({ email, password }); }
+    catch (failure) { setError(failure.message); }
+    finally { setBusy(false); setPassword(''); }
+  };
+  return <div className="container mt-5"><div className="row justify-content-center"><div className="col-md-6 col-lg-4">
+    <form className="login-card p-4 border rounded" onSubmit={submit}>
+      <h2 className="text-center mb-4">Login</h2>
+      {sessionMessage && <p role="status">{sessionMessage}</p>}
+      {status === 'loading' && <p role="status">Checking your session…</p>}
+      <label htmlFor="email" className="form-label">Email</label>
+      <input id="email" type="email" autoComplete="username" required maxLength={254} className="form-control mb-3" value={email} onChange={event => setEmail(event.target.value)} />
+      <label htmlFor="password" className="form-label">Password</label>
+      <input id="password" type="password" autoComplete="current-password" required className="form-control mb-3" value={password} onChange={event => setPassword(event.target.value)} />
+      {error && <p className="text-danger" role="alert">{error}</p>}
+      <button className="btn btn-primary w-100" disabled={busy || status === 'loading'}>{busy ? 'Logging in…' : 'Login'}</button>
+      <p className="mt-4">New here? <Link to="/app/register">Register Here</Link></p>
+    </form>
+  </div></div></div>;
 }
-
-export default LoginPage;

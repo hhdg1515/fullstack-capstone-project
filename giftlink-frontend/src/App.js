@@ -7,6 +7,8 @@ import LoginPage from './components/LoginPage/LoginPage';
 import RegisterPage from './components/RegisterPage/RegisterPage';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
+import RequireAuth from './components/RequireAuth';
+import Profile from './components/Profile/Profile';
 import Navbar from './components/Navbar/Navbar';
 
 function App() {
@@ -19,6 +21,7 @@ function App() {
         <Route path="/app/product/:productId" element={<DetailsPage />} />
         <Route path="/app/search" element={<SearchPage />} />
         <Route path="/app/login" element={<LoginPage />} />
+        <Route path="/app/profile" element={<RequireAuth><Profile /></RequireAuth>} />
         <Route path="/app/register" element={<RegisterPage />} />
       </Routes>
     </>

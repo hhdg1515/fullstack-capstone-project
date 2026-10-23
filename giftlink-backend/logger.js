@@ -1,18 +1,13 @@
 const pino = require('pino');
 
-let logger;
-
-if (process.env.NODE_ENV !== 'production') {
-    // In non-production environments, log to the console
-    logger = pino({
-        level: 'debug',
-        transport: {
-            target: "pino-pretty",
-        },
-    });
-} else {
-    // production
-    logger = pino();
+function createLogger(destination) {
+    const options = { level: 'info',
+        serializers: { err: () => ({ message: 'Operation failed' }) },
+        redact: { paths: ['password', 'token', 'email', 'req.headers', 'req.body', 'res.headers'], remove: true } };
+    if (!destination && process.env.NODE_ENV !== 'production') {
+        options.transport = { target: 'pino-pretty' };
+    }
+    return pino(options, destination);
 }
-
-module.exports = logger;
+module.exports = createLogger();
+module.exports.createLogger = createLogger;

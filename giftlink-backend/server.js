@@ -1,13 +1,16 @@
 const createApp = require('./app');
 const { createDatabase } = require('./models/db');
 const { readServerConfig } = require('./config');
+const { assertIdentityIndexes } = require('./services/identity');
 
 async function startServer(config, { database = createDatabase(config), logger = require('./logger') } = {}) {
     let server;
     try {
         // A failed database connection must never leave an HTTP listener running.
-        await database.connect();
-        const app = createApp({ connectToDatabase: database.connect, jwtSecret: config.jwtSecret, logger });
+        const db = await database.connect();
+        await assertIdentityIndexes(db);
+        const app = createApp({ connectToDatabase: database.connect, appOrigin: config.appOrigin,
+            secureCookies: config.secureCookies, sessionTtlSeconds: config.sessionTtlSeconds, logger });
         server = await new Promise((resolve, reject) => {
             const listener = app.listen(config.port, config.host);
             listener.once('error', reject);
@@ -37,8 +40,8 @@ async function main() {
     require('dotenv').config();
     const runtime = await startServer(readServerConfig());
     const shutdown = () => {
-        runtime.stop().catch((error) => {
-            console.error('Shutdown failed:', error.message);
+        runtime.stop().catch(() => {
+            console.error('Shutdown failed. Check database connectivity and server resources.');
             process.exitCode = 1;
         });
     };
@@ -48,8 +51,8 @@ async function main() {
 }
 
 if (require.main === module) {
-    main().catch((error) => {
-        console.error('Server startup failed:', error.message);
+    main().catch(() => {
+        console.error('Server startup failed. Verify configuration, MongoDB connectivity, and prepared identity indexes.');
         process.exitCode = 1;
     });
 }

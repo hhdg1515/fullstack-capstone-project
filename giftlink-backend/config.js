@@ -11,14 +11,23 @@ function readDatabaseConfig(env = process.env) {
 
 function readServerConfig(env = process.env) {
     const database = readDatabaseConfig(env);
-    if (!env.JWT_SECRET || !env.JWT_SECRET.trim()) {
-        throw new Error('JWT_SECRET is required');
+    const secureCookies = env.NODE_ENV === 'production';
+    const appOrigin = env.APP_ORIGIN || (secureCookies ? '' : 'http://localhost:3000');
+    let origin;
+    try { origin = new URL(appOrigin); } catch (error) { throw new Error('APP_ORIGIN must be an HTTP(S) origin'); }
+    if (!['http:', 'https:'].includes(origin.protocol) || origin.origin !== appOrigin ||
+        (secureCookies && origin.protocol !== 'https:')) {
+        throw new Error('APP_ORIGIN must be an exact origin; production requires HTTPS');
+    }
+    const sessionTtlSeconds = env.SESSION_TTL_SECONDS === undefined ? 28800 : Number(env.SESSION_TTL_SECONDS);
+    if (!Number.isInteger(sessionTtlSeconds) || sessionTtlSeconds < 300 || sessionTtlSeconds > 604800) {
+        throw new Error('SESSION_TTL_SECONDS must be an integer from 300 to 604800');
     }
     const port = env.PORT === undefined ? 3060 : Number(env.PORT);
     if (env.PORT === '' || !Number.isInteger(port) || port < 0 || port > 65535) {
         throw new Error('PORT must be an integer from 0 to 65535');
     }
-    return { mongoUrl: database.mongoUrl, dbName: database.dbName, jwtSecret: env.JWT_SECRET, port };
+    return { mongoUrl: database.mongoUrl, dbName: database.dbName, appOrigin, secureCookies, sessionTtlSeconds, port };
 }
 
 module.exports = { readDatabaseConfig, readServerConfig };

@@ -6,6 +6,7 @@ const { MongoClient } = require('mongodb');
 const request = require('supertest');
 const { seedDemoGifts, validateSeedTarget, main } = require('../util/import-mongo');
 const { startServer } = require('../server');
+const { prepareIdentityIndexes } = require('../services/identity');
 const fixtures = require('../util/import-mongo/gifts.json').docs;
 const { createIsolatedMongo } = require('./helpers/isolated-mongo');
 
@@ -17,6 +18,7 @@ describe('explicit demo seed safety', function () {
     before(async function () {
         isolated = await createIsolatedMongo();
         db = isolated.db;
+        await prepareIdentityIndexes(db);
     });
 
     after(async function () { if (isolated) await isolated.close(); });
@@ -34,7 +36,7 @@ describe('explicit demo seed safety', function () {
     it('starts the actual HTTP server without automatically seeding', async function () {
         const runtime = await startServer({
             mongoUrl: isolated.mongoUrl, dbName: isolated.dbName,
-            jwtSecret: 'isolated-server-test', port: 0, host: '127.0.0.1'
+            port: 0, host: '127.0.0.1'
         }, { logger: pino({ level: 'silent' }) });
         try {
             const response = await request(runtime.server).get('/api/gifts').expect(200);

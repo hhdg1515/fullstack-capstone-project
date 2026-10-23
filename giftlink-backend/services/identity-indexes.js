@@ -1,0 +1,93 @@
+// Shared index definitions: startup checks only; the administration command
+// explicitly inspects and creates indexes. Neither path imports demo fixtures.
+class PreparationError extends Error {
+    constructor(message) { super(message); this.name = 'PreparationError'; }
+}
+
+const definitions = [
+    { collection: 'users', name: 'users_email_unique', key: { email: 1 }, options: { unique: true, collation: { locale: 'simple' } } },
+    { collection: 'sessions', name: 'sessions_expiry', key: { expiresAt: 1 }, options: { expireAfterSeconds: 0, collation: { locale: 'simple' } } }
+];
+const sameKey = (index, definition) => JSON.stringify(index.key) === JSON.stringify(definition.key);
+function compatible(index, definition) {
+    if (!sameKey(index, definition) || index.partialFilterExpression || index.sparse ||
+        (index.collation && index.collation.locale !== 'simple')) return false;
+    return definition.collection === 'users' ? index.unique === true && index.expireAfterSeconds === undefined :
+        !index.unique && index.expireAfterSeconds === 0;
+}
+const hasCompatible = (indexes, definition) => indexes.some(index => compatible(index, definition));
+const hasConflict = (indexes, definition) => indexes.some(index =>
+    (index.name === definition.name || sameKey(index, definition)) && !compatible(index, definition));
+
+async function listIndexes(db, collection) {
+    try { return await db.collection(collection).indexes(); }
+    catch (error) {
+        if (error.code === 26) return []; // A new database needs no collection-creation write during preview.
+        throw error;
+    }
+}
+
+async function inspectIdentityIndexes(db) {
+    const operations = [];
+    const conflicts = [];
+    for (const definition of definitions) {
+        const indexes = await listIndexes(db, definition.collection);
+        const ready = hasCompatible(indexes, definition);
+        if (hasConflict(indexes, definition)) {
+            // Do not report arbitrary existing index names/definitions: partial filters can contain private data.
+            conflicts.push({ collection: definition.collection, index: definition.name, problem: 'incompatible-index' });
+        }
+        operations.push({ collection: definition.collection, index: definition.name, key: definition.key,
+            options: definition.options, action: ready ? 'keep' : 'create' });
+    }
+
+    const accounts = { invalidEmail: 0, nonNormalizedEmail: 0, duplicateGroups: 0, duplicateAccounts: 0 };
+    const seen = new Map();
+    const cursor = db.collection('users').find({}, { projection: { _id: 0, email: 1 } });
+    try {
+        while (await cursor.hasNext()) {
+            const user = await cursor.next();
+            if (typeof user.email !== 'string' || !user.email.trim()) { accounts.invalidEmail++; continue; }
+            const normalized = user.email.trim().toLowerCase();
+            if (user.email !== normalized) accounts.nonNormalizedEmail++;
+            const count = seen.get(normalized) || 0;
+            if (count === 1) accounts.duplicateGroups++;
+            if (count === 1) accounts.duplicateAccounts += 2;
+            else if (count > 1) accounts.duplicateAccounts++;
+            seen.set(normalized, count + 1);
+        }
+    } finally { await cursor.close(); }
+    if (Object.values(accounts).some(count => count > 0)) conflicts.push({ collection: 'users', problem: 'account-email-conflicts' });
+    return { operations, accounts, conflicts, ready: conflicts.length === 0 };
+}
+
+async function prepareIdentityIndexes(db) {
+    // Reinspect immediately before creating anything; never repair account data,
+    // drop indexes, or change TTL options with collMod.
+    const plan = await inspectIdentityIndexes(db);
+    if (!plan.ready) throw new PreparationError('Index preparation blocked. Review the preview counts and incompatible indexes; email conflicts require a separately reviewed normalization migration. No accounts were changed.');
+    for (const operation of plan.operations) {
+        if (operation.action === 'create') {
+            try {
+                await db.collection(operation.collection).createIndex(operation.key,
+                    Object.assign({ name: operation.index }, operation.options));
+            } catch (error) {
+                // Native duplicate-key errors may include private email values.
+                throw new PreparationError('Index creation failed. Pause writers and run a fresh preview; inspect permissions and concurrent data/index changes securely. Earlier index creations may have completed. No accounts were rewritten.');
+            }
+        }
+    }
+    return plan;
+}
+
+async function assertIdentityIndexes(db) {
+    try {
+        for (const definition of definitions) {
+            if (!hasCompatible(await listIndexes(db, definition.collection), definition)) throw new Error('Missing index');
+        }
+    } catch (error) {
+        throw new Error('Identity indexes are required. Verify the target and run npm run db:prepare; existing data was not changed');
+    }
+}
+
+module.exports = { inspectIdentityIndexes, prepareIdentityIndexes, assertIdentityIndexes, PreparationError };
