@@ -1,0 +1,53 @@
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint_js:
+    name: Lint JavaScript Files
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install JSHint
+        run: npm install -g jshint
+
+      - name: Run Linter
+        run: |
+          jshint --verbose --config .jshintrc giftlink-backend/app.js
+          jshint --verbose --config .jshintrc giftlink-backend/routes/authRoutes.js
+          jshint --verbose --config .jshintrc giftlink-backend/routes/giftRoutes.js
+          jshint --verbose --config .jshintrc giftlink-backend/routes/searchRoutes.js
+          echo "Linted all the js files successfully"
+
+  client_build:
+    name: Build client
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run Build
+        run: |
+          cd giftlink-frontend
+          npm install
+          CI=false npm run build
+          echo "Client-side build successfully"
