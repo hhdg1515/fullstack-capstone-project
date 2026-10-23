@@ -1,4 +1,7 @@
 import React, { useState } from 'react';
+import { urlConfig } from '../../config';
+import { useAppContext } from '../../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import './RegisterPage.css';
 
 function RegisterPage() {
@@ -6,9 +9,35 @@ function RegisterPage() {
     const [lastName, setLastName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [showerr, setShowerr] = useState('');
+    const navigate = useNavigate();
+    const { setIsLoggedIn, setUserName } = useAppContext();
 
     const handleRegister = async () => {
-        console.log("Register invoked");
+        setShowerr('');
+        try {
+            const response = await fetch(`${urlConfig.backendUrl}/api/auth/register`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ firstName, lastName, email, password })
+            });
+
+            const json = await response.json();
+            if (!response.ok || !json.authtoken) {
+                setShowerr(json.error || json.message || 'Registration failed. Please check your details.');
+                return;
+            }
+
+            sessionStorage.setItem('auth-token', json.authtoken);
+            sessionStorage.setItem('name', firstName);
+            sessionStorage.setItem('email', json.email);
+            setIsLoggedIn(true);
+            setUserName(firstName);
+            navigate('/app');
+        } catch (e) {
+            console.error('Registration request failed:', e);
+            setShowerr('Unable to register right now. Please try again.');
+        }
     };
 
     return (
@@ -28,6 +57,7 @@ function RegisterPage() {
                         <div className="mb-3">
                             <label htmlFor="email" className="form-label">Email</label>
                             <input id="email" type="email" className="form-control" placeholder="Enter your email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                            {showerr && <div className="text-danger mt-2" role="alert">{showerr}</div>}
                         </div>
                         <div className="mb-4">
                             <label htmlFor="password" className="form-label">Password</label>
