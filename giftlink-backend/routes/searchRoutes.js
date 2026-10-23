@@ -1,4 +1,5 @@
 const express = require('express');
+const { publicGiftProjection } = require('../serializers/gifts');
 
 function createSearchRoutes({ connectToDatabase }) {
     const router = express.Router();
@@ -39,7 +40,7 @@ function createSearchRoutes({ connectToDatabase }) {
             }
 
             // Task 4: Fetch filtered gifts
-            const gifts = await collection.find(query).toArray();
+            const gifts = await collection.find(query, { projection: publicGiftProjection }).toArray();
 
             res.json(gifts);
         } catch (e) {
