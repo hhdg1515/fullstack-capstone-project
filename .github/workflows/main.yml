@@ -1,53 +1,68 @@
-
-name: CI/CD
+name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  lint_js:
-    name: Lint JavaScript Files
+  backend:
+    name: Backend lint and integration tests
     runs-on: ubuntu-latest
-
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: giftlink-backend
     steps:
-      - name: Checkout Repository
+      - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Install Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: giftlink-backend/package-lock.json
 
-      - name: Install JSHint
-        run: npm install -g jshint
+      - name: Install backend dependencies
+        run: npm ci
 
-      - name: Run Linter
-        run: |
-          jshint --verbose --config .jshintrc giftlink-backend/app.js
-          jshint --verbose --config .jshintrc giftlink-backend/routes/authRoutes.js
-          jshint --verbose --config .jshintrc giftlink-backend/routes/giftRoutes.js
-          jshint --verbose --config .jshintrc giftlink-backend/routes/searchRoutes.js
-          echo "Linted all the js files successfully"
+      - name: Lint backend
+        run: npm run lint
+
+      - name: Verify Docker is available for isolated MongoDB tests
+        run: docker info
+
+      - name: Run backend integration tests
+        run: npm test
 
   client_build:
-    name: Build client
+    name: Frontend production build
     runs-on: ubuntu-latest
-
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: giftlink-frontend
     steps:
-      - name: Checkout Repository
+      - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Install Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: giftlink-frontend/package-lock.json
 
-      - name: Run Build
-        run: |
-          cd giftlink-frontend
-          npm install
-          CI=false npm run build
-          echo "Client-side build successfully"
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+        env:
+          CI: "false"
