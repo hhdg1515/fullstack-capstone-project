@@ -38,7 +38,7 @@ jobs:
       - name: Verify Docker is available for isolated MongoDB tests
         run: docker info
 
-      - name: Run backend integration tests
+      - name: Run backend API, identity, and database preparation tests
         run: npm test
 
   client_build:

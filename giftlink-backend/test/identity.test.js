@@ -5,7 +5,6 @@ const pino = require('pino');
 const createApp = require('../app');
 const { createIsolatedMongo } = require('./helpers/isolated-mongo');
 const { prepareIdentityIndexes, assertIdentityIndexes, tokenHash, publicUser } = require('../services/identity');
-const { main: prepareCommand } = require('../util/prepare-identity');
 const { createLogger } = require('../logger');
 
 const origin = 'http://localhost:3000';
@@ -234,13 +233,7 @@ describe('identity and access against verified isolated MongoDB', function () {
     it('checks and prepares indexes repeatably only on the verified test target', async function () {
         await assertIdentityIndexes(db);
         await prepareIdentityIndexes(db);
-        const output = [];
-        const host = new URL(isolated.mongoUrl).host;
-        await prepareCommand({ argv: ['--confirm-db', isolated.dbName, '--confirm-host', host],
-            env: { MONGO_URL: isolated.mongoUrl, MONGO_DB_NAME: isolated.dbName, NODE_ENV: 'test' }, log: text => output.push(text) });
-        assert.ok(output[0].includes(isolated.dbName));
-        await assert.rejects(prepareCommand({ argv: ['--confirm-db', isolated.dbName, '--confirm-host', 'wrong:1'],
-            env: { MONGO_URL: isolated.mongoUrl, MONGO_DB_NAME: isolated.dbName } }));
+        await assertIdentityIndexes(db);
     });
     it('refuses non-normalized legacy emails without modifying accounts', async function () {
         await db.collection('users').insertOne({ email: 'UPPER@EXAMPLE.TEST' });
@@ -252,7 +245,7 @@ describe('identity and access against verified isolated MongoDB', function () {
         await db.collection('users').insertMany([{ email: details.email, firstName: 'One' }, { email: details.email, firstName: 'Two' }]);
         const before = await db.collection('users').find({}).toArray();
         try {
-            await assert.rejects(prepareIdentityIndexes(db), error => error.code === 11000);
+            await assert.rejects(prepareIdentityIndexes(db), /Index preparation blocked/);
             assert.deepEqual(await db.collection('users').find({}).toArray(), before);
         } finally {
             await db.collection('users').deleteMany({});

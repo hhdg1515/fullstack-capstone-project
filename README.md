@@ -40,6 +40,7 @@ Backend example:
 ```dotenv
 MONGO_URL=mongodb://127.0.0.1:27017
 MONGO_DB_NAME=giftdb
+DB_ENVIRONMENT=development
 APP_ORIGIN=http://localhost:3000
 SESSION_TTL_SECONDS=28800
 PORT=3060
@@ -55,21 +56,67 @@ Open the React application using `http://localhost:3000`. If using `127.0.0.1` i
 
 ### Prepare identity indexes explicitly
 
-**Before any index creation, verify the project/service, MongoDB host, and database.** For the example local target only:
+Database initialization is separate from demo seeding. **Verify the provider project/service, cluster/endpoints, database, and environment before approving any index creation.** The tool cannot identify your provider account or decide which cluster is intended.
+
+For the example local target, preview first:
 
 ```bash
 cd giftlink-backend
-npm run db:prepare -- --confirm-db giftdb --confirm-host 127.0.0.1:27017
+npm run db:prepare -- --dry-run
 ```
 
-This repeatable command pings and reports the sanitized local target, checks existing emails, and creates:
+Omitting flags also means dry-run. The preview connects read-only, checks the selected database and MongoDB topology using `hello`, then reports:
 
-- A unique `users.email` index. The application stores this field trimmed and lowercased.
+- The explicit environment/database, credential-free endpoints, topology type, and a full SHA-256 target fingerprint.
+- `create` or `keep` for each required index, and any incompatible existing definitions.
+- Counts of invalid/missing, non-normalized, and duplicate normalized emails. Duplicate counts include collisions after trimming/lowercasing. No emails, hashes, account IDs, URI credentials, or raw server errors are printed.
+
+No collections, indexes, accounts, sessions, or demo gifts are created by a preview. Conflicts produce a nonzero exit after the safe report. Review the target against your local service or provider console, then explicitly approve the **full fingerprint from that preview**:
+
+```bash
+npm run db:prepare -- --apply \
+  --confirm-db giftdb \
+  --confirm-environment development \
+  --confirm-target '<full fingerprint from preview>'
+```
+
+The tool rechecks the live target and accounts before creating:
+
+- A binary/simple-collation unique `users.email` index. The application stores this field trimmed and lowercased, and login uses the same binary comparison.
 - A TTL index on `sessions.expiresAt`; expiration is also enforced on every authenticated request.
 
-The command requires matching host/database confirmations and the same loopback-only guard as seeding. Remote, SRV, production-mode/production-named databases, proxy and discovery options are refused. It never normalizes, deletes, merges, or claims existing accounts. Existing non-normalized or duplicate emails require a separately reviewed migration; preparation fails instead of guessing. Stop application writers during preparation. Do not point a loopback tunnel at production.
+Equivalent existing indexes, including ones with different names, are retained. Repeated initialization is safe. Incompatible names, keys, uniqueness, sparse/partial/collation settings, or TTL values block preparation; the command never drops indexes or changes them with `collMod`. It never normalizes, deletes, merges, or claims accounts. Resolve email/index conflicts through a separately reviewed migration with backups and authorized access; the report intentionally does not identify private accounts. A missing/blank/non-string email is an invalid-email conflict. Other existing email syntax is not automatically revalidated or repaired.
 
-Normal server startup only **checks** these indexes; it never creates them or migrates account data. Startup fails closed if required indexes are missing. Production index preparation must be separately reviewed for the actual provider/project/cluster/database and performed by an authorized operator; this local command intentionally cannot prepare a remote production database.
+Pause application writers during preparation. Preflight cannot prevent concurrent account/index changes, and multiple index creations are not a transaction. If a later creation fails, an earlier one may exist: inspect and preview again, without dropping anything automatically. Creating the TTL index enables MongoDB's background removal of already expired **sessions**; account records are preserved. Email inspection scans all accounts and keeps normalized comparison values in memory, so schedule and size the operator process appropriately for a large database.
+
+Normal server startup only **checks** these indexes; it never creates them, imports demo data, or migrates accounts. Startup fails closed if required indexes are missing. Prepare a new database before starting the backend; it will still have no gifts until a separate, permitted seed/import operation.
+
+### Remote MongoDB and deployment preparation
+
+Use [giftlink-backend/.env.remote.sample](giftlink-backend/.env.remote.sample) as a template, without replacing a working `.env`. Supply `MONGO_URL` through an ignored local environment file or secret manager and set an explicit `MONGO_DB_NAME`. Standard `mongodb://` multi-host/replica-set URIs and `mongodb+srv://` URIs are supported; the URI database path does **not** select the application database. URI-encode reserved characters in credentials. Do not put real connection strings in commands, screenshots, logs, or commits.
+
+Set `DB_ENVIRONMENT` to the actual `development`, `staging`, or `production` tier. This is an operator assertion, not an inference from database names or `NODE_ENV`; verify it against the provider project/cluster. System databases `admin`, `config`, and `local` are refused. Choose the provider, cluster, network access rules, TLS trust, database, and operator permissions separately. Use read/list-index permissions for preview and narrowly scoped create-index privileges only for approved execution.
+
+Remote inspection requires an explicit flag, even for dry-run:
+
+```bash
+npm run db:prepare -- --dry-run --allow-remote
+```
+
+After independently verifying the project/cluster, review the report and execute only with authorization for that environment/database:
+
+```bash
+npm run db:prepare -- --allow-remote --apply \
+  --confirm-db '<approved database>' \
+  --confirm-environment staging \
+  --confirm-target '<full fingerprint from preview>'
+```
+
+Replace the database/fingerprint placeholders. For production, configure `DB_ENVIRONMENT=production` and explicitly use `--confirm-environment production`; staging confirmation cannot approve production. `--allow-remote` alone never authorizes writes. The fingerprint binds endpoints, database, environment, and observed topology; changed targets or standalone server restarts require a fresh preview. It is a confirmation aid, not a credential or proof of ownership. It does not replace provider-side verification or change approval.
+
+Remote preparation requires verified TLS (`mongodb+srv` enables it by default; standard remote URIs need `tls=true`). Proxy options, Unix sockets, and disabled certificate/hostname verification are refused. A single verified loopback endpoint is forced to a direct connection; discovery-enabled/multiple-host targets require remote authorization and TLS. A loopback address cannot prove that a tunnel/container actually belongs to development: verify it yourself. Demo seeding retains its separate local-only restrictions and cannot seed remote databases.
+
+Database TLS and application HTTPS are separate requirements. In staging/production set `NODE_ENV=production`, an exact HTTPS `APP_ORIGIN`, and arrange same-origin frontend and `/api` routing with TLS termination. Secure HttpOnly `__Host-` cookies require browser HTTPS regardless of where MongoDB runs. Remote MongoDB configuration does not select a web host, configure TLS termination, or relax CSRF/cookie rules. No real remote database is initialized by this change or its tests.
 
 ### Start the application
 
@@ -93,7 +140,8 @@ MongoDB and required indexes must be ready before Express listens. The API root 
 | Variable | Purpose/default |
 | --- | --- |
 | `MONGO_URL` | Required server/utility MongoDB URI. |
-| `MONGO_DB_NAME` | Explicit database selection; defaults to `giftdb` even if the URI has a database path. |
+| `MONGO_DB_NAME` | Application database selection, independent of the URI path. Server defaults to `giftdb`; identity preparation requires an explicit value. |
+| `DB_ENVIRONMENT` | Required for identity preparation: exactly `development`, `staging`, or `production`. Independent of runtime `NODE_ENV`; does not itself enable writes. |
 | `APP_ORIGIN` | Exact browser application origin, without trailing slash/path. Defaults to `http://localhost:3000` in development; explicitly required as HTTPS in production. Also controls CSRF and credentialed CORS. |
 | `SESSION_TTL_SECONDS` | Fixed session lifetime, default 28,800 seconds (8 hours), allowed range 300–604,800. No sliding extension. |
 | `PORT` | Backend port, default `3060`. |
@@ -168,9 +216,11 @@ npm run lint
 npm test
 # Public API and identity integration suites only:
 npm run test:integration
+# Guarded database preparation suite (also included in npm test):
+npm run test:preparation
 ```
 
-Backend suites create fresh Docker MongoDB containers and random databases. Before writes/index creation they verify container label/image/mounts, loopback port, database name, and the actual MongoDB process identity. They ignore application database URLs and credentials, and remove only their own containers/anonymous volumes. Tests never target development or production data. Docker/download failures fail the suite without falling back to an existing database.
+Backend suites create fresh Docker MongoDB containers and random databases. Before writes/index creation they verify container label/image/mounts, loopback port, database name, and the actual MongoDB process identity. They ignore application database URLs and credentials, and remove only their own containers/anonymous volumes. Remote-policy tests use placeholder endpoints without contacting them and inject the verified isolated connection for execution tests. Tests cover dry-run, confirmations, conflicts, repeat initialization, preserved accounts, and remote-write prevention. Tests never target development or production data. Docker/download failures fail the suite without falling back to an existing database.
 
 ```bash
 cd giftlink-frontend
@@ -184,6 +234,7 @@ GitHub Actions runs frozen installs, backend lint and isolated tests, frontend a
 
 - Deploy backend and frontend together: old bearer JWTs and `authtoken` response fields are intentionally retired. Everyone signs in again. Browser storage is cleared; existing account password hashes are preserved.
 - Review existing email normalization/duplicates and prepare indexes on a confirmed target before starting the new server. No account data has been automatically migrated. Startup is read-only with respect to schema setup.
+- The former `db:prepare --confirm-host ...` interface is replaced by preview plus `--apply` and database/environment/fingerprint confirmations. Preparation no longer imports or shares policy with the seed command. Remote execution is available only through the explicit guarded workflow; real provider connectivity, permissions, and topology still require operator verification. No connected remote resources were modified during implementation.
 - HTTPS and exact `APP_ORIGIN` are required in production. Review trusted proxy configuration with the chosen host before enabling client-IP forwarding; blindly trusting forwarding headers is unsafe. The current limiter is per process, not distributed.
 - Legacy bcrypt hashes consider only the first 72 bytes of overlong passwords. A future reviewed password-reset/rehash strategy can retire this compatibility behavior; existing accounts are not silently rewritten.
 - Logout revokes the current session. Password reset, email verification/change, MFA, global session management, and automated account recovery are not implemented. Duplicate-registration feedback can reveal that an email is registered; login errors are generic and rate-limited.

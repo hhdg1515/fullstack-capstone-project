@@ -6,7 +6,8 @@
   "scripts": {
     "test": "mocha --timeout 30000 --recursive test --fail-zero",
     "test:integration": "mocha --timeout 30000 test/integration.test.js test/identity.test.js --fail-zero",
-    "lint": "jshint --config ../.jshintrc app.js server.js config.js logger.js models routes services middleware serializers util/import-mongo/index.js util/prepare-identity.js test",
+    "test:preparation": "mocha --timeout 30000 test/prepare-identity.test.js --fail-zero",
+    "lint": "jshint --config ../.jshintrc app.js server.js config.js logger.js models routes services middleware serializers util/import-mongo/index.js util/prepare-identity.js util/identity-target.js test",
     "seed": "node util/import-mongo/index.js",
     "start": "node server.js",
     "dev": "nodemon server.js",

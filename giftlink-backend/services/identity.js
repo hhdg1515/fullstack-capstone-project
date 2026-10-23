@@ -1,39 +1,13 @@
 const { randomBytes, createHash } = require('crypto');
 const { ObjectId } = require('mongodb');
 const bcrypt = require('bcryptjs');
+const { prepareIdentityIndexes, assertIdentityIndexes } = require('./identity-indexes');
 
 const tokenHash = token => createHash('sha256').update(token).digest('hex');
 const normalizeEmail = email => email.trim().toLowerCase();
 const privateUser = user => ({ id: user._id.toString(), firstName: user.firstName, lastName: user.lastName, email: user.email });
 const publicUser = user => ({ id: user._id.toString(), firstName: user.firstName });
 const validToken = token => typeof token === 'string' && /^[a-f0-9]{64}$/.test(token);
-
-async function prepareIdentityIndexes(db) {
-    // Do not rewrite legacy accounts or silently resolve duplicate identities.
-    const users = db.collection('users');
-    const cursor = users.find({}, { projection: { email: 1 } });
-    while (await cursor.hasNext()) {
-        const user = await cursor.next();
-        if (typeof user.email !== 'string' || !user.email || user.email !== normalizeEmail(user.email)) {
-            throw new Error('Existing emails need an explicitly reviewed normalization migration; no accounts were changed');
-        }
-    }
-    await users.createIndex({ email: 1 }, { name: 'users_email_unique', unique: true });
-    await db.collection('sessions').createIndex({ expiresAt: 1 }, { name: 'sessions_expiry', expireAfterSeconds: 0 });
-}
-
-async function assertIdentityIndexes(db) {
-    try {
-        const users = await db.collection('users').indexes();
-        const sessions = await db.collection('sessions').indexes();
-        if (!users.some(index => index.unique === true && Object.keys(index.key).length === 1 && index.key.email === 1 && !index.partialFilterExpression && !index.sparse && !index.collation) ||
-            !sessions.some(index => Object.keys(index.key).length === 1 && index.key.expiresAt === 1 && index.expireAfterSeconds === 0 && !index.partialFilterExpression)) {
-            throw new Error('Missing identity indexes');
-        }
-    } catch (error) {
-        throw new Error('Identity indexes are required. Verify the local target and run npm run db:prepare; existing data was not changed');
-    }
-}
 
 function createIdentityService({ connectToDatabase, sessionTtlSeconds = 28800 }) {
     // A missing account still incurs bcrypt verification work.
@@ -50,7 +24,7 @@ function createIdentityService({ connectToDatabase, sessionTtlSeconds = 28800 })
     }
     async function login(email, password) {
         const db = await connectToDatabase();
-        const user = await db.collection('users').findOne({ email: normalizeEmail(email) });
+        const user = await db.collection('users').findOne({ email: normalizeEmail(email) }, { collation: { locale: 'simple' } });
         if (!dummyHash) dummyHash = await bcrypt.hash(randomBytes(32).toString('hex'), 10);
         const matches = await bcrypt.compare(password, user && typeof user.password === 'string' ? user.password : dummyHash);
         return matches && user ? user : null;

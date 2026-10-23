@@ -1,32 +1,69 @@
 const { createDatabase } = require('../models/db');
-const { readDatabaseConfig } = require('../config');
-const { validateSeedTarget } = require('./import-mongo');
-const { prepareIdentityIndexes } = require('../services/identity');
+const { inspectIdentityIndexes, prepareIdentityIndexes, PreparationError } = require('../services/identity-indexes');
+const { readPreparationTarget, inspectTarget } = require('./identity-target');
 
-async function main({ argv = process.argv.slice(2), env = process.env, log = console.log } = {}) {
-    const config = readDatabaseConfig(env);
-    if (argv.length !== 4 || argv[0] !== '--confirm-db' || argv[2] !== '--confirm-host') {
-        throw new Error('Usage: npm run db:prepare -- --confirm-db <database> --confirm-host <host:port>');
+function parseArguments(argv) {
+    const args = {};
+    for (let i = 0; i < argv.length; i++) {
+        const flag = argv[i];
+        if (Object.prototype.hasOwnProperty.call(args, flag)) throw new PreparationError('Duplicate preparation option.');
+        if (['--apply', '--dry-run', '--allow-remote'].includes(flag)) args[flag] = true;
+        else if (['--confirm-db', '--confirm-environment', '--confirm-target'].includes(flag) &&
+            argv[i + 1] && !argv[i + 1].startsWith('--')) args[flag] = argv[++i];
+        else throw new PreparationError('Usage: npm run db:prepare -- [--dry-run | --apply --confirm-db <database> --confirm-environment <environment> --confirm-target <preview-fingerprint>] [--allow-remote]');
     }
-    const target = await validateSeedTarget({ mongoUrl: config.mongoUrl, dbName: config.dbName,
-        nodeEnv: env.NODE_ENV, confirmDb: argv[1] });
-    if (argv[3] !== target.host) throw new Error('Confirmed host does not match the local database target');
-    const database = createDatabase(target);
+    if (args['--apply'] && args['--dry-run']) throw new PreparationError('Choose either --dry-run or --apply.');
+    if (!args['--apply'] && Object.keys(args).some(flag => flag.startsWith('--confirm-'))) {
+        throw new PreparationError('Confirmation flags require --apply; omit them for a preview.');
+    }
+    return args;
+}
+
+async function main({ argv = process.argv.slice(2), env = process.env, log = console.log,
+    databaseFactory = createDatabase } = {}) {
+    let database;
     try {
+        const args = parseArguments(argv);
+        const target = await readPreparationTarget(env, args['--allow-remote']);
+        if (args['--apply'] && (args['--confirm-db'] !== target.dbName ||
+            args['--confirm-environment'] !== target.environment || !/^[a-f0-9]{64}$/.test(args['--confirm-target'] || ''))) {
+            throw new PreparationError('Apply requires matching --confirm-db, --confirm-environment, and the full --confirm-target fingerprint from a preview.');
+        }
+        database = databaseFactory(target);
         const db = await database.connect();
-        await db.command({ ping: 1 });
-        if (db.databaseName !== target.dbName) throw new Error('Confirmed database does not match');
-        log('Verified local identity-index target: ' + target.host + ' / ' + db.databaseName);
-        await prepareIdentityIndexes(db);
-        log('Identity indexes ready; existing accounts were not changed');
-    } finally { await database.close(); }
+        const inspected = await inspectTarget(db, target);
+        log(JSON.stringify({ target: inspected }));
+        if (args['--apply'] && args['--confirm-target'] !== inspected.fingerprint) {
+            throw new PreparationError('Target fingerprint does not match. Verify the project/cluster/database and run a fresh preview; no indexes were created.');
+        }
+        const plan = await inspectIdentityIndexes(db);
+        log(JSON.stringify({ mode: args['--apply'] ? 'apply' : 'dry-run', plan }));
+        if (!plan.ready) throw new PreparationError('Preparation blocked. Review account conflict counts or incompatible indexes securely. Use a separately reviewed migration; no accounts were changed.');
+        if (args['--apply']) {
+            // Check the live target again after scanning accounts and before any DDL.
+            if ((await inspectTarget(db, target)).fingerprint !== inspected.fingerprint) {
+                throw new PreparationError('Target changed during inspection. Run a fresh preview; no indexes were created.');
+            }
+            await prepareIdentityIndexes(db);
+            log('Required identity indexes are ready. No accounts or demo gifts were imported or rewritten.');
+        } else log('Read-only preview complete. No indexes or documents were changed. Review the target before approving --apply.');
+        return { target: inspected, plan };
+    } catch (error) {
+        if (error instanceof PreparationError) throw error;
+        // Connection, auth and server errors can contain credentials or document values.
+        throw new PreparationError('Identity preparation failed. Check connectivity, TLS, permissions and target configuration securely; no account repair was attempted.');
+    } finally {
+        if (database) {
+            try { await database.close(); }
+            catch (error) { throw new PreparationError('Could not close the preparation client cleanly. Inspect connectivity securely.'); }
+        }
+    }
 }
 if (require.main === module) {
     require('dotenv').config();
-    main().catch(() => {
-        // Duplicate-key errors contain private emails. Keep CLI output generic.
-        console.error('Identity index preparation failed. Verify target confirmations and inspect existing email normalization/duplicates without changing accounts.');
+    main().catch(error => {
+        console.error(error instanceof PreparationError ? error.message : 'Identity preparation failed; inspect connectivity and permissions securely.');
         process.exitCode = 1;
     });
 }
-module.exports = { main };
+module.exports = { main, parseArguments };
