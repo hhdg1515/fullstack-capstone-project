@@ -1,26 +1,99 @@
-/* Task 1: Style the search input field */
-.search-input {
-    /* Insert specific CSS properties here */
+.search-page .search-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
 }
 
-/* Task 2: Style the search button */
-.search-button {
-    /* Insert specific CSS properties here */
+.search-page .search-input {
+    width: 75%;
 }
 
-/* Task 3: Customize dropdown filters */
-.dropdown-filter {
-    /* Insert specific CSS properties here */
+.search-page .search-button {
+    width: 20%;
+    background-color: #007bff;
+    color: #fff;
+    border: none;
 }
 
-/* Task 4: Style the age range slider */
-.age-range-slider {
-    /* Insert specific CSS properties here */
+.search-page .dropdown-filter {
+    margin-bottom: 1rem;
+    border: 1px solid #ced4da;
 }
 
-/* Task 5: Enhance search results cards appearance */
-.search-results-card {
-    /* Insert specific CSS properties here */
+.search-page .age-range-slider {
+    width: 100%;
 }
 
-/* Additional placeholders for tasks 6 to 10 */
+.search-page .search-results-card {
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    border-radius: 10px;
+    overflow: hidden;
+    transition: box-shadow 0.3s ease-in-out;
+}
+
+.search-page .search-results-card:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.search-page .card-body {
+    padding: 1rem;
+}
+
+.search-page .card-title {
+    font-size: 1.2rem;
+    color: #0056b3;
+}
+
+.search-page .card-text {
+    color: #333;
+    margin-bottom: 0.5rem;
+}
+
+.search-page .card-footer {
+    text-align: center;
+    padding: 1rem;
+    border-top: none;
+}
+
+.search-page .card-img-top,
+.search-page .search-no-image {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+}
+
+.search-page .search-no-image {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #eee;
+    color: #555;
+}
+
+.search-page .search-empty {
+    background-color: #f8d7da;
+    color: #721c24;
+    padding: 0.75rem 1.25rem;
+    margin-top: 1rem;
+    border: 1px solid transparent;
+    border-radius: 0.25rem;
+}
+
+@media (max-width: 768px) {
+    .search-page .search-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .search-page .search-input,
+    .search-page .search-button {
+        width: 100%;
+    }
+
+    .search-page .card-img-top,
+    .search-page .search-no-image {
+        height: 180px;
+    }
+}
