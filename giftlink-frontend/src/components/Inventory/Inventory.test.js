@@ -144,6 +144,27 @@ test('stale actions show an error and let the owner reload authoritative state',
   fireEvent.click(screen.getByRole('button', { name: 'Reload inventory' }));
   expect(await screen.findByText('1 of 1 items cleared')).toBeInTheDocument();
 });
+test('refreshing an outdated edit replaces its values before adopting the new version', async () => {
+  data = inventory([item]);
+  mount(`/app/plans/${plan.id}/items?edit=${item.id}`); await screen.findByRole('button', { name: 'Save changes' });
+  name('Outdated unsaved draft');
+  data = inventory([{ ...item, name: 'Changed in another tab', version: 2 }]);
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh inventory' }));
+  await waitFor(() => expect(screen.getByLabelText('Item name')).toHaveValue('Changed in another tab'));
+  expect(screen.getByRole('heading', { name: 'Edit Changed in another tab' })).toBeInTheDocument();
+  expect(window.confirm).toHaveBeenCalled();
+});
+test('saving an item disables competing inventory actions until the write finishes', async () => {
+  data = inventory([item]);
+  let finish;
+  handler = () => new Promise(resolve => { finish = resolve; });
+  mount(); await formReady(); name('Another item'); submitDraft();
+  expect(screen.getByRole('button', { name: `Edit ${item.name}` })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Refresh inventory' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled();
+  await act(async () => { data = inventory([item, { ...item, id: 'second', name: 'Another item' }]); finish(reply(201, { item: data.items[1] })); });
+  expect(await screen.findByText('0 of 2 items cleared')).toBeInTheDocument();
+});
 test('failed saves retain drafts and expired sessions remove the private form', async () => {
   handler = async () => reply(500, { error: { message: 'Try again' } });
   mount(); await formReady(); name('Unsaved belongings'); submitDraft();

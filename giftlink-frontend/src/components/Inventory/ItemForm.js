@@ -12,7 +12,7 @@ export function availabilityError(values, plan, publishing = false) {
 }
 export default function ItemForm({ plan, item, onSave, onCancel, disabled, focusName }) {
   const nameInput = useRef();
-  useEffect(() => { if (item || focusName) nameInput.current?.focus(); }, [item, focusName]);
+  useEffect(() => { if (!disabled && (item || focusName)) nameInput.current?.focus(); }, [item, focusName, disabled]);
   const [values, setValues] = useState({ name: item?.name || '', description: item?.description || '', category: item?.category || '',
     availableFrom: item?.availableFrom || '', availableUntil: item?.availableUntil || '' });
   const [busy, setBusy] = useState(false);

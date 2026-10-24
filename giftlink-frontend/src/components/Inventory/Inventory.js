@@ -29,10 +29,13 @@ export default function Inventory() {
   const item = data?.items.find(value => value.id === editor);
   const root = `/api/move-out-plans/${encodeURIComponent(planId)}/items`;
   const save = async (details, publish) => {
-    await apiRequest(item ? `${root}/${item.id}` : root, { method: item ? 'PATCH' : 'POST',
-      body: item ? { ...details, version: item.version } : { ...details, publish } });
-    setMessage(item ? 'Item saved.' : publish ? 'Item published. Add another below.' : 'Draft saved. Add another below.');
-    setEditor(null); setSequence(value => value + 1); request.retry();
+    setBusy(true);
+    try {
+      await apiRequest(item ? `${root}/${item.id}` : root, { method: item ? 'PATCH' : 'POST',
+        body: item ? { ...details, version: item.version } : { ...details, publish } });
+      setMessage(item ? 'Item saved.' : publish ? 'Item published. Add another below.' : 'Draft saved. Add another below.');
+      setEditor(null); setSequence(value => value + 1); request.retry();
+    } finally { setBusy(false); }
   };
   const action = async (entry, name) => {
     if (['publish', 'reopen'].includes(name)) {
@@ -49,6 +52,9 @@ export default function Inventory() {
   };
   return <main className="plans-page inventory-page">
     <Link to={`/app/plans/${planId}`}>Back to plan</Link><h1>Plan inventory</h1>
+    <button className="btn btn-outline-secondary" disabled={busy || request.loading} onClick={() => {
+      if (!item || window.confirm('Refresh and review the latest saved item details? An outdated edit draft may be replaced.')) request.retry();
+    }}>Refresh inventory</button>
     {request.loading && <p role="status">{data ? 'Refreshing inventory…' : 'Loading inventory…'}</p>}
     {(error || request.error) && <div role="alert"><p>{error || (request.error.status === 404 ? 'This inventory is unavailable.' : request.error.message)}</p>
       <button className="btn btn-outline-secondary" onClick={() => { setError(''); request.retry(); }}>Reload inventory</button></div>}
@@ -58,7 +64,7 @@ export default function Inventory() {
       <p className="inventory-progress"><strong>{data.progress.cleared} of {data.progress.total} items cleared</strong></p>
       <p>Unlisted items stay private but do not count as cleared. Cleared items can be reopened.</p>
       {data.plan.status !== 'active' && <p>This plan is inactive. <Link to={`/app/plans/${planId}/edit`}>Activate it</Link> before publishing.</p>}
-      <ItemForm key={`${user.id}:${planId}:${item?.id || 'new'}:${sequence}`} plan={data.plan} item={item}
+      <ItemForm key={`${user.id}:${planId}:${item?.id || 'new'}:${item?.version || 0}:${sequence}`} plan={data.plan} item={item}
         onSave={save} onCancel={() => setEditor(null)} focusName={sequence > 0} disabled={busy || request.loading} />
       <section aria-label="Inventory items">
         <div className="plan-field"><label htmlFor="inventory-filter">Show items</label>
