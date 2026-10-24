@@ -1,0 +1,93 @@
+name: Prepare staging database indexes
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'dry-run inspects only; apply creates the explicitly approved application indexes'
+        type: choice
+        options: [dry-run, apply]
+        default: dry-run
+        required: true
+      approved_sha:
+        description: 'Full 40-character reviewed main commit SHA selected for this run'
+        type: string
+        required: true
+      confirm_db:
+        description: 'Apply only: type moveout_e2e_staging'
+        type: string
+      confirm_environment:
+        description: 'Apply only: type staging'
+        type: string
+      confirm_target:
+        description: 'Apply only: full 64-character target fingerprint from the reviewed dry-run'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-database-preparation
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Inspect or explicitly prepare staging indexes
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    environment: isolated-e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: giftlink-backend
+    env:
+      MONGO_DB_NAME: ${{ vars.E2E_DB_NAME }}
+      DB_ENVIRONMENT: staging
+      PREPARATION_OPERATION: ${{ inputs.operation }}
+      APPROVED_SHA: ${{ inputs.approved_sha }}
+      CONFIRM_DB: ${{ inputs.confirm_db }}
+      CONFIRM_ENVIRONMENT: ${{ inputs.confirm_environment }}
+      CONFIRM_TARGET: ${{ inputs.confirm_target }}
+    steps:
+      - name: Check out the selected immutable commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: giftlink-backend/package-lock.json
+
+      - name: Install backend dependencies without lifecycle scripts or database credentials
+        run: npm ci --ignore-scripts
+
+      - name: Validate the manual operation, staging configuration and confirmations without connecting
+        run: node ../deployment/validate-staging-preparation.js
+        env:
+          MONGO_URL: ${{ secrets.E2E_MONGO_URL }}
+
+      - name: Run the existing guarded database preparation utility
+        shell: bash
+        env:
+          MONGO_URL: ${{ secrets.E2E_MONGO_URL }}
+        run: |
+          set -euo pipefail
+          case "$PREPARATION_OPERATION" in
+            dry-run)
+              npm run db:prepare -- --allow-remote --dry-run
+              ;;
+            apply)
+              npm run db:prepare -- --allow-remote --apply \
+                --confirm-db "$CONFIRM_DB" \
+                --confirm-environment "$CONFIRM_ENVIRONMENT" \
+                --confirm-target "$CONFIRM_TARGET"
+              ;;
+            *)
+              echo 'Unsupported preparation operation.' >&2
+              exit 1
+              ;;
+          esac
