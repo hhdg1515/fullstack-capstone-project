@@ -118,7 +118,7 @@ async function main(env = process.env) {
   const record = receipt => { fs.writeFileSync(path.join(output, 'staging-deployment.json'), JSON.stringify(receipt)); console.log(JSON.stringify({ phase: receipt.phase })); };
   const result = await deploy({ origin: config.origin, api: vercelApi(env.VERCEL_TOKEN), record,
     cli: async () => {
-      const child = spawnSync(env.VERCEL_CLI_PATH, ['deploy', '--prebuilt', '--target=preview', '--yes', '--scope', staging.teamId, '--token', env.VERCEL_TOKEN],
+      const child = spawnSync(env.VERCEL_CLI_PATH, ['deploy', '--prebuilt', '--environment=preview', '--yes', '--scope', staging.teamId, '--token', env.VERCEL_TOKEN],
         { cwd: repository, encoding: 'utf8', timeout: 600000 });
       if (child.status !== 0) throw new StagingError('Preview deployment failed; raw CLI output suppressed');
       return child.stdout.trim().split(/\r?\n/).findLast(line => /^https:\/\/[a-z0-9.-]+\.vercel\.app$/.test(line)) || '';
