@@ -1,5 +1,7 @@
 # Milestone 5.6: deployment audit and isolated verification
 
+For the subsequent healthy-API/initialized-database phase, see [Milestone 5.7 hosted staging integration](hosted-staging-integration.md). The status history below describes initial preparation; use that follow-up for current access blockers and staging frontend setup.
+
 ## Status and authorization
 
 **Code prepared** is separate from **environment deployed** and **live E2E verified**. This change prepares a Vercel-compatible API, reviewed proxy generator, automatic isolated CI browser tests and opt-in remote verification. It does not provision an API project, Atlas resources, secrets, domains or network rules. No live full-stack verification is claimed.

@@ -1,7 +1,7 @@
-const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
 const { approve, inspectRemote, assertBudget, newRunId, runPattern } = require('./policy.cjs');
 const { cleanup } = require('./cleanup.cjs');
+const { recordRun } = require('./run-receipt.cjs');
 (async () => {
   let remote;
   try {
@@ -10,7 +10,7 @@ const { cleanup } = require('./cleanup.cjs');
     if (operation !== 'preview') approve(process.env, operation);
     remote = await inspectRemote(process.env);
     if (operation !== 'preview' && remote.inspected.fingerprint !== process.env.E2E_CONFIRM_TARGET) throw Error('Fingerprint mismatch');
-    console.log(JSON.stringify({ mode: operation, origin: remote.origin, database: remote.inspected.database, environment: 'staging', fingerprint: remote.inspected.fingerprint }));
+    console.log(JSON.stringify({ mode: operation, origin: remote.origin, database: remote.inspected.database, environment: 'staging', fingerprint: remote.inspected.fingerprint, checks: remote.checks }));
     if (operation === 'preview') {
       const remaining = await remote.db.collection('users').countDocuments({ email: /^e2e\+[a-f0-9]{32}\./ });
       console.log(JSON.stringify({ syntheticAccountsRemaining: remaining, maxAccountsPerRun: 4, writes: false }));
@@ -22,8 +22,8 @@ const { cleanup } = require('./cleanup.cjs');
       console.log(JSON.stringify({ cleanup: await cleanup(remote.db, process.env.E2E_RUN_ID, true) })); return;
     }
     await assertBudget(remote.db);
-    const runId = newRunId(); fs.mkdirSync('run-receipts', { recursive: true });
-    fs.writeFileSync('run-receipts/' + runId + '.json', JSON.stringify({ runId, origin: remote.origin, database: remote.inspected.database, fingerprint: remote.inspected.fingerprint, maxAccounts: 4, maxPlans: 2, maxItems: 6, maxRequests: 8, maxIssuedSessions: 8, ownedSessionExpiryUpdates: 2 }), { mode: 0o600 });
+    const runId = newRunId();
+    recordRun({ runId, origin: remote.origin, database: remote.inspected.database, fingerprint: remote.inspected.fingerprint });
     console.log(JSON.stringify({ runId, maxAccounts: 4, note: 'Use this exact run ID for separately approved cleanup. No automatic remote cleanup.' }));
     await remote.database.close(); remote = undefined;
     const child = spawnSync(process.execPath, [require.resolve('@playwright/test/cli'), 'test'], { stdio: 'inherit', env: { ...process.env, E2E_RUN_ID: runId, E2E_REMOTE_RUN: 'confirmed' } });
