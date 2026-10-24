@@ -1,18 +1,12 @@
-const createApp = require('./app');
+const { initializeApplication } = require('./runtime');
 const { createDatabase } = require('./models/db');
 const { readServerConfig } = require('./config');
-const { assertDatabaseIndexes } = require('./services/database-indexes');
 
 async function startServer(config, { database = createDatabase(config), logger = require('./logger') } = {}) {
     let server;
     try {
         // A failed database connection must never leave an HTTP listener running.
-        const db = await database.connect();
-        await assertDatabaseIndexes(db);
-        const topology = await db.command({ hello: 1 });
-        if (!topology.setName && topology.msg !== 'isdbgrid') throw new Error('MongoDB replica set required for atomic inventory updates; see README');
-        const app = createApp({ connectToDatabase: database.connect, appOrigin: config.appOrigin,
-            secureCookies: config.secureCookies, sessionTtlSeconds: config.sessionTtlSeconds, logger });
+        const app = await initializeApplication(config, { database, logger });
         server = await new Promise((resolve, reject) => {
             const listener = app.listen(config.port, config.host);
             listener.once('error', reject);

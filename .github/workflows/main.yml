@@ -73,3 +73,37 @@ jobs:
         env:
           CI: "true"
           REACT_APP_BACKEND_URL: ""
+
+      - name: Save the production build for isolated browser verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-production-build
+          path: giftlink-frontend/build
+          retention-days: 1
+
+  browser_e2e:
+    name: Isolated full-stack Chromium E2E
+    needs: client_build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            giftlink-backend/package-lock.json
+            e2e/package-lock.json
+      - run: npm --prefix giftlink-backend ci
+      - run: npm --prefix e2e ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-production-build
+          path: giftlink-frontend/build
+      - run: npx playwright install --with-deps chromium
+        working-directory: e2e
+      - run: npm run test:policy
+        working-directory: e2e
+      - run: npm test
+        working-directory: e2e

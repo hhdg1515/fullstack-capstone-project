@@ -1,0 +1,88 @@
+name: Approved isolated HTTPS E2E
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'preview is read-only; run creates at most four synthetic accounts; cleanup deletes only one owned run'
+        type: choice
+        options: [preview, run, cleanup]
+        default: preview
+      approved_sha:
+        description: 'Exact reviewed 40-character commit SHA for this workflow run'
+        required: true
+        type: string
+      confirm_origin:
+        description: 'Exact approved HTTPS staging frontend origin (required for run/cleanup)'
+        type: string
+      confirm_db:
+        description: 'Exact dedicated moveout_e2e database (required for run/cleanup)'
+        type: string
+      confirm_target:
+        description: 'Full 64-character fingerprint from a successful read-only preview'
+        type: string
+      cleanup_run_id:
+        description: 'Exact 32-character run ID; preview can show its cleanup counts'
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: approved-isolated-e2e
+  cancel-in-progress: false
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a reviewed immutable SHA and pre-existing reviewer-protected Environment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EXPECTED_SHA: ${{ inputs.approved_sha }}
+          ACTUAL_SHA: ${{ github.sha }}
+        run: |
+          node -e 'if(!/^[a-f0-9]{40}$/.test(process.env.EXPECTED_SHA||"")||process.env.EXPECTED_SHA!==process.env.ACTUAL_SHA)throw Error("Confirm the exact reviewed commit SHA")'
+          gh api "repos/$REPOSITORY/environments/isolated-e2e" > "$RUNNER_TEMP/e2e-environment.json"
+          node -e 'const e=require(process.argv[1]);if(!e.protection_rules?.some(r=>r.type==="required_reviewers"&&r.reviewers?.length))throw Error("Configure required reviewers before any remote E2E operation")' "$RUNNER_TEMP/e2e-environment.json"
+  verify:
+    needs: gate
+    environment: isolated-e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            giftlink-backend/package-lock.json
+            e2e/package-lock.json
+      - run: npm --prefix ../giftlink-backend ci
+      - run: npm ci
+      - name: Install Chromium for explicitly approved run
+        if: inputs.operation == 'run'
+        run: npx playwright install --with-deps chromium
+      - name: Preview or execute the scoped approved operation
+        env:
+          E2E_APP_ORIGIN: ${{ vars.E2E_APP_ORIGIN }}
+          E2E_DB_NAME: ${{ vars.E2E_DB_NAME }}
+          E2E_MONGO_URL: ${{ secrets.E2E_MONGO_URL }}
+          E2E_APPROVE_OPERATION: ${{ inputs.operation }}
+          E2E_CONFIRM_ORIGIN: ${{ inputs.confirm_origin }}
+          E2E_CONFIRM_DB: ${{ inputs.confirm_db }}
+          E2E_CONFIRM_ENVIRONMENT: staging
+          E2E_CONFIRM_TARGET: ${{ inputs.confirm_target }}
+          E2E_RUN_ID: ${{ inputs.cleanup_run_id }}
+          E2E_OPERATION: ${{ inputs.operation }}
+        run: node remote.cjs "$E2E_OPERATION"
+      - name: Save non-secret run receipts for later scoped cleanup
+        if: always() && inputs.operation == 'run'
+        uses: actions/upload-artifact@v4
+        with:
+          name: isolated-e2e-run-receipts
+          path: e2e/run-receipts/*.json
+          if-no-files-found: ignore
+          retention-days: 14
