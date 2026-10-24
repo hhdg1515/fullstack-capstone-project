@@ -7,6 +7,7 @@ import PlanForm, { statusLabels } from './PlanForm';
 import usePlansData from './usePlansData';
 import { formatDeadline } from './dates';
 import './Plans.css';
+import JourneyNav from '../Journeys/JourneyNav';
 
 const base = '/api/move-out-plans';
 const heading = plan => plan.title || `Move-out in ${plan.neighborhood}`;
@@ -22,8 +23,9 @@ function LoadState({ request }) {
 export function MyPlans() {
   const request = usePlansData(base);
   return <main className="plans-page">
+    <JourneyNav journey="give" />
     <div className="plan-page-header"><h1>My move-out plans</h1><Link className="btn btn-primary" to="/app/plans/new">Create a plan</Link></div>
-    <p>Keep your move-out deadline and the items you want to give away organized in one plan.</p>
+    <p>Set your move-out deadline, add items, arrange pickups, and follow your clearance progress. Choose a plan to manage its inventory.</p>
     <LoadState request={request} />
     {request.data?.plans.length === 0 && <section className="plan-panel">
       <h2>Your next move starts here</h2><p>You have no move-out plans yet. Create a plan now; you can start before adding any items.</p>
@@ -35,6 +37,7 @@ export function MyPlans() {
         <p>{plan.neighborhood}, {plan.city}</p>
         <p>Move out by <time dateTime={plan.moveOutDeadline}>{formatDeadline(plan.moveOutDeadline)}</time></p>
         <span className="plan-status">{statusLabels[plan.status]}</span>
+        <p><Link to={`/app/plans/${plan.id}/items`}>Manage items &amp; clearance progress</Link></p>
       </li>)}
     </ul>}
   </main>;
@@ -47,7 +50,7 @@ export function CreatePlan() {
     const data = await apiRequest(base, { method: 'POST', body: details });
     navigate(`/app/plans/${data.plan.id}`, { replace: true, state: { message: 'Plan created.' } });
   };
-  return <main className="plans-page"><Link to="/app/plans">My plans</Link>
+  return <main className="plans-page"><JourneyNav journey="give" />
     <h1>Create move-out plan</h1><p>One plan for your move and the household items you’ll give away.</p>
     <PlanForm key={user.id} onSave={save} />
   </main>;
@@ -58,7 +61,7 @@ export function PlanDetail() {
   const request = usePlansData(`${base}/${encodeURIComponent(planId)}`);
   const { state } = useLocation();
   const plan = request.data?.plan;
-  return <main className="plans-page"><Link to="/app/plans">My plans</Link>
+  return <main className="plans-page"><JourneyNav journey="give" planId={plan?.id} />
     <LoadState request={request} />
     {plan && <>
       <div className="plan-page-header"><h1>{heading(plan)}</h1><Link className="btn btn-outline-primary" to={`/app/plans/${plan.id}/edit`}>Edit plan</Link></div>
@@ -86,7 +89,7 @@ export function EditPlan() {
     const data = await confirmPickupChanges(`${base}/${encodeURIComponent(planId)}`, { method: 'PATCH', body: details });
     navigate(`/app/plans/${data.plan.id}`, { replace: true, state: { message: 'Plan updated.' } });
   };
-  return <main className="plans-page"><Link to="/app/plans">My plans</Link><h1>Edit move-out plan</h1>
+  return <main className="plans-page"><JourneyNav journey="give" planId={plan?.id} /><h1>Edit move-out plan</h1>
     <LoadState request={request} />
     {plan && <PlanForm key={plan.id} initialPlan={plan} onSave={save} />}
   </main>;

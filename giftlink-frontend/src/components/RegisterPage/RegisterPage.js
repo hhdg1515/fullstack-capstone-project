@@ -1,15 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAppContext } from '../../context/AuthContext';
 import './RegisterPage.css';
+import { authDestination } from '../authDestination';
 
 export default function RegisterPage() {
   const { register, isLoggedIn, status } = useAppContext();
   const navigate = useNavigate();
+  const requested = useLocation().state?.from;
+  const destination = authDestination(requested);
   const [details, setDetails] = useState({ firstName: '', lastName: '', email: '', password: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (isLoggedIn) navigate('/app', { replace: true }); }, [isLoggedIn, navigate]);
+  useEffect(() => { if (isLoggedIn) navigate(destination, { replace: true }); }, [isLoggedIn, navigate, destination]);
   const submit = async event => {
     event.preventDefault();
     setError('');
@@ -19,9 +22,10 @@ export default function RegisterPage() {
       setError(failure.fields?.map(field => `${field.field}: ${field.message}`).join('. ') || failure.message);
     } finally { setBusy(false); setDetails(previous => ({ ...previous, password: '' })); }
   };
-  return <div className="container mt-5"><div className="row justify-content-center"><div className="col-md-6 col-lg-4">
+  return <main className="container mt-5"><div className="row justify-content-center"><div className="col-md-6 col-lg-4">
     <form className="register-card p-4 border rounded" onSubmit={submit}>
-      <h2 className="text-center mb-4">Register</h2>
+      <h1 className="h2 text-center mb-4">Register</h1>
+      <p>Give and find with the same account. You can do both at any time.</p>
       {['firstName', 'lastName', 'email', 'password'].map(field => <div className="mb-3" key={field}>
         <label htmlFor={field} className="form-label">{{ firstName: 'First name', lastName: 'Last name', email: 'Email', password: 'Password' }[field]}</label>
         <input id={field} type={field === 'password' ? 'password' : field === 'email' ? 'email' : 'text'}
@@ -32,7 +36,7 @@ export default function RegisterPage() {
       <p>Use a password of at least 12 characters, at most 72 UTF-8 bytes.</p>
       {error && <p className="text-danger" role="alert">{error}</p>}
       <button className="btn btn-primary w-100" disabled={busy || status === 'loading'}>{busy ? 'Registering…' : 'Register'}</button>
-      <p className="mt-4">Already a member? <Link to="/app/login">Login</Link></p>
+      <p className="mt-4">Already a member? <Link to="/app/login" state={{ from: requested }}>Login</Link></p>
     </form>
-  </div></div></div>;
+  </div></div></main>;
 }

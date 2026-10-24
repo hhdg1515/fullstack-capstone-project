@@ -1,6 +1,36 @@
-# GiftLink — Pickup Coordination
+# Move-Out Marketplace — Give Away & Find Free Items
 
-GiftLink remains a React, Express, Node.js, and MongoDB native-driver application. Milestone 5 adds private two-party pickup requests, giver-controlled acceptance, appointments, cancellations, handoffs and no-shows. Anonymous neighborhood discovery, plan inventory and authenticated ownership remain intact. Public GiftLink browsing/search and all 16 demo records remain separate and unchanged. Messaging, notifications, payments, shipping, property integrations, image uploads, and geographical APIs are not implemented.
+Move-Out Marketplace remains a React, Express, Node.js, and MongoDB native-driver application. Milestone 5.5 organizes the product around **Give Away** and **Find Free Items**, with one shared account and no fixed account roles. Plans, inventory, anonymous discovery, pickup coordination and handoffs retain their existing APIs and data model. The original GiftLink collection/search and all 16 demo records remain available. Messaging, notifications, payments, shipping, property integrations, image uploads, and geographical APIs are not implemented.
+
+## Two journeys, one account
+
+The public homepage at `/` presents **Move lighter. Settle smarter.** with two actions:
+
+- **Start Giving** → the existing `/app/plans` dashboard (sign in or register first). Pick a plan to manage items and clearance progress, review Incoming requests across your plans, and complete handoffs. There is no additional giver dashboard or mandatory account-type onboarding.
+- **Explore Free Items** → `/app/items`, immediately available to anonymous visitors. Search/filter any city or neighborhood, open/share a listing, and sign in only when requesting pickup. **My pickup requests** stays in this journey's navigation.
+
+Primary navigation contains **Find Free Items**, **Give Away**, and **Account**. Journey navigation links existing pages in context; item inventory and progress remain together on each plan's inventory page. The mobile menu has an explicit expanded state, Escape/focus return, and closes on navigation. Active sections, visible keyboard focus, a skip link and main-content focus after page navigation support keyboard/screen-reader use. Query-only discovery changes preserve search focus and the existing URL state. Both homepage actions remain prominent on small screens.
+
+Giver location always comes from that plan. Discovery location comes only from current URL search/filter choices: someone giving in Pasadena can search Irvine with the same account. This refinement does not save a location preference, infer a city from a plan, restrict neighborhoods, add user roles, or alter MongoDB schemas/indexes. Existing server-derived giver/receiver authorization remains in effect for each action.
+
+| Route | Journey / compatibility |
+| --- | --- |
+| `/` | Public two-path homepage; default destination after login/registration without a pending action and after logout |
+| `/home.html` | Old static home link redirects to `/`; the client route also renders Home |
+| `/app/plans`, `/app/plans/new`, `/app/plans/:id`, `/app/plans/:id/edit` | Give Away: existing protected plan pages |
+| `/app/plans/:id/items` | Give Away: existing inventory and clearance progress, including `?edit=` links |
+| `/app/pickups/incoming` | Give Away: consolidated incoming requests |
+| `/app/items`, `/app/items/:id`, `/app/items/:id/request` | Find Free Items: unchanged discovery/shared detail URLs; request form remains protected |
+| `/app/pickups` | Find Free Items: outgoing requests |
+| `/app/pickups/:id` | Existing private URL; context comes from the server-reported request role, with incoming/outgoing return links |
+| `/app/profile`, `/app/login`, `/app/register` | One account system; no permanent giver/receiver choice |
+| `/app`, `/app/search`, `/app/product/:id` | Original demo gift collection, search and details, retained in footer links |
+
+Protected navigation preserves the intended path, query and fragment through login **and registration**, including switching between their forms. Login/register loops and external destinations fall back to `/`. This is a frontend navigation change; session validation, APIs, pickup/inventory services and database preparation remain unchanged. Public listing/filter URLs and browser Back/Forward keep working. No migration or new environment setting is required when upgrading from Milestone 5.
+
+The Create React App deployment contract is unchanged: build `giftlink-frontend` with `npm ci` and `CI=true npm run build`, publish its `build` directory, and configure the existing host's SPA fallback to `index.html` for client routes (preserving actual static files and existing `/api` routing). Keep `REACT_APP_BACKEND_URL` deployment-specific using existing configuration; same-origin production uses an empty value and the established HTTPS/cookie/CSRF requirements. No Vercel project, credentials, environment variables or deployment settings are created/changed by this milestone. An existing Git integration may automatically build PR previews when a branch is pushed; no deployment commands are run. A live Vercel deployment is not validated by local browser checks.
+
+Future UX work includes research on the initial homepage copy, richer inventory summaries, and messaging/rendezvous/notification improvements. No new pickup or inventory business behavior is introduced here.
 
 ## Requirements
 
@@ -209,7 +239,7 @@ The account page is now registered at `/app/profile`; login preserves an intende
 
 ## Move-out Plans
 
-Select **My Plans** in the navigation and sign in. `/app/plans` lists your plans in deadline order; create directly at `/app/plans/new`. Each plan links to a detail view and an edit form. Creation needs only a deadline, city, and neighborhood; the title is optional. You may create multiple plans. There is no address, tenancy, HOA, item, or mapping requirement, and no multi-step onboarding.
+Select **Give Away** in primary navigation and sign in. `/app/plans` lists your plans in deadline order; create directly at `/app/plans/new`. Each plan links to a detail view and an edit form. Creation needs only a deadline, city, and neighborhood; the title is optional. You may create multiple plans. There is no address, tenancy, HOA, item, or mapping requirement, and no multi-step onboarding.
 
 All plans are private to their owner. The interface supports session checks, loading, an empty dashboard, field validation, retries, save progress, and expired-session login prompts. Unsaved edits survive background validation of the same account. Private fetched data is discarded when switching accounts/routes, and stale requests cannot replace the current account's data.
 
@@ -288,13 +318,13 @@ Editing an expired item's dates keeps it expired until explicit publication. A p
 
 Both item ownership and parent-plan ownership are required; mismatched/orphaned records cannot leak through management or public joins. All writes reuse sessions, Origin/CSRF/JSON requirements, bounded validation and safe error handling. `409 ITEM_CHANGED` rejects stale versions. Multi-document transactions touch the parent on **every** plan/item mutation, preventing concurrent deadline edits and item writes from committing incompatible data. Driver retries revalidate against a fresh snapshot. Public reads use snapshot aggregation joining the current plan and check matching ownership, active plan, publication, available state and effective end/range. The collection has no TTL index or automatic record deletion.
 
-**Free items** (`/app/items`) demonstrates public search/detail separately from legacy Gifts. Public DTOs allowlist name, description, category, safe general location, pickup dates, deadline, state and first publication timestamp. Owner IDs, parent IDs, versions, email, contact/address fields, hashes and tokens are excluded. Responses and fetches use no-store; public pages refresh on focus or explicit refresh. Previously downloaded public text cannot be revoked, and an already-open page needs a refresh to reflect withdrawal.
+**Find Free Items** (`/app/items`) provides public search/detail separately from the demo gift collection. Public DTOs allowlist name, description, category, safe general location, pickup dates, deadline, state and first publication timestamp. Owner IDs, parent IDs, versions, email, contact/address fields, hashes and tokens are excluded. Responses and fetches use no-store; public pages refresh on focus or explicit refresh. Previously downloaded public text cannot be revoked, and an already-open page needs a refresh to reflect withdrawal.
 
 Publication blocks obvious restricted-goods keywords and email patterns, and the form requires safe, lawful household goods with no contact/address details in public text. This narrow, conservative filter is **not complete content moderation**: it can miss obfuscated or other prohibited goods and private details, and can reject harmless matching text. There is no automated safety guarantee, reporting/review system or external moderation service yet. Those controls and marketplace abuse handling need design before public launch; there is no claim that plain-text validation makes listings safe.
 
 ## Anonymous neighborhood discovery
 
-Open **Free items** (`/app/items`) without registering, signing in, or selecting a location. Search names, full descriptions and optional tags, choose a city and/or neighborhood, filter pickup availability, and sort by newest publication or earliest effective pickup deadline. Location labels are approximate public text; they do not restrict who may browse or eventually receive an item. There is no location tracking, GPS permission, map, geocoder or external search provider.
+Open **Find Free Items** (`/app/items`) without registering, signing in, or selecting a location. Search names, full descriptions and optional tags, choose a city and/or neighborhood, filter pickup availability, and sort by newest publication or earliest effective pickup deadline. Location labels are approximate public text; they do not restrict who may browse or eventually receive an item. There is no location tracking, GPS permission, map, geocoder or external search provider.
 
 City/neighborhood selectors are populated from currently public listings and deduplicated after whitespace normalization and case-insensitive comparison, including common Unicode whitespace/case variants. Choosing a city narrows neighborhood suggestions and clears a previous neighborhood selection. With All cities, a neighborhood label searches across cities. A city can be selected without a neighborhood. Raw stored plan labels are preserved; comparison/display normalization happens at read time.
 
@@ -430,7 +460,7 @@ CI=true TZ=America/Los_Angeles npm test -- --watchAll=false --runInBand
 CI=true REACT_APP_BACKEND_URL= npm run build
 ```
 
-GitHub Actions runs frozen installs, backend lint and isolated API/identity/plan/inventory/discovery/pickup/preparation tests, frontend account/session/plan/inventory/discovery/pickup tests in a non-UTC timezone, and the strict build on PRs to `main` and pushes to `main`. It uses no application/production credentials and does not deploy.
+GitHub Actions runs frozen installs, backend lint and isolated API/identity/plan/inventory/discovery/pickup/preparation tests, frontend journey/navigation/account/session/plan/inventory/discovery/pickup tests in a non-UTC timezone, and the strict build on PRs to `main` and pushes to `main`. It uses no application/production credentials and does not deploy.
 
 ## Migration and remaining limitations
 

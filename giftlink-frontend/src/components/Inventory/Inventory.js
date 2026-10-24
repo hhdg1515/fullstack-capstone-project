@@ -6,6 +6,7 @@ import usePlansData from '../MoveOutPlans/usePlansData';
 import ItemForm, { availabilityError } from './ItemForm';
 import '../MoveOutPlans/Plans.css';
 import './Inventory.css';
+import JourneyNav from '../Journeys/JourneyNav';
 
 export const itemStates = ['draft', 'available', 'unlisted', 'cleared', 'expired'];
 const labels = { draft: 'Draft', available: 'Available', unlisted: 'Unlisted', cleared: 'Cleared', expired: 'Expired' };
@@ -51,6 +52,7 @@ export default function Inventory() {
     finally { setBusy(false); }
   };
   return <main className="plans-page inventory-page">
+    <JourneyNav journey="give" planId={planId} />
     <Link to={`/app/plans/${planId}`}>Back to plan</Link><h1>Plan inventory</h1>
     <button className="btn btn-outline-secondary" disabled={busy || request.loading} onClick={() => {
       if (!item || window.confirm('Refresh and review the latest saved item details? An outdated edit draft may be replaced.')) request.retry();
