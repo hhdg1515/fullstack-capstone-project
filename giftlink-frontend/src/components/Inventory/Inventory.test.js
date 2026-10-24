@@ -176,7 +176,7 @@ test('failed saves retain drafts and expired sessions remove the private form', 
 });
 test('public discovery searches published listings without requiring sign-in or displaying private owner data', async () => {
   const visible = { ...item, status: 'available', city: plan.city, neighborhood: plan.neighborhood };
-  handler = async url => reply(200, url.includes(item.id) ? { item: visible } : { items: [visible] });
+  handler = async url => reply(200, url.endsWith('/locations') ? { locations: [{ city: plan.city, neighborhoods: [plan.neighborhood] }] } : url.includes(item.id) ? { item: visible } : { items: [visible] });
   mount('/app/items');
   expect(await screen.findByRole('link', { name: item.name })).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Neighborhood'), { target: { value: 'Temescal' } });

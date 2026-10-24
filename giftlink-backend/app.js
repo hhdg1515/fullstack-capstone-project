@@ -13,11 +13,11 @@ const { createIdentityService } = require('./services/identity');
 const { createIdentityMiddleware } = require('./middleware/identity');
 
 function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', secureCookies = false,
-    sessionTtlSeconds = 28800, authLimit = 30, logger = require('./logger') }) {
+    sessionTtlSeconds = 28800, authLimit = 30, discoveryLimit = 120, logger = require('./logger') }) {
     const app = express();
     const identity = createIdentityService({ connectToDatabase, sessionTtlSeconds });
     const auth = createIdentityMiddleware({ identity, appOrigin, secureCookies, sessionTtlSeconds });
-    const items = createItemRoutes({ connectToDatabase, auth });
+    const items = createItemRoutes({ connectToDatabase, auth, discoveryLimit });
     app.disable('x-powered-by');
     app.use(pinoHttp({ logger, serializers: {
         req: req => ({ id: req.id, method: req.method }),

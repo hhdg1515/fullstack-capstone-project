@@ -15,7 +15,7 @@ describe('server bootstrap and configuration', function () {
     const indexedDb = { command: async () => ({ ok: 1, setName: 'isolated-test' }), collection: name => ({ indexes: async () => name === 'users' ?
         [{ key: { email: 1 }, unique: true }] : name === 'sessions' ? [{ key: { expiresAt: 1 }, expireAfterSeconds: 0 }] :
         name === 'moveOutPlans' ? [{ key: { ownerId: 1, moveOutDeadline: 1, _id: 1 } }] :
-        [{ key: { planId: 1, ownerId: 1, createdAt: 1, _id: 1 } }, { key: { status: 1, publishedAt: -1, _id: -1 } }] }) };
+        [{ key: { planId: 1, ownerId: 1, createdAt: 1, _id: 1 } }, { key: { status: 1, publishedAt: -1, _id: -1 } }, { key: { status: 1, availableFrom: 1, publishedAt: -1, _id: -1 } }] }) };
 
     afterEach(function () {
         sinon.restore();

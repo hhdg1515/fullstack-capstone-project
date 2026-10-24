@@ -116,29 +116,7 @@ function createInventoryService({ connectToDatabase }) {
             return { item: itemResponse(item, plan) };
         });
     }
-    async function publicRead({ id, q, city, neighborhood } = {}) {
-        const db = await connectToDatabase();
-        const match = { status: 'available', publishedAt: { $type: 'date' } };
-        if (id) match._id = new ObjectId(id);
-        const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        if (q) match.name = { $regex: escape(q), $options: 'i' };
-        const shared = { 'plan.status': 'active', $expr: { $and: [
-            { $eq: ['$ownerId', '$plan.ownerId'] },
-            { $gte: [{ $ifNull: ['$availableUntil', '$plan.moveOutDeadline'] }, todayUTC()] },
-            { $lte: [{ $ifNull: ['$availableUntil', '$plan.moveOutDeadline'] }, '$plan.moveOutDeadline'] },
-            { $lte: [{ $ifNull: ['$availableFrom', '0000-01-01'] }, { $ifNull: ['$availableUntil', '$plan.moveOutDeadline'] }] }
-        ] } };
-        if (city) shared['plan.city'] = { $regex: '^' + escape(city) + '$', $options: 'i' };
-        if (neighborhood) shared['plan.neighborhood'] = { $regex: '^' + escape(neighborhood) + '$', $options: 'i' };
-        const rows = await db.collection('items').aggregate([
-            { $match: match }, { $sort: { publishedAt: -1, _id: -1 } },
-            { $lookup: { from: 'moveOutPlans', localField: 'planId', foreignField: '_id', as: 'plan' } },
-            { $unwind: '$plan' }, { $match: shared }, { $limit: id ? 1 : 50 },
-            { $project: { name: 1, description: 1, category: 1, status: 1, availableFrom: 1, availableUntil: 1,
-                publishedAt: 1, 'plan.city': 1, 'plan.neighborhood': 1, 'plan.moveOutDeadline': 1 } }
-        ], { readConcern: { level: 'snapshot' } }).toArray();
-        return rows.map(row => itemResponse(row, row.plan, false));
-    }
-    return { list, create, mutate, publicRead };
+
+    return { list, create, mutate };
 }
 module.exports = { createInventoryService, InventoryError, planTransaction, dateConflicts, endDate, effectiveStatus };
