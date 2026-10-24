@@ -7,6 +7,8 @@ const createSearchRoutes = require('./routes/searchRoutes');
 const createAuthRoutes = require('./routes/authRoutes');
 const createMeRoutes = require('./routes/meRoutes');
 const createPlanRoutes = require('./routes/planRoutes');
+const createItemRoutes = require('./routes/itemRoutes');
+const { InventoryError } = require('./services/inventory');
 const { createIdentityService } = require('./services/identity');
 const { createIdentityMiddleware } = require('./middleware/identity');
 
@@ -15,6 +17,7 @@ function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', sec
     const app = express();
     const identity = createIdentityService({ connectToDatabase, sessionTtlSeconds });
     const auth = createIdentityMiddleware({ identity, appOrigin, secureCookies, sessionTtlSeconds });
+    const items = createItemRoutes({ connectToDatabase, auth });
     app.disable('x-powered-by');
     app.use(pinoHttp({ logger, serializers: {
         req: req => ({ id: req.id, method: req.method }),
@@ -30,7 +33,10 @@ function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', sec
     app.use('/api/auth', createAuthRoutes({ identity, auth, authLimit }));
     app.use('/api/me', createMeRoutes({ identity, auth }));
     app.use('/api/move-out-plans', createPlanRoutes({ connectToDatabase, auth }));
+    app.use('/api/move-out-plans/:planId/items', items.privateRouter);
+    app.use('/api/items', items.publicRouter);
     app.use((err, req, res, next) => {
+        if (err instanceof InventoryError) return res.status(err.status).json({ error: Object.assign({ code: err.code, message: err.message }, err.details) });
         // Driver/validator errors can contain emails, input, or connection details.
         logger.error({ event: 'request_failed' }, 'Request failed');
         const status = err.type === 'entity.parse.failed' ? 400 : err.type === 'entity.too.large' ? 413 : 500;

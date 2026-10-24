@@ -1,11 +1,12 @@
-# GiftLink — Move-out Plans
+# GiftLink — Move-out Inventory
 
-GiftLink remains a React, Express, Node.js, and MongoDB native-driver application. Milestone 2 adds private Move-out Plans on top of Milestone 1's revocable sessions and account management. Residents can organize a move with a deadline, city, neighborhood, and optional title before adding any items. Public gift browsing/search and all 16 bundled demo records are preserved. Bulk listing, pickup coordination, messaging, payments, property integrations, and geographical APIs are not implemented.
+GiftLink remains a React, Express, Node.js, and MongoDB native-driver application. Milestone 3 adds fast, plan-based item inventory: add multiple items or groups in one session, save drafts, publish, withdraw, clear, and reopen them. Items inherit their plan's current city, neighborhood, and deadline. Public GiftLink browsing/search and all 16 demo records remain separate and unchanged. Messaging, reservations, pickup appointments, payments, shipping, property integrations, image uploads, and geographical APIs are not implemented.
 
 ## Requirements
 
 - Node.js 22 and npm.
 - Docker for local MongoDB and isolated backend tests.
+- MongoDB 8.0 configured as a replica set (including a single-member local set), or a transaction-capable managed/sharded deployment. Transactions keep plan and item changes consistent; a standalone server is refused at startup.
 - No IBM Skills Network account, Kubernetes cluster, or original course database is needed.
 
 ## Local setup
@@ -17,16 +18,25 @@ npm --prefix giftlink-backend ci
 npm --prefix giftlink-frontend ci
 ```
 
-Start a local development MongoDB, preserving its data in a named volume:
+For a **new** local development replica set, use a separate container, port, and volume. This leaves the earlier standalone development container/data untouched:
 
 ```bash
-docker run --detach --name giftlink-mongo \
-  --publish 127.0.0.1:27017:27017 \
-  --mount source=giftlink-mongo-data,target=/data/db \
-  mongo:8.0
+docker run --detach --name giftlink-mongo-rs \
+  --publish 127.0.0.1:27018:27017 \
+  --mount source=giftlink-mongo-rs-data,target=/data/db \
+  mongo:8.0 --replSet giftlink-dev --bind_ip_all
 ```
 
-Reuse `docker start giftlink-mongo` if this is your existing development container. Verify its identity, port, and mount before reusing it. Do not replace an unrelated service occupying the port. Tests never use this container or volume.
+Verify the fresh container's identity, port and mount using `docker inspect giftlink-mongo-rs` before the following **one-time local initialization**:
+
+```bash
+docker exec giftlink-mongo-rs mongosh --quiet --eval 'rs.initiate({_id:"giftlink-dev",members:[{_id:0,host:"127.0.0.1:27017"}]})'
+docker exec giftlink-mongo-rs mongosh --quiet --eval 'db.hello().isWritablePrimary'
+```
+
+Wait for the read-only primary check to return `true` before preparing indexes. On later runs use `docker start giftlink-mongo-rs`; do not reinitialize an existing set. The external client uses port 27018 and `directConnection=true` because the single member advertises its container-local port 27017. Do not replace an unrelated service occupying either port. Tests never use this container or volume.
+
+An existing Milestone 2 standalone database requires an operator-reviewed backup/restore into a replica set, or a reviewed restart/configuration change preserving its data. This repository does not convert, delete, or migrate an existing database automatically. Choosing the new example database starts empty; it does not move earlier accounts/plans for you.
 
 Copy local configuration without replacing existing files:
 
@@ -38,7 +48,7 @@ cp -n giftlink-frontend/.env.sample giftlink-frontend/.env.local
 Backend example:
 
 ```dotenv
-MONGO_URL=mongodb://127.0.0.1:27017
+MONGO_URL=mongodb://127.0.0.1:27018/?directConnection=true
 MONGO_DB_NAME=giftdb
 DB_ENVIRONMENT=development
 APP_ORIGIN=http://localhost:3000
@@ -85,6 +95,7 @@ The tool rechecks the live target and accounts before creating:
 - A binary/simple-collation unique `users.email` index. The application stores this field trimmed and lowercased, and login uses the same binary comparison.
 - A TTL index on `sessions.expiresAt`; expiration is also enforced on every authenticated request.
 - A non-unique compound `moveOutPlans` index on `{ ownerId: 1, moveOutDeadline: 1, _id: 1 }` for private owner listings in deadline order.
+- Non-unique `items` indexes on `{ planId: 1, ownerId: 1, createdAt: 1, _id: 1 }` and `{ status: 1, publishedAt: -1, _id: -1 }` for management and public discovery.
 
 Equivalent existing indexes, including ones with different names, are retained. Repeated initialization is safe. Incompatible names, keys, uniqueness, sparse/partial/collation settings, or TTL values block preparation; the command never drops indexes or changes them with `collMod`. It never normalizes, deletes, merges, or claims accounts. Resolve email/index conflicts through a separately reviewed migration with backups and authorized access; the report intentionally does not identify private accounts. A missing/blank/non-string email is an invalid-email conflict. Other existing email syntax is not automatically revalidated or repaired.
 
@@ -92,7 +103,7 @@ Pause application writers during preparation. Preflight cannot prevent concurren
 
 Normal server startup only **checks** these indexes; it never creates them, imports demo data, or migrates accounts/plans. Startup fails closed if required indexes are missing. Prepare a new database before starting the backend; it will still have no gifts or plan documents until an explicit seed operation or authenticated plan creation.
 
-**Upgrading from Milestone 1:** run the same preview/approval workflow before starting this backend. The preview retains compatible email/session indexes and reports creation of the new plan index. Initialization preserves existing accounts, sessions, plans, and gift documents; it does not attach demo gifts to plans. The preparation implementation is now named `services/database-indexes.js`, `util/database-target.js`, and `util/prepare-database.js`; the documented `npm run db:prepare` interface and remote safeguards are unchanged.
+**Upgrading from Milestone 2:** verify a transaction-capable target, then run the same preview/approval workflow before startup. The preview retains compatible identity/plan indexes and reports the two item indexes. Initialization preserves accounts, sessions, plans, items, and gifts; it imports no records and never assigns demo gifts to a plan. The `db:prepare` interface and remote safeguards are unchanged. Replica-set initialization is separate administration and is never performed by application startup or `db:prepare`.
 
 ### Remote MongoDB and deployment preparation
 
@@ -136,7 +147,7 @@ cd giftlink-frontend
 npm start
 ```
 
-MongoDB and required indexes must be ready before Express listens. The API root returns `Inside the server`. Constructing/importing `app.js` never connects, seeds, or listens. Use `npm start` or `node server.js`, not `node app.js`.
+MongoDB, required indexes, and a replica-set/sharded topology must be ready before Express listens. Startup only reads topology/index metadata. The API root returns `Inside the server`. Constructing/importing `app.js` never connects, seeds, or listens. Use `npm start` or `node server.js`, not `node app.js`.
 
 ### Environment variables
 
@@ -231,7 +242,52 @@ All endpoints require the existing valid session cookie; writes also require the
 
 A plan DTO contains only `id`, `title`, `moveOutDeadline`, `city`, `neighborhood`, `status`, `createdAt`, and `updatedAt`. Private contact, address, password, and session fields are excluded by database inclusion projections and response serialization. Read and update queries include both the plan ID and the authenticated owner ID; updates never trust a supplied owner. Missing, malformed, and other users' plan IDs share `404 PLAN_NOT_FOUND`. Validation uses `400 VALIDATION_FAILED` with field messages without submitted values. Missing/expired sessions use `401`; invalid write origins use `403`.
 
-These plans group the purpose of a move without becoming individual listings. Item association/creation, bulk upload, reservations, pickup addresses, public plan discovery, deletion/archival, and pagination/filtering are outside this milestone. Existing gifts remain independent and publicly browsable.
+Each plan can now have any number of incremental items, including zero. Plan editing never copies location/deadline into item documents. A shorter deadline that conflicts with item overrides returns `409 ITEM_DATE_CONFLICT` with the affected owned item IDs/names/dates. The edit form leaves the proposed plan unchanged, links to those item editors in new tabs, and keeps its draft. Explicitly edit/clear the overrides or choose another deadline, then retry. There is no silent date truncation or bulk account/data repair.
+
+## Inventory workflow and item API
+
+From plan detail choose **Manage items** (`/app/plans/:id/items`). Enter only an item name, then **Save draft & add another** or **Publish & add another**. The name resets and regains focus for quick repeated entry. Optional details are collapsed initially: description (2,000 characters), free-text category/tag (80), and pickup dates. Names allow 1–160 characters and may describe grouped belongings or multiple identical objects. No furniture taxonomy, brand, condition, dimensions, weight, price, or image is required.
+
+The inventory shows each state, effective date window, status filtering, and cleared/total progress. Progress counts item records/groups, rather than the number of physical objects inside a group. Unlisting does not count as clearing. Actions use confirmation prompts; editing a live listing confirms its immediate public change. A failed save retains the draft. Stale versions request an inventory reload rather than overwriting another tab's change. Refreshing an open edit asks for confirmation and replaces outdated values with current saved details before adopting a newer version. No normal action deletes records. Clearance reasons are not collected in this milestone.
+
+| Item field | Meaning |
+| --- | --- |
+| `_id`, `planId`, `ownerId` | ObjectIds; server derives the owner and verifies the owned parent for every management operation. Items cannot be moved between plans through the API. |
+| `name`, `description`, `category` | Required free-text name and optional plain-text description/tag. Unknown fields, markup, control characters, and ownership/location/price spoofing are rejected. |
+| `availableFrom`, `availableUntil` | Optional `YYYY-MM-DD` strings or `null`. Empty fields become `null`; shared location/deadline are never duplicated. |
+| `status` | Stored lifecycle state; the API additionally derives expiry from the effective latest pickup date on every read. |
+| `createdAt`, `updatedAt`, `publishedAt` | Server timestamps. `publishedAt` starts as `null` and records the first explicit publication; relisting retains it. It is separate from pickup dates. |
+| `version` | Owner-facing optimistic concurrency version, required for edits/actions. Not exposed in public DTOs. |
+
+Effective earliest pickup is the explicit `availableFrom`, or **immediately** when omitted. Effective latest pickup is `availableUntil`, or the current plan deadline when omitted. Validate an explicit start against the effective end, and require `end <= plan deadline`. Publishing/reopening additionally requires `end >= today (UTC)`. The end date is inclusive. Historical drafts, withdrawn items and cleared items can retain past dates for recordkeeping. All date inputs remain calendar strings and use the existing UTC comparison policy.
+
+Future pickup starts do not delay publication: a published listing is offered now, with its future pickup window clearly displayed. `publishedAt` means first public visibility, not a pickup appointment. Exact times and neighborhood timezones remain deferred.
+
+| State/action | Behavior |
+| --- | --- |
+| Create draft | Private; defaults to `draft`. Can be edited or cleared. |
+| Publish/relist | Draft, unlisted, or expired → `available`, after date/policy checks and verification that the plan is active. |
+| Unlist | Available/expired → `unlisted` immediately; no reason required, no progress increment. |
+| Mark cleared | Any non-cleared state → `cleared`; public visibility ends and clearance progress increases. Any external clearance channel is allowed. |
+| Reopen as draft | Cleared → private `draft`, after valid-current-date checks. Progress decreases; publish separately when ready. |
+| Expiry | Available items whose effective end is before today are returned as `expired` and excluded from public reads without a scheduler. |
+
+Editing an expired item's dates keeps it expired until explicit publication. A plan edit persists already-expired available items as `expired` before extending its deadline, so extending a plan cannot silently republish them. First publication time is preserved. Deactivating a plan hides its available items; explicitly reactivating the plan restores still-valid available items. Unlisted/cleared/draft/expired items remain private.
+
+| Endpoint | Behavior |
+| --- | --- |
+| `GET /api/move-out-plans/:planId/items` | Private plan context, items and `{ total, cleared }` progress. |
+| `POST /api/move-out-plans/:planId/items` | `{ name, description?, category?, availableFrom?, availableUntil?, publish? }` → `201 { item }`. `publish` is an explicit boolean intent; default false. |
+| `PATCH /api/move-out-plans/:planId/items/:id` | Partial item details plus numeric `version` → `{ item }`. No ownership, status, price or shared-location changes. |
+| `POST /api/move-out-plans/:planId/items/:id/actions` | `{ action: "publish" | "unlist" | "clear" | "reopen", version }` → `{ item }`. |
+| `GET /api/items?q=&city=&neighborhood=` | Anonymous published discovery, at most 50 newest first-publication records. Name search is literal; city/neighborhood are exact case-insensitive labels. |
+| `GET /api/items/:id` | Anonymous detail only while currently publicly offered; unavailable/nonexistent/malformed IDs all return 404. |
+
+Both item ownership and parent-plan ownership are required; mismatched/orphaned records cannot leak through management or public joins. All writes reuse sessions, Origin/CSRF/JSON requirements, bounded validation and safe error handling. `409 ITEM_CHANGED` rejects stale versions. Multi-document transactions touch the parent on **every** plan/item mutation, preventing concurrent deadline edits and item writes from committing incompatible data. Driver retries revalidate against a fresh snapshot. Public reads use snapshot aggregation joining the current plan and check matching ownership, active plan, publication, available state and effective end/range. The collection has no TTL index or automatic record deletion.
+
+**Free items** (`/app/items`) demonstrates public search/detail separately from legacy Gifts. Public DTOs allowlist name, description, category, safe general location, pickup dates, deadline, state and first publication timestamp. Owner IDs, parent IDs, versions, email, contact/address fields, hashes and tokens are excluded. Responses and fetches use no-store; public pages refresh on focus or explicit refresh. Previously downloaded public text cannot be revoked, and an already-open page needs a refresh to reflect withdrawal.
+
+Publication blocks obvious restricted-goods keywords and email patterns, and the form requires safe, lawful household goods with no contact/address details in public text. This narrow, conservative filter is **not complete content moderation**: it can miss obfuscated or other prohibited goods and private details, and can reject harmless matching text. There is no automated safety guarantee, reporting/review system or external moderation service yet. Those controls and marketplace abuse handling need design before public launch; there is no claim that plain-text validation makes listings safe.
 
 ## Public gift API compatibility
 
@@ -262,7 +318,7 @@ npm run test:integration
 npm run test:preparation
 ```
 
-Backend suites create fresh Docker MongoDB containers and random databases. Before writes/index creation they verify container label/image/mounts, loopback port, database name, and the actual MongoDB process identity. They ignore application database URLs and credentials, and remove only their own containers/anonymous volumes. Remote-policy tests use placeholder endpoints without contacting them and inject the verified isolated connection for execution tests. Tests cover dry-run, confirmations, conflicts, repeat initialization, preserved accounts, and remote-write prevention. Tests never target development or production data. Docker/download failures fail the suite without falling back to an existing database.
+Backend suites create fresh Docker MongoDB containers and random databases. Before writes/index creation they verify container label/image/mounts, loopback port, database name, and the actual MongoDB process identity. Only then do they initialize their disposable replica set and run real transactions. They ignore application database URLs and credentials, and remove only their own containers/anonymous volumes. Remote-policy tests use placeholder endpoints without contacting them and inject the verified isolated connection for execution tests. Tests cover dry-run, confirmations, conflicts, repeat initialization, preserved records, real concurrent inventory/deadline writes, public visibility and remote-write prevention. Tests never target development or production data. Docker/download failures fail without falling back to an existing database.
 
 ```bash
 cd giftlink-frontend

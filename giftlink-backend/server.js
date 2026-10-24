@@ -9,6 +9,8 @@ async function startServer(config, { database = createDatabase(config), logger =
         // A failed database connection must never leave an HTTP listener running.
         const db = await database.connect();
         await assertDatabaseIndexes(db);
+        const topology = await db.command({ hello: 1 });
+        if (!topology.setName && topology.msg !== 'isdbgrid') throw new Error('MongoDB replica set required for atomic inventory updates; see README');
         const app = createApp({ connectToDatabase: database.connect, appOrigin: config.appOrigin,
             secureCookies: config.secureCookies, sessionTtlSeconds: config.sessionTtlSeconds, logger });
         server = await new Promise((resolve, reject) => {
@@ -52,7 +54,7 @@ async function main() {
 
 if (require.main === module) {
     main().catch(() => {
-        console.error('Server startup failed. Verify configuration, MongoDB connectivity, and prepared database indexes.');
+        console.error('Server startup failed. Verify configuration, MongoDB replica-set connectivity, and prepared database indexes.');
         process.exitCode = 1;
     });
 }

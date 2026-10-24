@@ -11,6 +11,8 @@ import RequireAuth from './components/RequireAuth';
 import Profile from './components/Profile/Profile';
 import Navbar from './components/Navbar/Navbar';
 import { MyPlans, CreatePlan, PlanDetail, EditPlan } from './components/MoveOutPlans/Plans';
+import Inventory from './components/Inventory/Inventory';
+import PublicItems from './components/Inventory/PublicItems';
 
 function App() {
   return (
@@ -28,6 +30,9 @@ function App() {
         <Route path="/app/plans/new" element={<RequireAuth><CreatePlan /></RequireAuth>} />
         <Route path="/app/plans/:planId" element={<RequireAuth><PlanDetail /></RequireAuth>} />
         <Route path="/app/plans/:planId/edit" element={<RequireAuth><EditPlan /></RequireAuth>} />
+        <Route path="/app/plans/:planId/items" element={<RequireAuth><Inventory /></RequireAuth>} />
+        <Route path="/app/items" element={<PublicItems />} />
+        <Route path="/app/items/:itemId" element={<PublicItems />} />
       </Routes>
     </>
   );

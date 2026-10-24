@@ -1,11 +1,12 @@
 import { urlConfig } from '../config';
 
 export class ApiError extends Error {
-  constructor(message, status, code, fields) {
+  constructor(message, status, code, fields, conflicts) {
     super(message);
     this.status = status;
     this.code = code;
     this.fields = fields;
+    this.conflicts = conflicts;
   }
 }
 
@@ -26,7 +27,7 @@ export async function apiRequest(path, { method = 'GET', body, notifyUnauthorize
       window.dispatchEvent(new Event('giftlink:unauthorized'));
     }
     throw new ApiError(data?.error?.message || 'Request failed. Please try again.', response.status,
-      data?.error?.code, data?.error?.fields);
+      data?.error?.code, data?.error?.fields, data?.error?.conflicts);
   }
   return data;
 }
