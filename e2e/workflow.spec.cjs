@@ -5,6 +5,7 @@ const { tokenHash } = require(root + '/giftlink-backend/services/identity');
 const { Temporal } = require(root + '/giftlink-backend/node_modules/@js-temporal/polyfill');
 const { randomUUID } = require('node:crypto');
 const { cleanup } = require('./cleanup.cjs');
+const { health: httpsPreflight } = require('./https-preflight.cjs');
 const day = value => new Date(value).toISOString().slice(0, 10);
 
 test('two real accounts complete discovery, pickup coordination and secure sessions', async ({ browser, deployment }, testInfo) => {
@@ -24,6 +25,7 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     });
     context.setDefaultTimeout(20000);
     context.on('page', page => {
+      page.on('response', response => { if (response.url().startsWith(deployment.origin + '/api/') && response.status() >= 500) failures.push('Unexpected API server error'); });
       page.on('pageerror', () => failures.push('Browser JavaScript error'));
       page.on('console', message => { if (message.type() === 'error' && /CORS|Uncaught|Unexpected token|Cannot read/.test(message.text())) failures.push('Unexpected browser console error'); });
     });
@@ -58,6 +60,11 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
   }
   let userA, userB;
   try {
+    await httpsPreflight(deployment.origin, deployment.fingerprint, async (url, options) => {
+      const response = await giver.request.get(url, { maxRedirects: 0, headers: options.headers });
+      return { status: response.status(), headers: new Headers(response.headers()), json: () => response.json(), text: () => response.text() };
+    });
+    await test.step('HTTPS frontend/deep-link/JSON/anonymous-auth/fingerprint preflight verified', async () => {});
     const health = await read(giver, deployment.origin + '/api/health'); must(health.status() === 200, 'JSON readiness failed');
     must((await health.json()).databaseFingerprint === deployment.fingerprint, 'Deployment target mismatch');
     must((await read(receiver, deployment.origin + '/api/me')).status() === 401, 'Anonymous account access accepted');
@@ -80,15 +87,48 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     await a.getByRole('button', { name: 'Create plan', exact: true }).click(); await a.getByRole('link', { name: 'Manage items', exact: true }).click();
     await test.step('Giver login and plan creation verified', async () => {});
     const itemIds = [];
-    for (const label of ['desk', 'chair', 'lamp']) {
-      await a.getByLabel('Item name', { exact: true }).fill(prefix + ' ' + label); await a.getByRole('button', { name: 'Publish & add another', exact: true }).click();
+    for (const [label, days] of [['desk', 3], ['chair', 5], ['lamp', 4]]) {
+      await a.getByLabel('Item name', { exact: true }).fill(prefix + ' ' + label);
+      await a.getByText('Optional description, category and pickup dates', { exact: true }).click();
+      await a.getByLabel('Available until (optional)', { exact: true }).fill(day(deployment.now() + days * 86400000));
+      await a.getByRole('button', { name: 'Publish & add another', exact: true }).click();
       const card = a.getByRole('heading', { name: prefix + ' ' + label, exact: true }).locator('..'); await card.getByRole('link', { name: 'Public listing', exact: true }).waitFor();
       itemIds.push((await card.getByRole('link', { name: 'Public listing', exact: true }).getAttribute('href')).split('/').pop());
     }
     await expect(a.getByText('0 of 3 items cleared', { exact: true })).toBeVisible();
+    // Existing public limit/cursor parameters exercise real UI pagination with
+    // the same three records, keeping the approved remote data budget intact.
+    await b.goto('/app/items?q=' + encodeURIComponent(prefix) + '&limit=1');
+    const results = b.getByRole('list', { name: 'Available items', exact: true });
+    await expect(results.getByRole('listitem')).toHaveCount(1);
+    await expect(results.getByRole('link').first()).toHaveText(prefix + ' lamp');
+    for (const count of [2, 3]) {
+      await b.getByRole('button', { name: 'Load more', exact: true }).click();
+      await expect(results.getByRole('listitem')).toHaveCount(count);
+    }
+    await expect(b.getByRole('button', { name: 'Load more', exact: true })).toHaveCount(0);
+    await b.getByRole('option', { name: 'E2E City', exact: true }).waitFor({ state: 'attached' });
+    await b.getByLabel('City', { exact: true }).selectOption('E2E City');
+    await b.getByLabel('Neighborhood', { exact: true }).selectOption('E2E Neighborhood');
+    await b.getByLabel('Pickup availability', { exact: true }).selectOption('now');
+    await b.getByLabel('Sort items', { exact: true }).selectOption('deadline');
+    await b.getByRole('button', { name: 'Find free items', exact: true }).click();
+    await expect(results.getByRole('listitem')).toHaveCount(3);
+    await expect(results.getByRole('link').first()).toHaveText(prefix + ' desk');
+    await b.reload(); await expect(results.getByRole('listitem')).toHaveCount(3);
+    await expect(b.getByLabel('Neighborhood', { exact: true })).toHaveValue('E2E Neighborhood');
+    await expect(b.getByLabel('Sort items', { exact: true })).toHaveValue('deadline');
+    await b.getByLabel('Pickup availability', { exact: true }).selectOption('later');
+    await b.getByRole('button', { name: 'Find free items', exact: true }).click();
+    await expect(b.getByText('No available items match. Try another search or clear filters.', { exact: true })).toBeVisible();
+    await b.getByLabel('Pickup availability', { exact: true }).selectOption('now');
+    await b.getByLabel('Search items', { exact: true }).fill(prefix + ' desk');
+    await b.getByRole('button', { name: 'Find free items', exact: true }).click();
+    await expect(results.getByRole('listitem')).toHaveCount(1);
+    await test.step('Anonymous search, city/neighborhood/availability filters, sorting, pagination and reload verified', async () => {});
     const appointment = Math.ceil((deployment.now() + (deployment.local ? 120000 : 90000)) / 60000) * 60000;
     const localTime = Temporal.Instant.fromEpochMilliseconds(appointment).toZonedDateTimeISO('America/Los_Angeles').toPlainDateTime().toString({ smallestUnit: 'minute' });
-    await b.goto('/app/items?q=' + encodeURIComponent(prefix + ' desk')); await b.getByRole('link', { name: prefix + ' desk', exact: true }).click();
+    await b.getByRole('link', { name: prefix + ' desk', exact: true }).click();
     await expect(b.getByRole('heading', { name: prefix + ' desk', exact: true })).toBeVisible(); const shared = b.url();
     await b.reload(); await expect(b.getByRole('heading', { name: prefix + ' desk', exact: true })).toBeVisible();
     await b.getByRole('link', { name: 'Request pickup', exact: true }).click(); await b.getByRole('heading', { name: 'Login', exact: true }).waitFor();

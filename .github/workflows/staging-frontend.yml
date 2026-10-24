@@ -1,0 +1,65 @@
+name: Prepare or deploy isolated staging frontend
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options: [plan, deploy]
+        default: plan
+        required: true
+        description: 'Plan makes no remote changes; deploy changes only the specified existing staging resources'
+      test_origin:
+        type: string
+        required: true
+        description: 'Exact approved free HTTPS test alias; never the production frontend or API hostname'
+      approved_sha:
+        type: string
+        required: true
+        description: 'Full reviewed main SHA selected for this run'
+permissions:
+  contents: read
+concurrency:
+  group: staging-frontend-configuration
+  cancel-in-progress: false
+jobs:
+  staging:
+    if: github.ref == 'refs/heads/main'
+    environment: isolated-e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      STAGING_OPERATION: ${{ inputs.operation }}
+      STAGING_FRONTEND_ORIGIN: ${{ inputs.test_origin }}
+      APPROVED_SHA: ${{ inputs.approved_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: giftlink-frontend/package-lock.json
+      - run: npm --prefix giftlink-frontend ci
+      - name: Build same-origin React assets without deployment or database credentials
+        run: npm --prefix giftlink-frontend run build
+        env:
+          CI: 'true'
+          REACT_APP_BACKEND_URL: ''
+      - name: Install the pinned Vercel CLI without credentials
+        if: inputs.operation == 'deploy'
+        run: npm install --prefix "$RUNNER_TEMP/vercel-cli" --ignore-scripts --no-save vercel@65.2.0
+      - name: Prepare plan or deploy only the scoped staging resources
+        run: node deployment/staging-preview.cjs
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_CLI_PATH: ${{ runner.temp }}/vercel-cli/node_modules/.bin/vercel
+      - name: Save the sanitized deployment receipt
+        if: always() && inputs.operation == 'deploy'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: staging-deployment-receipt
+          path: deployment/generated/staging-deployment.json
+          if-no-files-found: ignore
+          retention-days: 14
