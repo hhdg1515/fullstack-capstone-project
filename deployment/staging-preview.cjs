@@ -16,9 +16,9 @@ function settings(env) {
   return { origin, operation: env.STAGING_OPERATION };
 }
 
-function preparePreview(directory, origin) {
+function preparePreview(directory, origin, { assets = path.join(directory, 'build') } = {}) {
   testOrigin(origin);
-  if (!fs.existsSync(path.join(directory, 'build/index.html'))) throw new StagingError('Build the production frontend first');
+  if (!fs.existsSync(path.join(assets, 'index.html'))) throw new StagingError('Build the production frontend first');
   const local = path.join(directory, '.vercel'); const projectFile = path.join(local, 'project.json');
   if (fs.existsSync(projectFile)) {
     const project = JSON.parse(fs.readFileSync(projectFile, 'utf8'));
@@ -28,7 +28,7 @@ function preparePreview(directory, origin) {
   fs.writeFileSync(projectFile, JSON.stringify({ projectId: staging.frontendProjectId, orgId: staging.teamId }));
   const config = frontendConfig(staging.apiOrigin, origin);
   fs.writeFileSync(path.join(local, 'output/config.json'), JSON.stringify({ version: 3, routes: config.routes }));
-  fs.cpSync(path.join(directory, 'build'), path.join(local, 'output/static'), { recursive: true });
+  fs.cpSync(assets, path.join(local, 'output/static'), { recursive: true });
   return config;
 }
 
@@ -104,7 +104,12 @@ async function deploy({ origin, api, cli, preflight = health, pause = ms => new 
 
 async function main(env = process.env) {
   const config = settings(env);
-  preparePreview(path.resolve(__dirname, '../giftlink-frontend'), config.origin);
+  const repository = path.resolve(__dirname, '..');
+  const frontend = path.join(repository, 'giftlink-frontend');
+  // CLI validates project.rootDirectory relative to cwd. Run from the repo
+  // root, with identical output for both supported monorepo link modes.
+  preparePreview(frontend, config.origin);
+  preparePreview(repository, config.origin, { assets: path.join(frontend, 'build') });
   const plan = { operation: config.operation, origin: config.origin, apiOrigin: staging.apiOrigin, frontendProjectId: staging.frontendProjectId,
     backendProjectId: staging.backendProjectId, frontendTarget: 'preview', backendTarget: 'production (dedicated staging API only)',
     productionFrontendUnchanged: staging.productionFrontendOrigin, expectedFingerprint: staging.fingerprint };
@@ -114,7 +119,7 @@ async function main(env = process.env) {
   const result = await deploy({ origin: config.origin, api: vercelApi(env.VERCEL_TOKEN), record,
     cli: async () => {
       const child = spawnSync(env.VERCEL_CLI_PATH, ['deploy', '--prebuilt', '--target=preview', '--yes', '--scope', staging.teamId, '--token', env.VERCEL_TOKEN],
-        { cwd: path.resolve(__dirname, '../giftlink-frontend'), encoding: 'utf8', timeout: 600000 });
+        { cwd: repository, encoding: 'utf8', timeout: 600000 });
       if (child.status !== 0) throw new StagingError('Preview deployment failed; raw CLI output suppressed');
       return child.stdout.trim().split(/\r?\n/).findLast(line => /^https:\/\/[a-z0-9.-]+\.vercel\.app$/.test(line)) || '';
     } });

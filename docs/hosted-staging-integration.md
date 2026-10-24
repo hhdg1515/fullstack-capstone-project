@@ -18,6 +18,8 @@ Proposed free alias: **https://moveout-e2e-clarkswift1-9306s-projects.vercel.app
 
 The manual **Prepare or deploy isolated staging frontend** workflow defaults to **plan**, requiring no cloud credential and making no remote changes. After approved merge, it builds the unchanged CRA app with empty `REACT_APP_BACKEND_URL` and creates ignored Vercel Build Output v3 containing only compiled assets, the fixed frontend project link and the reviewed `frontend-config.cjs` routes. No active source `giftlink-frontend/vercel.json` is installed onto Production.
 
+The CLI executes from the repository root so its existing `rootDirectory=giftlink-frontend` remains valid. Identical ignored output/project links are prepared at both repository and frontend roots for the CLI's supported monorepo link modes; only compiled assets are copied. Provider root-directory settings remain unchanged.
+
 Routing order:
 
 1. `/api/*` on the exact approved test Host → dedicated API `/api/*`, no-store.

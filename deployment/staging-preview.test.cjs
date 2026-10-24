@@ -51,6 +51,21 @@ function fixture(override = () => undefined) {
     preflight: async (value, fingerprint) => { checks++; assert.equal(value, origin); assert.equal(fingerprint, staging.fingerprint); return { tls: true }; },
     record: value => phases.push(value.phase), pause: async () => {} }, get cliCalls() { return cliCalls; }, get checks() { return checks; } };
 }
+test('prebuilt monorepo output is available from the repo root and configured frontend root without changing provider root settings', () => {
+  const repository = fs.mkdtempSync(path.join(os.tmpdir(), 'staging-monorepo-'));
+  const frontend = path.join(repository, 'giftlink-frontend');
+  try {
+    fs.mkdirSync(path.join(frontend, 'build'), { recursive: true });
+    fs.writeFileSync(path.join(frontend, 'build/index.html'), '<div id="root"></div>');
+    preparePreview(frontend, origin);
+    preparePreview(repository, origin, { assets: path.join(frontend, 'build') });
+    for (const relative of ['.vercel/project.json', '.vercel/output/config.json', '.vercel/output/static/index.html']) {
+      assert.equal(fs.readFileSync(path.join(repository, relative), 'utf8'), fs.readFileSync(path.join(frontend, relative), 'utf8'));
+    }
+    assert.ok(fs.existsSync(path.join(repository, 'giftlink-frontend')));
+    assert.ok(!fs.existsSync(path.join(repository, 'vercel.json')));
+  } finally { fs.rmSync(repository, { recursive: true, force: true }); }
+});
 test('deployment mutates only the test alias and dedicated staging API, after validating existing projects and public routing', async () => {
   const f = fixture(); const receipt = await deploy(f.options);
   assert.equal(f.cliCalls, 1); assert.equal(f.checks, 2); assert.equal(receipt.phase, 'ready');
