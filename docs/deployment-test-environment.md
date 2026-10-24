@@ -4,7 +4,9 @@
 
 **Code prepared** is separate from **environment deployed** and **live E2E verified**. This change prepares a Vercel-compatible API, reviewed proxy generator, automatic isolated CI browser tests and opt-in remote verification. It does not provision an API project, Atlas resources, secrets, domains or network rules. No live full-stack verification is claimed.
 
-PR #19 was merged into `main` as `08bd443` before this work began. The user confirmed that no dedicated API project, stable test hostname or isolated Atlas database has been created/approved and authorized safe code preparation/local testing only.
+Staging follow-up: the owner reports API project `fullstack-capstone-project-vkwm` deployed on Node.js 22 and Atlas **Project 0 / Cluster0 / moveout_e2e_staging** containing only `setup_marker`. Required application indexes are not yet prepared and API readiness is reported as 503. These resources are provisioned, but the exact live database target/fingerprint and healthy full-stack operation remain unverified. Database preparation now has the independent Actions workflow below.
+
+PR #19 was merged into `main` as `08bd443` before the initial deployment work. At that time, no dedicated API project, stable test hostname or isolated Atlas database had been created/approved, and the user authorized safe code preparation/local testing only. The staging follow-up above records the subsequent owner-provisioned resources.
 
 ## Observed architecture and permissions
 
@@ -12,7 +14,7 @@ PR #19 was merged into `main` as `08bd443` before this work began. The user conf
 - Before this change no repository Vercel routing configuration existed. A frontend-only SPA fallback can serve HTML for `/api/*`; PR #19 now handles this safely. React uses `credentials: include` and an empty production API base for same-origin `/api`.
 - Local Express startup (`server.js`) waits for a database, verifies ten required indexes and replica-set/sharded topology, then listens. `app.js` retains its app-factory import contract. The factory now lives in `app-factory.js`; `index.js` exports a concrete Express instance for Vercel's detector. The official detector otherwise prefers an `app.js` that imports Express and would select the factory rather than the hosted application.
 - Native-driver connection promises are cached. Accounts use bcrypt; sessions store token hashes with expiry and TTL cleanup. Every authenticated request checks expiry. Writes require an exact APP_ORIGIN, JSON and X-CSRF-Protection. Production cookies are Secure, HttpOnly, SameSite=Lax, path=/, no Domain, named `__Host-giftlink_session`.
-- GitHub credentials allow repository changes, PRs, Actions execution/status reads and observation of the existing Vercel integration. GitHub Environment inspection returned no configured environments. Secret/variable-list APIs returned 403. No Vercel/Atlas management tool or VERCEL_TOKEN/MONGO_URL/Atlas credentials was available. Thus project/env/Atlas administration must be authorized and configured by an account owner or a newly approved integration.
+- GitHub credentials allow repository changes, PRs, Actions execution/status reads and observation of the existing Vercel integration. On the staging follow-up, environment `isolated-e2e` exists; its secret/variable-list APIs return 403. The owner reports secret `E2E_MONGO_URL` and variable `E2E_DB_NAME=moveout_e2e_staging` configured there. No Vercel/Atlas management tool or local VERCEL_TOKEN/MONGO_URL/Atlas credentials is available. Use Actions for the scoped preparation; provider project/env/Atlas administration remains an owner-authorized action.
 
 ## Provider evidence and chosen architecture
 
@@ -112,6 +114,35 @@ npm --prefix giftlink-backend run db:prepare -- --allow-remote --apply --confirm
 
 This creates only the existing ten compatible indexes: normalized unique user email, session TTL, owner/deadline plans, item owner/publication/pickup-start, giver/receiver request lists, one accepted request/item and one active request/receiver/item. Duplicate/non-normalized accounts and incompatible/duplicate reservation indexes block preparation with counts. No records are normalized, deleted, merged or seeded. There is no schema redesign or new collection beyond those already used by the application.
 
+### Prepare staging indexes through GitHub Actions
+
+The separate **Prepare staging database indexes** workflow (`.github/workflows/staging-database-preparation.yml`) runs the existing `db:prepare` command on Node.js 22. It is manual only, restricted to this repository's `main` branch and the selected full reviewed commit SHA, and accepts only `moveout_e2e_staging` with `DB_ENVIRONMENT=staging`. It does not call the frontend, API readiness or browser E2E launcher, so it works before the API is healthy and requires neither `E2E_APP_ORIGIN` nor `APP_ORIGIN`.
+
+Its job uses the existing GitHub Environment **isolated-e2e** with exactly:
+
+| Environment setting | Workflow mapping |
+| --- | --- |
+| Secret `E2E_MONGO_URL` | `MONGO_URL`, supplied only to configuration validation and database preparation steps |
+| Variable `E2E_DB_NAME` | `MONGO_DB_NAME`; must equal `moveout_e2e_staging` |
+| Fixed workflow value | `DB_ENVIRONMENT=staging` |
+
+No credentials belong in workflow inputs, repository variables or copied log messages. Dependency installation has no database credentials and disables package lifecycle scripts. Validation parses the URI with the existing TLS policy without connecting; it rejects missing settings, local targets, other databases, non-main commits and incomplete confirmations. It does not require an additional environment secret or change environment protection rules. It uses manual dispatch and typed confirmations; it does not impose a separate reviewer requirement. Existing required reviewers/branch restrictions, if configured by the owner, still apply. The current token can inspect environment metadata but cannot list its secrets/variables (403); a successful remote dry-run is the verification that the stored credentials, permissions and runner connectivity work.
+
+After this workflow's PR is merged, trigger the first **read-only** run in GitHub:
+
+1. Open the repository's **Code → main**, open the latest commit, and copy its full 40-character SHA. Review that commit before using it.
+2. Open **Actions → Prepare staging database indexes → Run workflow**.
+3. Select branch **main**, operation **dry-run**, and paste that SHA into **approved_sha**. Leave **confirm_db**, **confirm_environment** and **confirm_target** empty.
+4. Click **Run workflow** and approve the environment deployment if its configured protection asks for review. If main advanced since the SHA was copied, validation fails safely; review and use the current selected main commit.
+5. In **Inspect or explicitly prepare staging indexes → Run the existing guarded database preparation utility**, inspect the JSON `target` and `plan` lines. Compare credential-free endpoints with **Project 0 / Cluster0** in Atlas, verify database/tier and a supported replica-set/sharded topology, and record the full fingerprint. A fingerprint does not independently identify the provider project display name.
+6. Review every `create`/`keep` operation and the conflict counts. `plan.ready: true` means no conflicts, not that missing indexes are installed. Dry-run never creates collections/indexes/documents, including when the database contains only `setup_marker`.
+
+Do not run **apply** until the exact target fingerprint and displayed plan have explicit approval. A separately dispatched apply requires operation **apply**, the reviewed main **approved_sha**, **confirm_db=moveout_e2e_staging**, **confirm_environment=staging**, and **confirm_target** copied exactly from the approved dry-run. Use the same reviewed revision for preview/apply; if main or the target changed, review and preview again. The existing CLI rechecks the actual fingerprint and data/index conflicts before index creation. It creates only the ten application-defined indexes (and their missing application collections); it never seeds gifts, repairs accounts, drops data/indexes or changes users/network rules. Creating the session TTL index enables MongoDB's normal background expiration of expired sessions. There is no automatic follow-up apply or E2E registration.
+
+Preparation runs serialize with each other. Keep application writers and remote E2E runs idle during an approved apply; the separate CI/E2E workflows are not changed or automatically started/stopped. No new database privileges or network access are granted. A generic connection failure remains insufficient to distinguish authentication/network/permission problems because raw driver errors are deliberately suppressed; investigate securely without publishing URI/credentials. Missing index-creation permission requires a separately authorized scoped permission decision, never an automatic broad grant.
+
+After approved index preparation, GET the dedicated API's `/api/health` without following redirects. Expect JSON readiness, `environment=staging` and the approved database fingerprint, then unauthenticated `/api/me` should return JSON 401. Index preparation normally needs no redeployment: failed hosted initialization retries after its five-second backoff. If readiness remains 503, verify the Vercel deployment's own secret, environment scope, exact HTTPS `APP_ORIGIN`, topology and connectivity separately; the Actions connector is not evidence of identical Vercel credentials. Account-creating live E2E remains a separate authorization.
+
 ## Repeatable local and CI verification
 
 No user-operated VSCode/Docker/manual two-account test is needed: the normal PR CI now builds the frontend and runs an isolated browser job. To reproduce locally where Node 22, Docker, OpenSSL and Chromium are available:
@@ -158,6 +189,6 @@ Rollback order: stop remote jobs; preview/review scoped cleanup while the verifi
 - Approve the Atlas project/cluster/new test database, scoped users and network access; store secrets securely.
 - Review the database dry-run, then explicitly approve only the required index creation.
 - Configure the reviewer-protected GitHub Environment and authorize a read-only preflight, then the bounded run and eventual scoped cleanup.
-- Verify actual Vercel deployment health, proxy, protection, HTTPS cookies and E2E results. Until then the correct state is **code prepared; environment not provisioned; live E2E not verified**.
+- Verify actual Vercel deployment health, proxy, protection, HTTPS cookies and E2E results. Current owner-reported state is **code prepared; staging resources provisioned but API readiness failing; live E2E not verified**. Do not infer healthy operation from a Vercel Ready deployment or from local/CI tests.
 
 Basic rate limits remain per warm process rather than globally distributed, and proxy/client-IP behavior has not been certified on a live deployment. Origin/CSRF/session/ownership protections are retained. Before public launch, review provider abuse controls, aggregate registration limits, Atlas connection budgets, observability and network policy; no CAPTCHA, paid moderation, or new product feature is introduced here.
