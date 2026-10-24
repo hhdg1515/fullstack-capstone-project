@@ -5,8 +5,8 @@ const { validate } = require('../middleware/validation');
 const { errorResponse } = require('../middleware/identity');
 const { createPickupService } = require('../services/pickups');
 
-function createPickupRoutes({ connectToDatabase, auth }) {
-    const service = createPickupService({ connectToDatabase }); const router = express.Router();
+function createPickupRoutes({ connectToDatabase, auth, now }) {
+    const service = createPickupService({ connectToDatabase, now }); const router = express.Router();
     router.use(auth.requireAuth);
     router.use(rateLimit({ windowMs: 60000, limit: 120, standardHeaders: 'draft-7', legacyHeaders: false,
         handler: (req, res) => errorResponse(res, 429, 'PICKUP_RATE_LIMIT', 'Too many pickup requests. Wait a minute and retry.') }));

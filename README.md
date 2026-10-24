@@ -493,3 +493,11 @@ GitHub Actions runs frozen installs, backend lint and isolated API/identity/plan
 ## License and provenance
 
 Derived from the IBM Developer Skills Network capstone, with the existing [Apache 2.0 license](LICENSE) and attribution retained. Verify individual asset licensing before portfolio redistribution.
+
+## Milestone 5.6 deployment preparation and automated E2E
+
+See [the deployment audit, setup/approval checklist, safe remote test workflow and rollback plan](docs/deployment-test-environment.md). The existing frontend project is retained; a separate Vercel Express API is prepared in `giftlink-backend/index.js` with cached initialization, safe JSON readiness, unchanged security checks and no startup DDL/seeding. A host-scoped frontend proxy configuration can be generated for review without automatically changing Production.
+
+Normal PR CI now runs desktop/mobile Chromium against the production build and a real hosted-runtime Express API with an owned disposable MongoDB replica set. It covers two-account registration/login/logout, secure cookies, discovery, plan/inventory, pickup acceptance/cancellation/completion/no-show, authorization and frontend-only recovery. Run `npm --prefix e2e ci`, finish the frontend production build, then `npm --prefix e2e test` to reproduce where prerequisites exist.
+
+The manual remote workflow requires a pre-existing reviewer-protected GitHub Environment, an exact reviewed commit, an approved staging origin/database fingerprint and explicit bounded write confirmation. It never provisions Atlas, creates remote indexes, seeds demos or automatically deletes remote data. This repository change is **code preparation**, not evidence that an authorized Atlas/Vercel test environment has been deployed or live E2E verified.

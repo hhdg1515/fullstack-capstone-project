@@ -1,0 +1,13 @@
+{
+  "name": "moveout-browser-verification",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:policy": "node --test policy.test.cjs",
+    "remote:preview": "node remote.cjs preview",
+    "remote:run": "node remote.cjs run",
+    "remote:cleanup": "node remote.cjs cleanup"
+  },
+  "devDependencies": { "@playwright/test": "1.64.1" }
+}
