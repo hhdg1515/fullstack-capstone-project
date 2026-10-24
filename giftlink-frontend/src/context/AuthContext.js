@@ -2,6 +2,8 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { apiRequest } from '../api/client';
 
 const AppContext = createContext();
+const userResponse = data => data && data.user && !Array.isArray(data.user) &&
+  ['id', 'firstName', 'lastName', 'email'].every(field => typeof data.user[field] === 'string') && Boolean(data.user.id);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -17,7 +19,7 @@ export const AuthProvider = ({ children }) => {
     if (!hasSession.current) setStatus('loading');
     setError('');
     try {
-      const data = await apiRequest('/api/me', { notifyUnauthorized: false });
+      const data = await apiRequest('/api/me', { notifyUnauthorized: false, validate: userResponse });
       if (current !== revision.current) return;
       setUser(data.user);
       hasSession.current = true;
@@ -83,7 +85,7 @@ export const AuthProvider = ({ children }) => {
   };
   const updateProfile = async details => {
     const current = ++revision.current;
-    const data = await apiRequest('/api/me', { method: 'PATCH', body: details });
+    const data = await apiRequest('/api/me', { method: 'PATCH', body: details, validate: userResponse });
     if (current === revision.current) setUser(data.user);
     return data.user;
   };

@@ -8,7 +8,7 @@ import Inventory from './Inventory';
 import PublicItems from './PublicItems';
 import { availabilityError } from './ItemForm';
 
-const user = { id: 'owner', firstName: 'Giver', email: 'private@example.test' };
+const user = { id: 'owner', firstName: 'Giver', lastName: 'Neighbor', email: 'private@example.test' };
 const date = offset => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
 const plan = { id: '64a000000000000000000001', city: 'Oakland', neighborhood: 'Temescal', status: 'active', moveOutDeadline: date(20) };
 const item = { id: '64a000000000000000000002', planId: plan.id, name: 'Box of kitchen supplies', description: '', category: '',

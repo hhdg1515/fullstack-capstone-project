@@ -3,6 +3,7 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAppContext } from '../../context/AuthContext';
 import './LoginPage.css';
 import { authDestination } from '../authDestination';
+import AccountServiceNotice from '../AccountServiceNotice';
 
 export default function LoginPage() {
   const { login, isLoggedIn, sessionMessage, status } = useAppContext();
@@ -27,6 +28,7 @@ export default function LoginPage() {
     <form className="login-card p-4 border rounded" onSubmit={submit}>
       <h1 className="h2 text-center mb-4">Login</h1>
       <p>One account to give away items and request pickups. Browsing is always open to everyone.</p>
+      <AccountServiceNotice />
       {sessionMessage && <p role="status">{sessionMessage}</p>}
       {status === 'loading' && <p role="status">Checking your session…</p>}
       <label htmlFor="email" className="form-label">Email</label>

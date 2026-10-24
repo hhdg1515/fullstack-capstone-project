@@ -27,3 +27,29 @@ test('reports network failures without logging credentials', async () => {
   await expect(apiRequest('/api/me')).rejects.toMatchObject({ code: 'NETWORK_ERROR', status: 0,
     message: 'Unable to reach the server. Please try again.' });
 });
+test.each([200, 401, 404, 502])('rejects HTML with HTTP %s as an unavailable service without reading it as JSON', async status => {
+  const json = jest.fn().mockRejectedValue(new SyntaxError('Unexpected token < private HTML'));
+  const listener = jest.fn(); window.addEventListener('giftlink:unauthorized', listener);
+  try {
+    fetch.mockResolvedValue({ status, ok: status < 400, headers: new Headers({ 'Content-Type': 'text/html; charset=utf-8' }), json });
+    await expect(apiRequest('/api/me')).rejects.toMatchObject({ status: 503, code: 'SERVICE_UNAVAILABLE' });
+    expect(json).not.toHaveBeenCalled(); expect(listener).not.toHaveBeenCalled();
+  } finally { window.removeEventListener('giftlink:unauthorized', listener); }
+});
+test('turns malformed JSON into a safe error without returning null or exposing response contents', async () => {
+  fetch.mockResolvedValue({ status: 200, ok: true, headers: new Headers({ 'content-type': 'application/json' }),
+    json: async () => { throw new SyntaxError('Unexpected token < private upstream body'); } });
+  await expect(apiRequest('/api/me')).rejects.toMatchObject({ code: 'SERVICE_UNAVAILABLE', message: 'The service is temporarily unavailable. Please try again later.' });
+});
+test.each([null, 'upstream proxy', 42, false])('rejects unexpected successful JSON primitive %s', async value => {
+  fetch.mockResolvedValue(reply(200, value));
+  await expect(apiRequest('/api/me')).rejects.toHaveProperty('code', 'SERVICE_UNAVAILABLE');
+});
+test('accepts JSON media types and validates successful payloads including unexpected empty responses', async () => {
+  fetch.mockResolvedValue({ ...reply(200, { items: [] }), headers: new Headers({ 'content-type': 'application/vnd.example+json; charset=utf-8' }) });
+  await expect(apiRequest('/api/items', { validate: data => Array.isArray(data?.items) })).resolves.toEqual({ items: [] });
+  fetch.mockResolvedValue(reply(200, {}));
+  await expect(apiRequest('/api/items', { validate: data => Array.isArray(data?.items) })).rejects.toHaveProperty('code', 'SERVICE_UNAVAILABLE');
+  fetch.mockResolvedValue({ status: 204, ok: true });
+  await expect(apiRequest('/api/me', { validate: data => Boolean(data?.user) })).rejects.toHaveProperty('code', 'SERVICE_UNAVAILABLE');
+});

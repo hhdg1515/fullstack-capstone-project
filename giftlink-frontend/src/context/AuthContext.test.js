@@ -81,3 +81,25 @@ test('server sessions still work when optional legacy browser storage is blocked
     expect(await screen.findByText('authenticated:Server')).toBeInTheDocument();
   } finally { remove.mockRestore(); }
 });
+test.each([null, {}, { user: null }, { user: [] }, { user: {} }, { user: { ...user, id: null } }, { user: { ...user, email: {} } }])('does not authenticate malformed successful /me data %j', async data => {
+  fetch.mockResolvedValue(reply(200, data)); renderAuth();
+  expect(await screen.findByText('error:')).toBeInTheDocument();
+  expect(screen.getByText('The service is temporarily unavailable. Please try again later.')).toBeInTheDocument();
+  expect(screen.queryByText('authenticated:Server')).not.toBeInTheDocument();
+});
+test('recovers from HTML-only hosting and authenticates only after a real server session response', async () => {
+  fetch.mockResolvedValueOnce({ status: 200, ok: true, headers: new Headers({ 'content-type': 'text/html' }) })
+    .mockResolvedValueOnce(reply(401, { error: { code: 'UNAUTHENTICATED' } }))
+    .mockResolvedValueOnce(reply(200, { user }))
+    .mockResolvedValueOnce(reply(200, { user }));
+  renderAuth(); await screen.findByText('error:');
+  fireEvent.click(screen.getByText('Retry')); await screen.findByText('anonymous:');
+  fireEvent.click(screen.getByText('Sign in')); expect(await screen.findByText('authenticated:Server')).toBeInTheDocument();
+  expect(fetch.mock.calls[3][0]).toMatch(/\/api\/me$/); expect(sessionStorage.length).toBe(0);
+});
+test('a successful form response cannot authenticate a user when /me returns HTML', async () => {
+  fetch.mockResolvedValueOnce(reply(401, { error: {} })).mockResolvedValueOnce(reply(200, { user }))
+    .mockResolvedValueOnce({ status: 200, ok: true, headers: new Headers({ 'content-type': 'text/html' }) });
+  renderAuth(); await screen.findByText('anonymous:'); fireEvent.click(screen.getByText('Sign in'));
+  expect(await screen.findByText('error:')).toBeInTheDocument(); expect(screen.queryByText('authenticated:Server')).not.toBeInTheDocument();
+});

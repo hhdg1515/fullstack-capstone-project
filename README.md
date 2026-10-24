@@ -32,6 +32,21 @@ The Create React App deployment contract is unchanged: build `giftlink-frontend`
 
 Future UX work includes research on the initial homepage copy, richer inventory summaries, and messaging/rendezvous/notification improvements. No new pickup or inventory business behavior is introduced here.
 
+### Frontend-only previews and connecting a real backend
+
+A Vercel deployment of the CRA frontend does not itself deploy Express or MongoDB. With no API routing, `/api/me` or `/api/gifts` may return the frontend's `index.html` (even HTTP 200). That is a missing/misrouted service, not a JSON API or a signed-out user. The frontend detects HTML, invalid JSON and invalid session payloads and shows a service-unavailable message instead of a JSON exception or `null.user` crash. The homepage/navigation remain available; discovery and legacy gift pages offer retry controls. Account forms explain the outage, and private pages stay protected. No users, sessions or successful registration/login states are simulated in the browser.
+
+When the existing API connection recovers, Retry connection revalidates `/api/me`; registration/login continue using the real Express endpoints, bcrypt-backed accounts and server-confirmed HttpOnly sessions. A successful form response alone does not sign a user in: `/api/me` must confirm the accepted cookie and a valid user response. Legacy gift/search/detail pages use the same response handling and can recover with Retry. An empty real collection is shown as empty rather than a service error.
+
+For a future approved deployment:
+
+1. Deploy the existing Express backend separately with its MongoDB replica set and guarded index preparation. Do not put database URIs/credentials in Vercel frontend variables.
+2. Prefer serving/proxying `/api/*` under the frontend's HTTPS origin, **before** the SPA fallback. Forward API paths, request/response headers, Origin/CSRF headers and Set-Cookie correctly; missing API routes must not be replaced with HTML. Leave `REACT_APP_BACKEND_URL` empty for this arrangement.
+3. Set the backend's exact HTTPS `APP_ORIGIN` to the approved frontend origin and use `NODE_ENV=production` for Secure HttpOnly cookies. Preserve the existing session/CSRF requirements. Pointing the browser directly at an unrelated backend origin needs a separate same-site/cookie/CORS decision; a URL alone does not make cross-site login reliable.
+4. Verify `/api/me` returns JSON `401` before login and JSON `200 { user }` after real registration/login; logout must revoke the session. Check this against the actual approved host. `REACT_APP_BACKEND_URL` is a CRA **build-time** value: changing it requires a new frontend build. With existing same-origin `/api` routing, a recovering backend needs no frontend mode flag or fake-data switch.
+
+Never set a hosted frontend's API origin to `localhost`; that points at each visitor's own computer. This fix changes no hosting settings, backend contracts, database schemas or real remote data. Local browser verification covers both frontend-only HTML fallback and recovery against the real Express API using an isolated test database; it does not verify a live deployment's proxy/cookie configuration.
+
 ## Requirements
 
 - Node.js 22 and npm.

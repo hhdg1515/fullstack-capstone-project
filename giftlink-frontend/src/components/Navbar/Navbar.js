@@ -30,7 +30,7 @@ export default function Navbar() {
         <ul onClick={() => setOpen(false)}>
           <li><Link to={location.pathname === '/app/items' ? location.pathname + location.search : '/app/items'} aria-current={find ? 'location' : undefined}>Find Free Items</Link></li>
           <li><Link to="/app/plans" aria-current={give ? 'location' : undefined}>Give Away</Link></li>
-          <li><Link to={status === 'anonymous' ? '/app/login' : '/app/profile'} aria-current={account ? 'location' : undefined}>Account</Link></li>
+          <li><Link to={isLoggedIn || status === 'loading' ? '/app/profile' : '/app/login'} aria-current={account ? 'location' : undefined}>Account</Link></li>
         </ul>
         <div className="site-session">
           {status === 'loading' ? <span role="status">Checking session…</span> : isLoggedIn ? <>
@@ -39,6 +39,7 @@ export default function Navbar() {
         </div>
       </nav>
     </div>
+    {status === 'error' && <p className="site-nav-error" role="status">Account service is temporarily unavailable. You can still explore the site.</p>}
     {error && <p className="site-nav-error" role="alert">{error}</p>}
   </header>;
 }

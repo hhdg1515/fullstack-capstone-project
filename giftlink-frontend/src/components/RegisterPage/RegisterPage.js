@@ -3,6 +3,7 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAppContext } from '../../context/AuthContext';
 import './RegisterPage.css';
 import { authDestination } from '../authDestination';
+import AccountServiceNotice from '../AccountServiceNotice';
 
 export default function RegisterPage() {
   const { register, isLoggedIn, status } = useAppContext();
@@ -26,6 +27,7 @@ export default function RegisterPage() {
     <form className="register-card p-4 border rounded" onSubmit={submit}>
       <h1 className="h2 text-center mb-4">Register</h1>
       <p>Give and find with the same account. You can do both at any time.</p>
+      <AccountServiceNotice />
       {['firstName', 'lastName', 'email', 'password'].map(field => <div className="mb-3" key={field}>
         <label htmlFor={field} className="form-label">{{ firstName: 'First name', lastName: 'Last name', email: 'Email', password: 'Password' }[field]}</label>
         <input id={field} type={field === 'password' ? 'password' : field === 'email' ? 'email' : 'text'}
