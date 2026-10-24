@@ -32,6 +32,7 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
   a.on('dialog', dialog => dialog.accept()); b.on('dialog', dialog => dialog.accept());
   const write = (context, path, data, extra = {}) => context.request.post(deployment.origin + path, {
     maxRedirects: 0, headers: { Origin: deployment.origin, 'X-CSRF-Protection': '1' }, data, ...extra });
+  const read = (context, url) => context.request.get(url, { maxRedirects: 0 });
   const must = (condition, label) => { if (!condition) throw Error(label); };
   async function primary(page, label) {
     const menu = page.getByRole('button', { name: 'Menu', exact: true }); if (await menu.isVisible()) await menu.click();
@@ -57,9 +58,9 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
   }
   let userA, userB;
   try {
-    const health = await giver.request.get(deployment.origin + '/api/health'); must(health.status() === 200, 'JSON readiness failed');
+    const health = await read(giver, deployment.origin + '/api/health'); must(health.status() === 200, 'JSON readiness failed');
     must((await health.json()).databaseFingerprint === deployment.fingerprint, 'Deployment target mismatch');
-    must((await receiver.request.get(deployment.origin + '/api/me')).status() === 401, 'Anonymous account access accepted');
+    must((await read(receiver, deployment.origin + '/api/me')).status() === 401, 'Anonymous account access accepted');
     await register(a, emailA);
     userA = await deployment.db.collection('users').findOne({ email: emailA }); must(Boolean(userA), 'Registered giver not in approved database');
     must(await bcrypt.compare(password, userA.password), 'Password is not stored as a bcrypt hash');
@@ -67,7 +68,7 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     must(Boolean(cookie && cookie.httpOnly && cookie.secure && cookie.sameSite === 'Lax' && cookie.path === '/'), 'Session cookie security attributes changed');
     await primary(a, 'Account'); await a.reload(); await expect(a.getByRole('heading', { name: 'Your account', exact: true })).toBeVisible();
     await expect(a.getByText(emailA, { exact: false })).toBeVisible();
-    must(!JSON.stringify(await (await giver.request.get(deployment.origin + '/api/me')).json()).includes(userA.password), 'Password hash exposed by API');
+    must(!JSON.stringify(await (await read(giver, deployment.origin + '/api/me')).json()).includes(userA.password), 'Password hash exposed by API');
     await test.step('Giver account, password hash and secure cookie verified', async () => {});
     await logout(a, giver);
     const wrong = await write(giver, '/api/auth/login', { email: emailA, password: password + '-wrong' }); must(wrong.status() === 401, 'Incorrect password accepted');
@@ -102,11 +103,11 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
       if (i) await b.goto('/app/items/' + itemIds[i] + '/request');
       await b.getByLabel('Pickup date and time', { exact: true }).fill(localTime); await b.getByRole('button', { name: 'Send pickup request', exact: true }).click();
       await b.getByText('Awaiting giver decision', { exact: true }).first().waitFor(); requestIds.push(b.url().split('/').pop());
-      const privateResponse = await receiver.request.get(deployment.origin + '/api/pickup-requests/' + requestIds[i]);
+      const privateResponse = await read(receiver, deployment.origin + '/api/pickup-requests/' + requestIds[i]);
       must((await privateResponse.json()).request.status === 'pending', 'Request was automatically reserved');
     }
-    const unauthorized = await receiver.request.get(deployment.origin + '/api/move-out-plans/' + (await deployment.db.collection('moveOutPlans').findOne({ ownerId: userA._id }))._id); must(unauthorized.status() === 404, 'Receiver accessed private giver plan');
-    const publicText = JSON.stringify(await (await receiver.request.get(deployment.origin + '/api/items/' + itemIds[0])).json());
+    const unauthorized = await read(receiver, deployment.origin + '/api/move-out-plans/' + (await deployment.db.collection('moveOutPlans').findOne({ ownerId: userA._id }))._id); must(unauthorized.status() === 404, 'Receiver accessed private giver plan');
+    const publicText = JSON.stringify(await (await read(receiver, deployment.origin + '/api/items/' + itemIds[0])).json());
     must(![emailA, emailB, 'giverId', 'receiverId', 'password', 'note'].some(secret => publicText.includes(secret)), 'Public item disclosed private data');
     for (let i = 0; i < requestIds.length; i++) {
       await primary(a, 'Give Away'); await a.getByRole('navigation', { name: 'Give Away', exact: true }).getByRole('link', { name: 'Incoming requests', exact: true }).click();
@@ -128,10 +129,10 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     }
     await a.goto('/app/pickups/' + requestIds[0]); await a.getByRole('button', { name: 'Confirm handoff', exact: true }).click(); await a.getByText('Handed over', { exact: true }).first().waitFor();
     await b.goto('/app/pickups/' + requestIds[0]); await b.getByText('Handed over', { exact: true }).first().waitFor();
-    must((await receiver.request.get(deployment.origin + '/api/items/' + itemIds[0])).status() === 404, 'Cleared item remained public');
+    must((await read(receiver, deployment.origin + '/api/items/' + itemIds[0])).status() === 404, 'Cleared item remained public');
     const planRow = await deployment.db.collection('moveOutPlans').findOne({ ownerId: userA._id }); await a.goto('/app/plans/' + planRow._id + '/items'); await expect(a.getByText('1 of 3 items cleared', { exact: true })).toBeVisible();
     await a.goto('/app/pickups/' + requestIds[2]); await a.getByRole('button', { name: 'Record no-show', exact: true }).click(); await a.getByText('Receiver did not arrive', { exact: true }).first().waitFor();
-    must((await receiver.request.get(deployment.origin + '/api/items/' + itemIds[2])).status() === 200, 'No-show cleared the item');
+    must((await read(receiver, deployment.origin + '/api/items/' + itemIds[2])).status() === 200, 'No-show cleared the item');
     const laterTime = Temporal.Instant.fromEpochMilliseconds(deployment.now() + 86400000).toZonedDateTimeISO('America/Los_Angeles').toPlainDateTime().toString({ smallestUnit: 'minute' });
     const released = await write(receiver, '/api/pickup-requests', { itemId: itemIds[2], localDateTime: laterTime, timeZone: 'America/Los_Angeles' });
     must(released.status() === 201, 'No-show did not release the reservation');
@@ -141,9 +142,9 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     await test.step('Completed handoff, cleared progress and no-show release verified', async () => {});
     const currentCookie = (await receiver.cookies()).find(cookie => cookie.name === '__Host-giftlink_session'); must(Boolean(currentCookie), 'Receiver session missing');
     await deployment.db.collection('sessions').updateOne({ _id: tokenHash(currentCookie.value), userId: userB._id }, { $set: { expiresAt: new Date(Date.now() - 1000) } });
-    must((await receiver.request.get(deployment.origin + '/api/me')).status() === 401, 'Expired session accepted');
+    must((await read(receiver, deployment.origin + '/api/me')).status() === 401, 'Expired session accepted');
     await receiver.addCookies([{ name: '__Host-giftlink_session', value: 'f'.repeat(64), url: deployment.origin, secure: true, httpOnly: true, sameSite: 'Lax' }]);
-    must((await receiver.request.get(deployment.origin + '/api/me')).status() === 401, 'Invalid session accepted');
+    must((await read(receiver, deployment.origin + '/api/me')).status() === 401, 'Invalid session accepted');
     await login(b, emailB); await expect(b.getByRole('heading', { name: 'Your account', exact: true })).toBeVisible();
     await logout(b, receiver); await a.goto('/app/profile'); await expect(a.getByRole('heading', { name: 'Your account', exact: true })).toBeVisible(); await logout(a, giver);
     for (const page of [a, b]) must(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Horizontal overflow');
