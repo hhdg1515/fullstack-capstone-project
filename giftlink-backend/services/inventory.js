@@ -1,11 +1,7 @@
 const { ObjectId } = require('mongodb');
 const { todayUTC } = require('./calendar');
-
-class InventoryError extends Error {
-    constructor(status, code, message, details = {}) {
-        super(message); Object.assign(this, { status, code, details });
-    }
-}
+const { InventoryError } = require('./inventory-error');
+const { invalidateRequests } = require('./pickup-policy');
 const notFound = () => new InventoryError(404, 'ITEM_NOT_FOUND', 'Item or plan not found');
 const endDate = (item, plan) => item.availableUntil || plan.moveOutDeadline;
 const effectiveStatus = (item, plan) => item.status === 'available' && endDate(item, plan) < todayUTC() ? 'expired' : item.status;
@@ -111,6 +107,8 @@ function createInventoryService({ connectToDatabase }) {
                 if (effectiveStatus(existing, plan) === 'expired' || (item.status === 'available' && endDate(item, plan) < todayUTC())) item.status = 'expired';
                 if (item.status === 'available') listingPolicy(item);
             }
+            await invalidateRequests(db, session, item, plan, ownerId, input.confirmCancelRequests,
+                ['unlist', 'clear'].includes(action) ? (action === 'clear' ? 'external_clearance' : 'item_unlisted') : null);
             item.updatedAt = new Date(); item.version++;
             await db.collection('items').replaceOne(filter, item, { session });
             return { item: itemResponse(item, plan) };

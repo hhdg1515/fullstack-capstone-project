@@ -11,11 +11,15 @@ const definitions = [
         options: { collation: { locale: 'simple' } } },
     { collection: 'items', name: 'items_plan_owner', key: { planId: 1, ownerId: 1, createdAt: 1, _id: 1 }, options: { collation: { locale: 'simple' } } },
     { collection: 'items', name: 'items_publication', key: { status: 1, publishedAt: -1, _id: -1 }, options: { collation: { locale: 'simple' } } },
-    { collection: 'items', name: 'items_pickup_start', key: { status: 1, availableFrom: 1, publishedAt: -1, _id: -1 }, options: { collation: { locale: 'simple' } } }
+    { collection: 'items', name: 'items_pickup_start', key: { status: 1, availableFrom: 1, publishedAt: -1, _id: -1 }, options: { collation: { locale: 'simple' } } },
+    { collection: 'pickupRequests', name: 'pickup_received', key: { giverId: 1, _id: -1 }, options: { collation: { locale: 'simple' } } },
+    { collection: 'pickupRequests', name: 'pickup_sent', key: { receiverId: 1, _id: -1 }, options: { collation: { locale: 'simple' } } },
+    { collection: 'pickupRequests', name: 'pickup_one_accepted', key: { itemId: 1 }, options: { unique: true, partialFilterExpression: { status: 'accepted' }, collation: { locale: 'simple' } } },
+    { collection: 'pickupRequests', name: 'pickup_active_receiver', key: { itemId: 1, receiverId: 1 }, options: { unique: true, partialFilterExpression: { active: true }, collation: { locale: 'simple' } } }
 ];
 const sameKey = (index, definition) => JSON.stringify(index.key) === JSON.stringify(definition.key);
 function compatible(index, definition) {
-    if (!sameKey(index, definition) || index.partialFilterExpression || index.sparse ||
+    if (!sameKey(index, definition) || JSON.stringify(index.partialFilterExpression) !== JSON.stringify(definition.options.partialFilterExpression) || index.sparse ||
         (index.collation && index.collation.locale !== 'simple')) return false;
     return Boolean(index.unique) === Boolean(definition.options.unique) &&
         index.expireAfterSeconds === definition.options.expireAfterSeconds;
@@ -63,7 +67,17 @@ async function inspectDatabaseIndexes(db) {
         }
     } finally { await cursor.close(); }
     if (Object.values(accounts).some(count => count > 0)) conflicts.push({ collection: 'users', problem: 'account-email-conflicts' });
-    return { operations, accounts, conflicts, ready: conflicts.length === 0 };
+    const pickups = { duplicateAcceptedGroups: 0, duplicateActiveReceiverGroups: 0 };
+    for (const [field, match, group] of [
+        ['duplicateAcceptedGroups', { status: 'accepted' }, '$itemId'],
+        ['duplicateActiveReceiverGroups', { active: true }, { itemId: '$itemId', receiverId: '$receiverId' }]
+    ]) {
+        const rows = await db.collection('pickupRequests').aggregate([{ $match: match }, { $group: { _id: group, count: { $sum: 1 } } },
+            { $match: { count: { $gt: 1 } } }, { $count: 'groups' }], { collation: { locale: 'simple' } }).toArray();
+        pickups[field] = rows.length ? rows[0].groups : 0;
+    }
+    if (Object.values(pickups).some(count => count > 0)) conflicts.push({ collection: 'pickupRequests', problem: 'pickup-uniqueness-conflicts' });
+    return { operations, accounts, pickups, conflicts, ready: conflicts.length === 0 };
 }
 
 async function prepareDatabaseIndexes(db) {

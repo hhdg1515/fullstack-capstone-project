@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../../api/client';
+import { confirmPickupChanges } from '../../api/confirmPickupChanges';
 import { useAppContext } from '../../context/AuthContext';
 import PlanForm, { statusLabels } from './PlanForm';
 import usePlansData from './usePlansData';
@@ -68,6 +69,7 @@ export function PlanDetail() {
           <dt>Move-out deadline</dt><dd><time dateTime={plan.moveOutDeadline}>{formatDeadline(plan.moveOutDeadline)}</time></dd>
           <dt>City</dt><dd>{plan.city}</dd><dt>Neighborhood</dt><dd>{plan.neighborhood}</dd>
           <dt>Status</dt><dd>{statusLabels[plan.status]}</dd>
+          <dt>Pickup timezone</dt><dd>{plan.pickupTimeZone || 'Set a timezone in Edit plan to receive pickup requests.'}</dd>
         </dl>
         <p>Only you can see this plan. It brings your move and the items you want to give away together.</p>
       </section>
@@ -81,7 +83,7 @@ export function EditPlan() {
   const request = usePlansData(`${base}/${encodeURIComponent(planId)}`);
   const plan = request.data?.plan;
   const save = async details => {
-    const data = await apiRequest(`${base}/${encodeURIComponent(planId)}`, { method: 'PATCH', body: details });
+    const data = await confirmPickupChanges(`${base}/${encodeURIComponent(planId)}`, { method: 'PATCH', body: details });
     navigate(`/app/plans/${data.plan.id}`, { replace: true, state: { message: 'Plan updated.' } });
   };
   return <main className="plans-page"><Link to="/app/plans">My plans</Link><h1>Edit move-out plan</h1>

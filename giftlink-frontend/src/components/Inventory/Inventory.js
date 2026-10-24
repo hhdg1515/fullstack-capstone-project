@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useAppContext } from '../../context/AuthContext';
-import { apiRequest } from '../../api/client';
+import { confirmPickupChanges } from '../../api/confirmPickupChanges';
 import usePlansData from '../MoveOutPlans/usePlansData';
 import ItemForm, { availabilityError } from './ItemForm';
 import '../MoveOutPlans/Plans.css';
@@ -31,7 +31,7 @@ export default function Inventory() {
   const save = async (details, publish) => {
     setBusy(true);
     try {
-      await apiRequest(item ? `${root}/${item.id}` : root, { method: item ? 'PATCH' : 'POST',
+      await confirmPickupChanges(item ? `${root}/${item.id}` : root, { method: item ? 'PATCH' : 'POST',
         body: item ? { ...details, version: item.version } : { ...details, publish } });
       setMessage(item ? 'Item saved.' : publish ? 'Item published. Add another below.' : 'Draft saved. Add another below.');
       setEditor(null); setSequence(value => value + 1); request.retry();
@@ -45,7 +45,7 @@ export default function Inventory() {
     if (!window.confirm(confirmations[name])) return;
     setBusy(true); setError(''); setMessage('');
     try {
-      await apiRequest(`${root}/${entry.id}/actions`, { method: 'POST', body: { action: name, version: entry.version } });
+      await confirmPickupChanges(`${root}/${entry.id}/actions`, { method: 'POST', body: { action: name, version: entry.version } });
       setMessage(`${actionLabels[name]} confirmed.`); request.retry();
     } catch (failure) { setError(failure.message); }
     finally { setBusy(false); }

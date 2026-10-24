@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
 const path = require('node:path');
 const sinon = require('sinon');
-const { MongoClient } = require('mongodb');
+const { MongoClient, ObjectId } = require('mongodb');
 const bcrypt = require('bcryptjs');
 const { createIsolatedMongo } = require('./helpers/isolated-mongo');
 const { main, parseArguments } = require('../util/prepare-database');
@@ -88,11 +88,11 @@ describe('database index preparation on verified isolated MongoDB', function () 
     const snapshot = async () => ({ collections: await db.listCollections().toArray(),
         users: await db.collection('users').find({}).toArray(), sessions: await db.collection('sessions').find({}).toArray(),
         gifts: await db.collection('gifts').find({}).toArray(), plans: await db.collection('moveOutPlans').find({}).toArray(),
-        items: await db.collection('items').find({}).toArray() });
+        items: await db.collection('items').find({}).toArray(), pickups: await db.collection('pickupRequests').find({}).toArray() });
     before(async function () { isolated = await createIsolatedMongo(); db = isolated.db; });
     after(async function () { if (isolated) await isolated.close(); });
     beforeEach(async function () {
-        for (const name of ['users', 'sessions', 'gifts', 'moveOutPlans', 'items']) {
+        for (const name of ['users', 'sessions', 'gifts', 'moveOutPlans', 'items', 'pickupRequests']) {
             try { await db.collection(name).drop(); } catch (error) { if (error.code !== 26) throw error; }
         }
         env = { MONGO_URL: isolated.mongoUrl, MONGO_DB_NAME: isolated.dbName, DB_ENVIRONMENT: 'development' };
@@ -103,7 +103,7 @@ describe('database index preparation on verified isolated MongoDB', function () 
         const before = await snapshot();
         const result = await main({ env, argv: [], log });
         assert.equal(result.plan.ready, true);
-        assert.deepEqual(result.plan.operations.map(operation => operation.action), ['create', 'create', 'create', 'create', 'create', 'create']);
+        assert.deepEqual(result.plan.operations.map(operation => operation.action), Array(10).fill('create'));
         assert.deepEqual(await snapshot(), before);
         assert.match(output.join('\n'), /dry-run/);
         assert.equal((await preview()).target.fingerprint, result.target.fingerprint);
@@ -154,14 +154,14 @@ describe('database index preparation on verified isolated MongoDB', function () 
         assert.equal(await db.collection('gifts').countDocuments(), 0);
         assert.ok(!(await db.listCollections().toArray()).some(collection => collection.name === 'gifts'));
         assert.ok(!output.join('\n').includes('private@example.test'));
-        assert.deepEqual((await preview()).plan.operations.map(operation => operation.action), ['keep', 'keep', 'keep', 'keep', 'keep', 'keep']);
+        assert.deepEqual((await preview()).plan.operations.map(operation => operation.action), ['keep', 'keep', 'keep', 'keep', 'keep', 'keep', 'keep', 'keep', 'keep', 'keep']);
     });
     it('previews and adds the plan index to a Milestone 1 database without rewriting its collections', async function () {
         await db.collection('users').createIndex({ email: 1 }, { name: 'users_email_unique', unique: true });
         await db.collection('sessions').createIndex({ expiresAt: 1 }, { name: 'sessions_expiry', expireAfterSeconds: 0 });
         const before = await snapshot();
         const result = await preview();
-        assert.deepEqual(result.plan.operations.map(operation => operation.action), ['keep', 'keep', 'create', 'create', 'create', 'create']);
+        assert.deepEqual(result.plan.operations.map(operation => operation.action), ['keep', 'keep', 'create', 'create', 'create', 'create', 'create', 'create', 'create', 'create']);
         assert.deepEqual(await snapshot(), before);
         assert.equal((await db.listCollections().toArray()).length, 2);
         await apply(result);
@@ -191,7 +191,7 @@ describe('database index preparation on verified isolated MongoDB', function () 
         await db.collection('items').insertOne({ name: 'Existing private item', status: 'draft' });
         const before = await snapshot();
         const result = await preview();
-        assert.deepEqual(result.plan.operations.map(operation => operation.action), ['keep', 'keep', 'keep', 'create', 'create', 'create']);
+        assert.deepEqual(result.plan.operations.map(operation => operation.action), ['keep', 'keep', 'keep', 'create', 'create', 'create', 'create', 'create', 'create', 'create']);
         assert.deepEqual(await snapshot(), before);
         await apply(result); await apply(await preview());
         assert.deepEqual(await db.collection('items').find({}).toArray(), before.items);
@@ -212,7 +212,7 @@ describe('database index preparation on verified isolated MongoDB', function () 
         await db.collection('items').dropIndex('items_pickup_start');
         const before = await snapshot();
         const result = await preview();
-        assert.deepEqual(result.plan.operations.map(operation => operation.action), ['keep', 'keep', 'keep', 'keep', 'keep', 'create']);
+        assert.deepEqual(result.plan.operations.map(operation => operation.action), ['keep', 'keep', 'keep', 'keep', 'keep', 'create', 'keep', 'keep', 'keep', 'keep']);
         assert.deepEqual(await snapshot(), before);
         await apply(result); await apply(await preview());
         assert.deepEqual(await db.collection('items').find({}).toArray(), before.items);
@@ -230,7 +230,9 @@ describe('database index preparation on verified isolated MongoDB', function () 
             { collection: 'sessions', key: { expiresAt: 1 }, options: { name: 'sessions_expiry', expireAfterSeconds: 60 } },
             { collection: 'moveOutPlans', key: { ownerId: 1, moveOutDeadline: 1, _id: 1 }, options: { name: 'legacy_plan', unique: true } },
             { collection: 'moveOutPlans', key: { ownerId: 1 }, options: { name: 'move_out_plans_owner_deadline' } },
-            { collection: 'items', key: { status: 1, availableFrom: 1, publishedAt: -1, _id: -1 }, options: { name: 'items_pickup_start', unique: true } }
+            { collection: 'items', key: { status: 1, availableFrom: 1, publishedAt: -1, _id: -1 }, options: { name: 'items_pickup_start', unique: true } },
+            { collection: 'pickupRequests', key: { itemId: 1 }, options: { name: 'pickup_one_accepted', unique: true, partialFilterExpression: { status: 'pending' } } },
+            { collection: 'pickupRequests', key: { itemId: 1, receiverId: 1 }, options: { name: 'pickup_active_receiver', unique: false, partialFilterExpression: { active: true } } }
         ]) {
             await db.collection(incompatible.collection).createIndex(incompatible.key, incompatible.options);
             const before = await snapshot();
@@ -244,6 +246,29 @@ describe('database index preparation on verified isolated MongoDB', function () 
             await db.collection(incompatible.collection).drop();
             output = [];
         }
+    });
+    it('previews and adds only pickup indexes to a Milestone 4 database, preserving all documents on repeat initialization', async function () {
+        await apply(await preview()); await db.collection('pickupRequests').drop();
+        await db.collection('items').insertOne({ name: 'Preserved inventory', status: 'draft' });
+        const before = await snapshot(); const result = await preview();
+        assert.deepEqual(result.plan.operations.map(operation => operation.action), ['keep', 'keep', 'keep', 'keep', 'keep', 'keep', 'create', 'create', 'create', 'create']);
+        assert.deepEqual(await snapshot(), before);
+        await apply(result); await apply(await preview()); await assertDatabaseIndexes(db);
+        assert.deepEqual((await snapshot()).items, before.items); assert.deepEqual((await snapshot()).pickups, []);
+        const indexes = await db.collection('pickupRequests').indexes();
+        assert.equal(indexes.length, 5);
+        assert.deepEqual(indexes.find(index => index.name === 'pickup_one_accepted').partialFilterExpression, { status: 'accepted' });
+    });
+    it('reports pickup uniqueness conflicts using counts, refuses repairs, and preserves private request documents', async function () {
+        const itemId = new ObjectId(); const receiverId = new ObjectId();
+        await db.collection('pickupRequests').insertMany([0, 1].map(() => ({ itemId, receiverId, active: true, status: 'accepted', note: 'Private appointment note' })));
+        const before = await snapshot();
+        const plan = await inspectDatabaseIndexes(db);
+        assert.deepEqual(plan.pickups, { duplicateAcceptedGroups: 1, duplicateActiveReceiverGroups: 1 });
+        assert.equal(plan.ready, false); await assert.rejects(preview(), /Preparation blocked/);
+        assert.deepEqual(await snapshot(), before);
+        assert.ok(!output.join('\n').includes('Private appointment note'));
+        assert.ok(!output.join('\n').includes(itemId.toString()));
     });
     it('creates binary email indexes even when the collection has a non-simple default collation', async function () {
         await db.createCollection('users', { collation: { locale: 'en', strength: 1 } });
@@ -261,7 +286,7 @@ describe('database index preparation on verified isolated MongoDB', function () 
         await db.collection('items').createIndex({ status: 1, publishedAt: -1, _id: -1 }, { name: 'custom_publication' });
         await db.collection('items').createIndex({ status: 1, availableFrom: 1, publishedAt: -1, _id: -1 }, { name: 'custom_pickup_start' });
         const result = await preview();
-        assert.deepEqual(result.plan.operations.map(operation => operation.action), ['keep', 'keep', 'keep', 'keep', 'keep', 'keep']);
+        assert.deepEqual(result.plan.operations.map(operation => operation.action), ['keep', 'keep', 'keep', 'keep', 'keep', 'keep', 'create', 'create', 'create', 'create']);
         await apply(result);
         await assertDatabaseIndexes(db);
         assert.equal((await db.collection('users').indexes()).length, 2);

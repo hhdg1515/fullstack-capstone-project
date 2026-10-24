@@ -44,7 +44,7 @@ describe('move-out plans on verified isolated MongoDB', function () {
     it('creates an empty private plan with a server-derived owner, status and timestamps', async function () {
         const result = await create().expect(201);
         const plan = result.body.plan;
-        assert.deepEqual(Object.keys(plan).sort(), ['id', 'title', 'moveOutDeadline', 'city', 'neighborhood', 'status', 'createdAt', 'updatedAt'].sort());
+        assert.deepEqual(Object.keys(plan).sort(), ['id', 'title', 'moveOutDeadline', 'city', 'neighborhood', 'pickupTimeZone', 'status', 'createdAt', 'updatedAt'].sort());
         assert.equal(plan.title, ''); assert.equal(plan.status, 'active');
         assert.equal(plan.createdAt, plan.updatedAt);
         assert.ok(!Number.isNaN(Date.parse(plan.createdAt)));

@@ -14,6 +14,7 @@ describe('server bootstrap and configuration', function () {
     const logger = pino({ level: 'silent' });
     const indexedDb = { command: async () => ({ ok: 1, setName: 'isolated-test' }), collection: name => ({ indexes: async () => name === 'users' ?
         [{ key: { email: 1 }, unique: true }] : name === 'sessions' ? [{ key: { expiresAt: 1 }, expireAfterSeconds: 0 }] :
+        name === 'pickupRequests' ? [{ key: { giverId: 1, _id: -1 } }, { key: { receiverId: 1, _id: -1 } }, { key: { itemId: 1 }, unique: true, partialFilterExpression: { status: 'accepted' } }, { key: { itemId: 1, receiverId: 1 }, unique: true, partialFilterExpression: { active: true } }] :
         name === 'moveOutPlans' ? [{ key: { ownerId: 1, moveOutDeadline: 1, _id: 1 } }] :
         [{ key: { planId: 1, ownerId: 1, createdAt: 1, _id: 1 } }, { key: { status: 1, publishedAt: -1, _id: -1 } }, { key: { status: 1, availableFrom: 1, publishedAt: -1, _id: -1 } }] }) };
 
@@ -65,7 +66,8 @@ describe('server bootstrap and configuration', function () {
 
     it('requires the new plan index even when identity indexes already exist', async function () {
         const database = { connect: async () => ({ collection: name => ({ indexes: async () =>
-            name === 'moveOutPlans' ? [] : indexedDb.collection(name).indexes() }) }), close: sinon.stub().resolves() };
+            name === 'pickupRequests' ? [{ key: { giverId: 1, _id: -1 } }, { key: { receiverId: 1, _id: -1 } }, { key: { itemId: 1 }, unique: true, partialFilterExpression: { status: 'accepted' } }, { key: { itemId: 1, receiverId: 1 }, unique: true, partialFilterExpression: { active: true } }] :
+        name === 'moveOutPlans' ? [] : indexedDb.collection(name).indexes() }) }), close: sinon.stub().resolves() };
         const listen = sinon.spy(express.application, 'listen');
         await assert.rejects(startServer({ port: 0 }, { database, logger }), /Database indexes are required/);
         assert.equal(listen.callCount, 0);

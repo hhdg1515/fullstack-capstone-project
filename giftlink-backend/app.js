@@ -8,6 +8,7 @@ const createAuthRoutes = require('./routes/authRoutes');
 const createMeRoutes = require('./routes/meRoutes');
 const createPlanRoutes = require('./routes/planRoutes');
 const createItemRoutes = require('./routes/itemRoutes');
+const createPickupRoutes = require('./routes/pickupRoutes');
 const { InventoryError } = require('./services/inventory');
 const { createIdentityService } = require('./services/identity');
 const { createIdentityMiddleware } = require('./middleware/identity');
@@ -35,6 +36,7 @@ function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', sec
     app.use('/api/move-out-plans', createPlanRoutes({ connectToDatabase, auth }));
     app.use('/api/move-out-plans/:planId/items', items.privateRouter);
     app.use('/api/items', items.publicRouter);
+    app.use('/api/pickup-requests', createPickupRoutes({ connectToDatabase, auth }));
     app.use((err, req, res, next) => {
         if (err instanceof InventoryError) return res.status(err.status).json({ error: Object.assign({ code: err.code, message: err.message }, err.details) });
         // Driver/validator errors can contain emails, input, or connection details.

@@ -57,14 +57,14 @@ function readCursor(token, query, now) {
     return value;
 }
 const projection = { name: 1, description: 1, category: 1, status: 1, availableFrom: 1, availableUntil: 1,
-    publishedAt: 1, effectiveAvailableUntil: 1, 'plan.city': 1, 'plan.neighborhood': 1, 'plan.moveOutDeadline': 1 };
+    publishedAt: 1, effectiveAvailableUntil: 1, 'plan.city': 1, 'plan.neighborhood': 1, 'plan.moveOutDeadline': 1, 'plan.pickupTimeZone': 1 };
 function publicItem(row, today) {
     return { id: row._id.toString(), name: row.name, description: row.description, category: row.category,
         status: 'available', availability: row.availableFrom && row.availableFrom > today ? 'later' : 'now',
         availableFrom: row.availableFrom || null, availableUntil: row.availableUntil || null,
         effectiveAvailableUntil: row.effectiveAvailableUntil, city: normalizeLabel(row.plan.city),
         neighborhood: normalizeLabel(row.plan.neighborhood), moveOutDeadline: row.plan.moveOutDeadline,
-        publishedAt: row.publishedAt.toISOString() };
+        publishedAt: row.publishedAt.toISOString(), pickupTimeZone: row.plan.pickupTimeZone || null };
 }
 function visibilityPipeline(match, today) {
     return [{ $match: match },
