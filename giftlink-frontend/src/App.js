@@ -1,5 +1,5 @@
-import React from 'react';
-import { Routes, Route } from 'react-router-dom';
+import React, { useEffect, useRef } from 'react';
+import { Link, Routes, Route, useLocation } from 'react-router-dom';
 import MainPage from './components/MainPage/MainPage';
 import DetailsPage from './components/DetailsPage/DetailsPage';
 import SearchPage from './components/SearchPage/SearchPage';
@@ -14,13 +14,27 @@ import { MyPlans, CreatePlan, PlanDetail, EditPlan } from './components/MoveOutP
 import Inventory from './components/Inventory/Inventory';
 import PublicItems from './components/Inventory/PublicItems';
 import { RequestPickup, PickupDashboard, PickupDetail } from './components/Pickups/Pickups';
+import Home from './components/Journeys/Home';
+
+function RouteFocus() {
+  const { pathname } = useLocation(); const previous = useRef(pathname);
+  useEffect(() => {
+    if (previous.current !== pathname) document.getElementById('main-content')?.focus();
+    previous.current = pathname;
+  }, [pathname]);
+  return null;
+}
 
 function App() {
   return (
     <>
+      <a className="skip-link" href="#main-content">Skip to main content</a>
       <Navbar />
+      <RouteFocus />
+      <div id="main-content" tabIndex={-1}>
       <Routes>
-        <Route path="/" element={<MainPage />} />
+        <Route path="/" element={<Home />} />
+        <Route path="/home.html" element={<Home />} />
         <Route path="/app" element={<MainPage />} />
         <Route path="/app/product/:productId" element={<DetailsPage />} />
         <Route path="/app/search" element={<SearchPage />} />
@@ -39,6 +53,10 @@ function App() {
         <Route path="/app/pickups/incoming" element={<RequireAuth><PickupDashboard key="incoming" incoming /></RequireAuth>} />
         <Route path="/app/pickups/:requestId" element={<RequireAuth><PickupDetail /></RequireAuth>} />
       </Routes>
+      </div>
+      <footer className="site-footer"><p>Useful things, shared freely. One account for giving and finding.</p>
+        <Link to="/app">Demo gift collection</Link><Link to="/app/search">Demo gift search</Link>
+      </footer>
     </>
   );
 }

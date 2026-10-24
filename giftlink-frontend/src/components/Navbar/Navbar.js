@@ -1,58 +1,44 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAppContext } from '../../context/AuthContext';
+import './Navbar.css';
 
 export default function Navbar() {
-    const { isLoggedIn, userName, logout, status } = useAppContext();
-    const [error, setError] = useState('');
-    const [busy, setBusy] = useState(false);
-    const navigate = useNavigate();
-
-    const handleLogout = async () => {
-        setBusy(true); setError('');
-        try { await logout(); navigate('/app'); }
-        catch { setError('Logout could not be confirmed. Please try again.'); }
-        finally { setBusy(false); }
-    };
-
-    const profileSection = () => {
-        navigate('/app/profile');
-    };
-
-    return (
-        <nav className="navbar navbar-expand-lg navbar-light bg-light" id="navbar_container">
-            <Link className="navbar-brand" to="/app">GiftLink</Link>
-            <div className="navbar-collapse" id="navbarNav">
-                <ul className="navbar-nav">
-                    <li className="nav-item"><a className="nav-link" href="/home.html">Home</a></li>
-                    <li className="nav-item"><Link className="nav-link" to="/app">Gifts</Link></li>
-                    <li className="nav-item"><Link className="nav-link" to="/app/search">Search</Link></li>
-                    <li className="nav-item"><Link className="nav-link" to="/app/plans">My Plans</Link></li>
-                    <li className="nav-item"><Link className="nav-link" to="/app/items">Free items</Link></li>
-                    {isLoggedIn && <><li className="nav-item"><Link className="nav-link" to="/app/pickups">My requests</Link></li>
-                      <li className="nav-item"><Link className="nav-link" to="/app/pickups/incoming">Incoming requests</Link></li></>}
-                </ul>
-                <ul className="navbar-nav ml-auto">
-                    {status === 'loading' ? <li role="status">Checking session…</li> : isLoggedIn ? (
-                        <>
-                            <li className="nav-item">
-                                <button type="button" className="nav-link btn btn-link text-dark" onClick={profileSection}>
-                                    Welcome, {userName}
-                                </button>
-                            </li>
-                            <li className="nav-item">
-                                <button type="button" className="nav-link btn btn-link login-btn" onClick={handleLogout} disabled={busy}>{busy ? 'Logging out…' : 'Logout'}</button>
-                            </li>
-                        </>
-                    ) : (
-                        <>
-                            <li className="nav-item"><Link className="nav-link login-btn" to="/app/login">Login</Link></li>
-                            <li className="nav-item"><Link className="nav-link register-btn" to="/app/register">Register</Link></li>
-                        </>
-                    )}
-                </ul>
-            </div>
-            {error && <p role="alert">{error}</p>}
-        </nav>
-    );
+  const { isLoggedIn, userName, logout, status } = useAppContext();
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const menuButton = useRef(null);
+  const location = useLocation(); const navigate = useNavigate();
+  useEffect(() => { setOpen(false); }, [location.pathname, location.search, location.hash]);
+  const give = location.pathname.startsWith('/app/plans') || location.pathname === '/app/pickups/incoming' || location.state?.journey === 'give';
+  const find = location.pathname.startsWith('/app/items') || location.pathname === '/app/pickups' || location.state?.journey === 'find';
+  const account = ['/app/profile', '/app/login', '/app/register'].includes(location.pathname);
+  const handleLogout = async () => {
+    setBusy(true); setError('');
+    try { await logout(); setOpen(false); navigate('/'); }
+    catch { setError('Logout could not be confirmed. Please try again.'); }
+    finally { setBusy(false); }
+  };
+  return <header className="site-header" onKeyDown={event => {
+    if (event.key === 'Escape' && open) { setOpen(false); menuButton.current?.focus(); }
+  }}>
+    <div className="site-header-inner">
+      <Link className="site-brand" to="/" onClick={() => setOpen(false)}>Move-Out Marketplace</Link>
+      <button className="site-menu-button" ref={menuButton} aria-expanded={open} aria-controls="primary-navigation" onClick={() => setOpen(value => !value)}>{open ? 'Close menu' : 'Menu'}</button>
+      <nav id="primary-navigation" className={`site-navigation ${open ? 'is-open' : ''}`} aria-label="Primary">
+        <ul onClick={() => setOpen(false)}>
+          <li><Link to={location.pathname === '/app/items' ? location.pathname + location.search : '/app/items'} aria-current={find ? 'location' : undefined}>Find Free Items</Link></li>
+          <li><Link to="/app/plans" aria-current={give ? 'location' : undefined}>Give Away</Link></li>
+          <li><Link to={status === 'anonymous' ? '/app/login' : '/app/profile'} aria-current={account ? 'location' : undefined}>Account</Link></li>
+        </ul>
+        <div className="site-session">
+          {status === 'loading' ? <span role="status">Checking session…</span> : isLoggedIn ? <>
+            <span>Signed in as {userName}</span><button onClick={handleLogout} disabled={busy}>{busy ? 'Logging out…' : 'Logout'}</button>
+          </> : <span>Browse freely. To give or request,<br />log in or register under Account.</span>}
+        </div>
+      </nav>
+    </div>
+    {error && <p className="site-nav-error" role="alert">{error}</p>}
+  </header>;
 }

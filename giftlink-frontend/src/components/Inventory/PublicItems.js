@@ -4,6 +4,7 @@ import { apiRequest } from '../../api/client';
 import { formatDeadline, utcToday } from '../MoveOutPlans/dates';
 import '../MoveOutPlans/Plans.css';
 import './Inventory.css';
+import JourneyNav from '../Journeys/JourneyNav';
 
 const normalize = value => value.trim().replace(/\s+/g, ' ');
 const key = value => normalize(value).toLowerCase();
@@ -97,6 +98,7 @@ function Discovery() {
     setFields(previous => ({ ...previous, [name]: value, ...(name === 'city' ? { neighborhood: '' } : {}), ...(name === 'availability' ? { date: '' } : {}) }));
   };
   return <main className="plans-page discovery-page">
+    <JourneyNav journey="find" />
     <h1>Free items near your neighborhood</h1>
     <p>Browse any city or neighborhood. Location filters help you find items; people from any community may browse.</p>
     <form className="discovery-filters" onSubmit={submit}>
@@ -162,6 +164,7 @@ function PublicItemDetail({ itemId }) {
     catch { setMessage('Copy the link from the field above.'); }
   };
   return <main className="plans-page discovery-page">
+    <JourneyNav journey="find" discoverySearch={previous || ''} />
     <Link to={`/app/items${typeof previous === 'string' && previous.startsWith('?') ? previous : ''}`}>Back to free items</Link>
     {current.loading && <p role="status">Loading listing…</p>}
     {current.error && <div role="alert"><p>{current.error.status === 404 ? 'This listing is no longer available.' : current.error.message}</p>
@@ -171,7 +174,7 @@ function PublicItemDetail({ itemId }) {
       {item.category && <p className="discovery-category">{item.category}</p>}
       <PickupWindow item={item} />
       <h2>Description</h2><p className="public-item-description">{item.description || 'No additional description provided.'}</p>
-      {item.pickupTimeZone ? <><p>Pickup timezone: {item.pickupTimeZone}</p><Link className="btn btn-primary" to={`/app/items/${item.id}/request`}>Request pickup</Link>
+      {item.pickupTimeZone ? <><p>Pickup timezone: {item.pickupTimeZone}</p><Link className="btn btn-primary" to={`/app/items/${item.id}/request`} state={{ discoverySearch: previous }}>Request pickup</Link>
         <p>A request does not reserve the item. The giver must accept an appointment.</p></> : <p>The giver needs to set a pickup timezone before this listing can receive requests.</p>}
       {item.publishedAt && <p>First published: <time dateTime={item.publishedAt}>{formatDeadline(item.publishedAt.slice(0, 10))}</time>. Publication is separate from pickup dates.</p>}
       <div className="plan-field"><label htmlFor="share-listing">Share this listing</label><input id="share-listing" type="url" readOnly value={shareUrl} onFocus={event => event.target.select()} /></div>

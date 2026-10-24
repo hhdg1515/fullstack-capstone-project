@@ -15,7 +15,7 @@ export default function Profile() {
     catch (failure) { setError(failure.fields?.map(field => `${field.field}: ${field.message}`).join('. ') || failure.message); }
     finally { setBusy(false); }
   };
-  return <div className="profile-container"><h1>Your account</h1>
+  return <main className="profile-container"><h1>Your account</h1>
     <p><b>Email:</b> {user.email}</p>
     <form onSubmit={submit}>
       {['firstName', 'lastName'].map(field => <label key={field} htmlFor={field}>
@@ -26,5 +26,5 @@ export default function Profile() {
       {message && <p role="status">{message}</p>}
       <button disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
     </form>
-  </div>;
+  </main>;
 }

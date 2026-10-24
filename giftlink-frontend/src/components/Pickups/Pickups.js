@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiRequest } from '../../api/client';
 import usePlansData from '../MoveOutPlans/usePlansData';
 import '../MoveOutPlans/Plans.css';
 import './Pickups.css';
+import JourneyNav from '../Journeys/JourneyNav';
 
 export const pickupLabels = { pending: 'Awaiting giver decision', accepted: 'Accepted appointment', declined: 'Declined', cancelled: 'Cancelled', completed: 'Handed over', no_show: 'Receiver did not arrive' };
 const actionLabels = { accept: 'Accept pickup', decline: 'Decline request', cancel: 'Cancel request', complete: 'Confirm handoff', no_show: 'Record no-show' };
@@ -18,6 +19,7 @@ function LoadState({ data }) {
 }
 export function RequestPickup() {
   const { itemId } = useParams(); const navigate = useNavigate();
+  const discoverySearch = useLocation().state?.discoverySearch || '';
   const data = usePlansData(`/api/items/${encodeURIComponent(itemId)}`);
   const item = data.data?.item;
   const [localDateTime, setTime] = useState(''); const [note, setNote] = useState('');
@@ -26,11 +28,11 @@ export function RequestPickup() {
     event.preventDefault(); if (busy) return; setBusy(true); setError('');
     try {
       const result = await apiRequest('/api/pickup-requests', { method: 'POST', body: { itemId, localDateTime, timeZone: item.pickupTimeZone, note: note.trim() } });
-      navigate(`/app/pickups/${result.request.id}`, { replace: true });
+      navigate(`/app/pickups/${result.request.id}`, { replace: true, state: { journey: 'find' } });
     } catch (failure) { setError(failure.fields?.map(field => `${field.field}: ${field.message}`).join('. ') || failure.message); }
     finally { setBusy(false); }
   };
-  return <main className="plans-page pickup-page"><Link to={`/app/items/${itemId}`}>Back to listing</Link><h1>Request pickup</h1><LoadState data={data} />
+  return <main className="plans-page pickup-page"><JourneyNav journey="find" discoverySearch={discoverySearch} /><Link to={`/app/items/${itemId}`} state={{ discoverySearch }}>Back to listing</Link><h1>Request pickup</h1><LoadState data={data} />
     {item && <><h2>{item.name}</h2><p>{item.neighborhood}, {item.city}</p>
       {!item.pickupTimeZone ? <p role="alert">The giver must set a pickup timezone before requests can be submitted.</p> : <form className="plan-form" onSubmit={submit} aria-busy={busy}>
         <p>A request does not reserve the item. Wait for the giver to accept. Each listing is one pickup unit, including groups of items.</p>
@@ -52,8 +54,7 @@ export function PickupDashboard({ incoming = false }) {
   const [cursor, setCursor] = useState(''); const [status, setStatus] = useState('');
   const query = new URLSearchParams(); if (cursor) query.set('cursor', cursor); if (status) query.set('status', status);
   const data = usePlansData(`/api/pickup-requests/${incoming ? 'received' : 'sent'}?${query}`);
-  return <main className="plans-page pickup-page"><h1>{incoming ? 'Incoming pickup requests' : 'My pickup requests'}</h1>
-    <p><Link to={incoming ? '/app/pickups' : '/app/pickups/incoming'}>{incoming ? 'My requests as receiver' : 'Incoming requests as giver'}</Link></p>
+  return <main className="plans-page pickup-page"><JourneyNav journey={incoming ? 'give' : 'find'} /><h1>{incoming ? 'Incoming pickup requests' : 'My pickup requests'}</h1>
     <p>Pending requests do not reserve items. Accepted appointments are arrangements; only a recorded handoff means the item was collected.</p>
     <div className="plan-field"><label htmlFor="pickup-filter">Request status</label><select id="pickup-filter" value={status} onChange={event => { setStatus(event.target.value); setCursor(''); }}>
       <option value="">All requests</option>{Object.entries(pickupLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
@@ -62,7 +63,7 @@ export function PickupDashboard({ incoming = false }) {
     {data.data && <>
       {!data.data.requests.length && <p>No pickup requests here yet.</p>}
       <ul className="plans-grid">{data.data.requests.map(request => <li className="plan-panel" key={request.id}>
-        <h2><Link to={`/app/pickups/${request.id}`}>{request.item?.name || 'Former listing'}</Link></h2><p className="plan-status">{pickupLabels[request.status]}</p>
+        <h2><Link to={`/app/pickups/${request.id}`} state={{ journey: incoming ? 'give' : 'find' }}>{request.item?.name || 'Former listing'}</Link></h2><p className="plan-status">{pickupLabels[request.status]}</p>
         <p>{incoming ? 'Receiver' : 'Giver'}: {request.counterpart.firstName}</p><Appointment request={request} />
         {incoming && request.plan && <p><Link to={`/app/plans/${request.plan.id}`}>{request.plan.title || 'Move-out plan'}</Link></p>}
       </li>)}</ul>
@@ -89,7 +90,7 @@ export function PickupDetail() {
     ...(['pending', 'accepted'].includes(request.status) ? ['cancel'] : []),
     ...(request.role === 'giver' && request.status === 'accepted' ? ['complete', 'no_show'] : [])
   ] : [];
-  return <main className="plans-page pickup-page"><Link to={request?.role === 'giver' ? '/app/pickups/incoming' : '/app/pickups'}>Back to requests</Link>
+  return <main className="plans-page pickup-page">{request && <JourneyNav journey={request.role === 'giver' ? 'give' : 'find'} planId={request.plan?.id} />}<Link to={request?.role === 'giver' ? '/app/pickups/incoming' : '/app/pickups'}>Back to requests</Link>
     <h1>Pickup request</h1><LoadState data={data} />{error && <p role="alert">{error}</p>}
     <button className="btn btn-outline-secondary" disabled={busy} onClick={data.retry}>Reload request</button>
     {request && <article className="plan-panel"><h2>{request.item?.name || 'Former listing'}</h2><p className="plan-status">{pickupLabels[request.status]}</p>

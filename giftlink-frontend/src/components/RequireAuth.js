@@ -7,6 +7,6 @@ export default function RequireAuth({ children }) {
   const location = useLocation();
   if (status === 'loading') return <p role="status">Checking your session…</p>;
   if (status === 'error') return <div role="alert">{error} <button onClick={() => refreshSession().catch(() => {})}>Retry</button></div>;
-  if (status !== 'authenticated') return <Navigate to="/app/login" replace state={{ from: location.pathname }} />;
+  if (status !== 'authenticated') return <Navigate to="/app/login" replace state={{ from: location.pathname + location.search + location.hash }} />;
   return children;
 }

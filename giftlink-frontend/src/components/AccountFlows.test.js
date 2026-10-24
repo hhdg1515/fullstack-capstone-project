@@ -16,7 +16,7 @@ function renderPage(path) {
       <Route path="/app/profile" element={<RequireAuth><Profile /></RequireAuth>} />
       <Route path="/app/login" element={<LoginPage />} />
       <Route path="/app/register" element={<RegisterPage />} />
-      <Route path="/app" element={<p>Public browsing</p>} />
+      <Route path="/" element={<p>Public browsing</p>} />
     </Routes></AuthProvider>
   </MemoryRouter>);
 }
@@ -74,7 +74,7 @@ test('account updates use PATCH /me and show server-confirmed values', async () 
   expect(await screen.findByText('Account updated.')).toBeInTheDocument();
   expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({ firstName: 'Updated', lastName: 'Giver' });
   expect(fetch.mock.calls[1][1].method).toBe('PATCH');
-  expect(screen.getByRole('button', { name: 'Welcome, Updated' })).toBeInTheDocument();
+  expect(screen.getByText('Signed in as Updated')).toBeInTheDocument();
 });
 test('expiry during an account update removes private UI and shows the login message', async () => {
   fetch.mockResolvedValueOnce(reply(200, { user })).mockResolvedValueOnce(reply(401, { error: { code: 'SESSION_EXPIRED', message: 'Please log in again' } }));

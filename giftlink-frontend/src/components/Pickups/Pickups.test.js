@@ -81,7 +81,7 @@ test('private dashboards provide loading, empty/error/retry and role navigation'
   expect(await screen.findByRole('alert')).toHaveTextContent('Temporary failure');
   fetch.mockResolvedValue(response({ requests: [], nextCursor: null })); await click(screen.getByRole('button', { name: 'Retry requests' }));
   expect(await screen.findByText('No pickup requests here yet.')).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'My requests as receiver' })).toHaveAttribute('href', '/app/pickups');
+  expect(screen.getByRole('navigation', { name: 'Give Away' })).toBeInTheDocument();
 });
 test('giver dashboard displays appointment timezone and plan, and filters accepted appointments with bounded next pages', async () => {
   fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { requests: [{ ...base, role: 'giver', plan: { id: 'plan', title: 'Summer move' } }], nextCursor: base.id }));

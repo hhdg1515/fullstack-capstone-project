@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {urlConfig} from '../../config';
 
 function MainPage() {
@@ -39,7 +39,9 @@ function MainPage() {
     };
 
     return (
-        <div className="container mt-5">
+        <main className="container mt-5">
+            <h1>Demo gift collection</h1>
+            <p><Link to="/app/items">Find community listings</Link> or browse the original collection below.</p>
             <div className="row">
                 {gifts.map((gift) => (
                     <div key={gift.id} className="col-md-4 mb-4">
@@ -69,7 +71,7 @@ function MainPage() {
                     </div>
                 ))}
             </div>
-        </div>
+        </main>
     );
 }
 
