@@ -1,11 +1,12 @@
 const { ObjectId } = require('mongodb');
 const { todayUTC, isCalendarDate } = require('./calendar');
 const { planTransaction, dateConflicts, effectiveStatus, InventoryError } = require('./inventory');
+const { invalidateRequests, confirmationRequired } = require('./pickup-policy');
 
-const planProjection = { title: 1, moveOutDeadline: 1, city: 1, neighborhood: 1, status: 1, createdAt: 1, updatedAt: 1 };
+const planProjection = { title: 1, moveOutDeadline: 1, city: 1, neighborhood: 1, pickupTimeZone: 1, status: 1, createdAt: 1, updatedAt: 1 };
 function privatePlan(plan) {
     return { id: plan._id.toString(), title: plan.title, moveOutDeadline: plan.moveOutDeadline,
-        city: plan.city, neighborhood: plan.neighborhood, status: plan.status,
+        city: plan.city, neighborhood: plan.neighborhood, pickupTimeZone: plan.pickupTimeZone || null, status: plan.status,
         createdAt: plan.createdAt.toISOString(), updatedAt: plan.updatedAt.toISOString() };
 }
 
@@ -15,7 +16,7 @@ function createPlanService({ connectToDatabase }) {
         const db = await connectToDatabase();
         const now = new Date();
         const plan = { ownerId, title: data.title || '', moveOutDeadline: data.moveOutDeadline,
-            city: data.city, neighborhood: data.neighborhood, status: 'active', createdAt: now, updatedAt: now };
+            city: data.city, neighborhood: data.neighborhood, pickupTimeZone: data.pickupTimeZone || null, status: 'active', createdAt: now, updatedAt: now };
         const result = await db.collection('moveOutPlans').insertOne(plan);
         plan._id = result.insertedId;
         return privatePlan(plan);
@@ -34,6 +35,8 @@ function createPlanService({ connectToDatabase }) {
     }
     async function update(id, ownerId, changes) {
         const db = await connectToDatabase();
+        const confirmed = changes.confirmCancelRequests;
+        changes = Object.assign({}, changes); delete changes.confirmCancelRequests;
         return planTransaction(db, ownerId, id, async (previous, session) => {
             const next = Object.assign({}, previous, changes);
             if (next.moveOutDeadline !== previous.moveOutDeadline && next.moveOutDeadline < todayUTC()) {
@@ -45,6 +48,14 @@ function createPlanService({ connectToDatabase }) {
                 conflicts: affected.map(item => ({ id: item._id.toString(), name: item.name,
                     availableFrom: item.availableFrom, availableUntil: item.availableUntil }))
             });
+            const reason = next.status !== 'active' ? 'plan_inactive' : next.pickupTimeZone !== previous.pickupTimeZone ? 'timezone_changed' :
+                (next.city !== previous.city || next.neighborhood !== previous.neighborhood) ? 'location_changed' : null;
+            let pickupConflicts = 0;
+            for (const item of items) {
+                if (confirmed === true) await invalidateRequests(db, session, item, next, ownerId, true, reason);
+                else pickupConflicts += await invalidateRequests(db, session, item, next, ownerId, false, reason, true);
+            }
+            if (pickupConflicts) throw confirmationRequired(pickupConflicts);
             // An extension must not silently republish previously expired items.
             const expiredIds = items.filter(item => effectiveStatus(item, previous) === 'expired').map(item => item._id);
             if (expiredIds.length) await db.collection('items').updateMany({ _id: { $in: expiredIds }, ownerId, planId: previous._id },

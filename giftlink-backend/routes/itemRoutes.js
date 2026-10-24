@@ -14,9 +14,9 @@ function itemRules(editing) {
     const name = text('name', 160, true); if (editing) name.optional();
     const rules = [name, text('description', 2000, false).optional(), text('category', 80, false).optional(),
         body(['availableFrom', 'availableUntil']).optional({ nullable: true }).custom(isCalendarDate).withMessage('Use a valid YYYY-MM-DD calendar date')];
-    if (editing) rules.push(body('version').isInt({ min: 1 }).custom(value => typeof value === 'number'));
+    if (editing) rules.push(body('version').isInt({ min: 1 }).custom(value => typeof value === 'number'), body('confirmCancelRequests').optional().custom(value => typeof value === 'boolean'));
     else rules.push(body('publish').optional().isBoolean().custom(value => typeof value === 'boolean'));
-    return validate(['name', 'description', 'category', 'availableFrom', 'availableUntil', editing ? 'version' : 'publish'], rules, editing);
+    return validate(['name', 'description', 'category', 'availableFrom', 'availableUntil', editing ? 'version' : 'publish'].concat(editing ? ['confirmCancelRequests'] : []), rules, editing);
 }
 function createItemRoutes({ connectToDatabase, auth, discoveryLimit = 120 }) {
     const service = createInventoryService({ connectToDatabase });
@@ -36,7 +36,8 @@ function createItemRoutes({ connectToDatabase, auth, discoveryLimit = 120 }) {
     privateRouter.patch('/:itemId', itemRules(true), async (req, res, next) => {
         try { res.json(await service.mutate(req.user._id, req.params.planId, req.params.itemId, req.body)); } catch (error) { next(error); }
     });
-    privateRouter.post('/:itemId/actions', validate(['action', 'version'], [
+    privateRouter.post('/:itemId/actions', validate(['action', 'version', 'confirmCancelRequests'], [
+        body('confirmCancelRequests').optional().custom(value => typeof value === 'boolean'),
         body('action').isString().bail().isIn(['publish', 'unlist', 'clear', 'reopen']), body('version').isInt({ min: 1 }).custom(value => typeof value === 'number')
     ]), async (req, res, next) => {
         try { res.json(await service.mutate(req.user._id, req.params.planId, req.params.itemId, req.body, req.body.action)); } catch (error) { next(error); }

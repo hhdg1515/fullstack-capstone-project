@@ -1,0 +1,5 @@
+.pickup-page { max-width: 64rem; overflow-wrap: anywhere; }
+.pickup-note { white-space: pre-wrap; }
+.pickup-page input, .pickup-page textarea, .pickup-page select { max-width: 100%; }
+.pickup-page h3 { margin-top: 1.25rem; font-size: 1.15rem; }
+@media (max-width: 600px) { .pickup-page .plan-actions { flex-direction: column; align-items: stretch; } }

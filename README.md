@@ -1,6 +1,6 @@
-# GiftLink — Neighborhood Discovery
+# GiftLink — Pickup Coordination
 
-GiftLink remains a React, Express, Node.js, and MongoDB native-driver application. Milestone 4 adds anonymous neighborhood discovery with search, city/neighborhood selectors, pickup-window filters, sorting, cursor pagination, and shareable details. Existing plan inventory, lifecycle actions and authenticated ownership stay intact. Public GiftLink browsing/search and all 16 demo records remain separate and unchanged. Messaging, reservations, pickup appointments, payments, shipping, property integrations, image uploads, and geographical APIs are not implemented.
+GiftLink remains a React, Express, Node.js, and MongoDB native-driver application. Milestone 5 adds private two-party pickup requests, giver-controlled acceptance, appointments, cancellations, handoffs and no-shows. Anonymous neighborhood discovery, plan inventory and authenticated ownership remain intact. Public GiftLink browsing/search and all 16 demo records remain separate and unchanged. Messaging, notifications, payments, shipping, property integrations, image uploads, and geographical APIs are not implemented.
 
 ## Requirements
 
@@ -97,6 +97,7 @@ The tool rechecks the live target and accounts before creating:
 - A non-unique compound `moveOutPlans` index on `{ ownerId: 1, moveOutDeadline: 1, _id: 1 }` for private owner listings in deadline order.
 - Non-unique `items` indexes on `{ planId: 1, ownerId: 1, createdAt: 1, _id: 1 }` and `{ status: 1, publishedAt: -1, _id: -1 }` for management and public discovery.
 - Non-unique `items_pickup_start` on `{ status: 1, availableFrom: 1, publishedAt: -1, _id: -1 }` for pickup-start filtering during discovery.
+- Four `pickupRequests` indexes: `pickup_received` on `{ giverId: 1, _id: -1 }`, `pickup_sent` on `{ receiverId: 1, _id: -1 }`, unique `pickup_one_accepted` on `{ itemId: 1 }` **only where `status: "accepted"`**, and unique `pickup_active_receiver` on `{ itemId: 1, receiverId: 1 }` **only where `active: true`**. Exact partial predicates and binary collation are checked on startup/preparation; a broader/different predicate is incompatible.
 
 Equivalent existing indexes, including ones with different names, are retained. Repeated initialization is safe. Incompatible names, keys, uniqueness, sparse/partial/collation settings, or TTL values block preparation; the command never drops indexes or changes them with `collMod`. It never normalizes, deletes, merges, or claims accounts. Resolve email/index conflicts through a separately reviewed migration with backups and authorized access; the report intentionally does not identify private accounts. A missing/blank/non-string email is an invalid-email conflict. Other existing email syntax is not automatically revalidated or repaired.
 
@@ -104,7 +105,7 @@ Pause application writers during preparation. Preflight cannot prevent concurren
 
 Normal server startup only **checks** these indexes; it never creates them, imports demo data, or migrates accounts/plans. Startup fails closed if required indexes are missing. Prepare a new database before starting the backend; it will still have no gifts or plan documents until an explicit seed operation or authenticated plan creation.
 
-**Upgrading from Milestone 3:** run the same preview/approval workflow before startup. The preview retains the five compatible existing indexes and reports creation of `items_pickup_start`. Initialization preserves accounts, sessions, plans, items, and gifts; no label normalization or document migration is performed. The transaction-capable target requirement, `db:prepare` interface and remote safeguards are unchanged. Replica-set initialization remains separate administration and is never performed by startup or `db:prepare`.
+**Upgrading from Milestone 4:** run the same preview/approval workflow before startup. The preview retains the six compatible existing indexes and reports four pickup indexes. It reports duplicate accepted/active-receiver request groups using counts only and blocks conflicting data/indexes; it never repairs, merges or cancels requests as an administration side effect. Initialization preserves accounts, sessions, plans, items, requests and gifts; no label normalization or document migration is performed. Existing plans have no pickup timezone: their listings stay browsable, and the giver must explicitly set a timezone in Edit plan before receiving requests. The transaction-capable target requirement, `db:prepare` interface and remote safeguards are unchanged. Replica-set initialization remains separate administration and is never performed by startup or `db:prepare`.
 
 ### Remote MongoDB and deployment preparation
 
@@ -236,12 +237,12 @@ All endpoints require the existing valid session cookie; writes also require the
 
 | Endpoint | Behavior |
 | --- | --- |
-| `POST /api/move-out-plans` | `{ moveOutDeadline, city, neighborhood, title? }` → `201 { plan }` plus a Location header. Ownership, status, and timestamps are server-derived. |
+| `POST /api/move-out-plans` | `{ moveOutDeadline, city, neighborhood, title?, pickupTimeZone? }` → `201 { plan }` plus a Location header. Ownership, status, and timestamps are server-derived. |
 | `GET /api/move-out-plans` | `200 { plans: [...] }` for the current owner only, sorted by deadline then ID. Query parameters cannot select another owner. |
 | `GET /api/move-out-plans/:id` | `200 { plan }` for an owned plan. |
-| `PATCH /api/move-out-plans/:id` | Nonempty partial update of title/deadline/city/neighborhood/status → `200 { plan }`. |
+| `PATCH /api/move-out-plans/:id` | Nonempty partial update of title/deadline/city/neighborhood/status/pickupTimeZone, optional `confirmCancelRequests` → `200 { plan }`. |
 
-A plan DTO contains only `id`, `title`, `moveOutDeadline`, `city`, `neighborhood`, `status`, `createdAt`, and `updatedAt`. Private contact, address, password, and session fields are excluded by database inclusion projections and response serialization. Read and update queries include both the plan ID and the authenticated owner ID; updates never trust a supplied owner. Missing, malformed, and other users' plan IDs share `404 PLAN_NOT_FOUND`. Validation uses `400 VALIDATION_FAILED` with field messages without submitted values. Missing/expired sessions use `401`; invalid write origins use `403`.
+A plan DTO contains only `id`, `title`, `moveOutDeadline`, `city`, `neighborhood`, `pickupTimeZone` (null when unset), `status`, `createdAt`, and `updatedAt`. Private contact, address, password, and session fields are excluded by database inclusion projections and response serialization. Read and update queries include both the plan ID and the authenticated owner ID; updates never trust a supplied owner. Missing, malformed, and other users' plan IDs share `404 PLAN_NOT_FOUND`. Validation uses `400 VALIDATION_FAILED` with field messages without submitted values. Missing/expired sessions use `401`; invalid write origins use `403`.
 
 Each plan can now have any number of incremental items, including zero. Plan editing never copies location/deadline into item documents. A shorter deadline that conflicts with item overrides returns `409 ITEM_DATE_CONFLICT` with the affected owned item IDs/names/dates. The edit form leaves the proposed plan unchanged, links to those item editors in new tabs, and keeps its draft. Explicitly edit/clear the overrides or choose another deadline, then retry. There is no silent date truncation or bulk account/data repair.
 
@@ -262,7 +263,7 @@ The inventory shows each state, effective date window, status filtering, and cle
 
 Effective earliest pickup is the explicit `availableFrom`, or **immediately** when omitted. Effective latest pickup is `availableUntil`, or the current plan deadline when omitted. Validate an explicit start against the effective end, and require `end <= plan deadline`. Publishing/reopening additionally requires `end >= today (UTC)`. The end date is inclusive. Historical drafts, withdrawn items and cleared items can retain past dates for recordkeeping. All date inputs remain calendar strings and use the existing UTC comparison policy.
 
-Future pickup starts do not delay publication: a published listing is offered now, with its future pickup window clearly displayed. `publishedAt` means first public visibility, not a pickup appointment. Exact times and neighborhood timezones remain deferred.
+Future pickup starts do not delay publication: a published listing is offered now, with its future pickup window clearly displayed. `publishedAt` means first public visibility, not a pickup appointment. Date-only discovery retains UTC comparisons; explicit appointment timezones are described below.
 
 | State/action | Behavior |
 | --- | --- |
@@ -317,9 +318,68 @@ Cards show name, optional category, general location, **Available Now** or **Ava
 
 Unknown parameters, repeated/array/object values, oversized text, invalid dates, excessive page sizes and unsupported sort/filter modes return `400 INVALID_DISCOVERY_QUERY`. Text errors never echo submitted values. `GET /api/items/locations` accepts no query parameters.
 
-Each feed response is `{ items, today, page: { limit, hasMore, nextCursor } }`. `today` is the server's UTC calendar date. `nextCursor` is `null` at the end. Item/detail DTOs retain the Milestone 3 public fields and add `availability: "now" | "later"`; detail also returns `today`. Owner IDs, plan IDs, versions, credentials and private fields remain excluded.
+Each feed response is `{ items, today, page: { limit, hasMore, nextCursor } }`. `today` is the server's UTC calendar date. `nextCursor` is `null` at the end. Item/detail DTOs retain the Milestone 3 public fields and add `availability: "now" | "later"` and `pickupTimeZone` (IANA string or null); detail also returns `today`. Owner IDs, plan IDs, versions, credentials and private fields remain excluded.
 
-**Now** means the explicit start is today/past or omitted; **Later** means an explicit start is after today. General browsing includes both. For a selected date, an item matches only if its start is omitted or on/before the date, and its effective end (`availableUntil ?? plan.moveOutDeadline`) is on/after the date. Boundaries are inclusive. Expired items are excluded even if a caller requests another date. Publication time is never substituted for a pickup start. React displays the API's availability classification and uses UTC-preserving calendar formatting. Neighborhood-specific timezone/date-time design remains deferred.
+**Now** means the explicit start is today/past or omitted; **Later** means an explicit start is after today. General browsing includes both. For a selected date, an item matches only if its start is omitted or on/before the date, and its effective end (`availableUntil ?? plan.moveOutDeadline`) is on/after the date. Boundaries are inclusive. Expired items are excluded even if a caller requests another date. Publication time is never substituted for a pickup start. React displays the API's availability classification and uses UTC-preserving calendar formatting. Changing this existing discovery-date convention to neighborhood-specific dates remains deferred.
+
+## Pickup coordination and handoff
+
+1. The giver explicitly selects **Pickup timezone** in Create/Edit plan, using an IANA identifier such as `America/Los_Angeles`, `Asia/Kolkata`, or `UTC`. No browser, city lookup, environment variable, offset or geocoder supplies a hidden default. Setup is optional for legacy browsing and required to receive pickup requests.
+2. A receiver follows **Request pickup** on a public detail link, signs in if necessary, selects a local date/time in the displayed giver timezone, and optionally leaves a private note (500 plain-text characters). Each listing, including a box/group, is one indivisible pickup unit. No residential address is requested. Suggest general public rendezvous instructions rather than personal contact/address details.
+3. **Incoming requests** consolidates the giver's requests across all plans; **My requests** shows the receiver's proposals. Filter by status to review accepted appointments. Lists use 25-record pages with Next/First controls. A private detail retains the item's full description after withdrawal/clearance, shows the other party's first name only, appointment timezone, note, status and action history. A receiver never receives private plan title/ID; the giver sees a management link to their own plan.
+4. The giver accepts/declines. A pending request never reserves an item. An accepted appointment reserves that entire listing until cancellation, no-show or completion; it is not a recorded handoff. Other pending proposals remain pending. New submissions are blocked while reserved, although public discovery remains available. Cancel a proposal and submit a new one to change its time; no counteroffer/chat is implemented.
+5. Either party can cancel; the giver records the actual handoff or a no-show after the scheduled time. Completion clears the item and cancels competing requests atomically. No-show releases the reservation without clearing the item or selecting another receiver. All actions require confirmation and a fresh request version.
+
+### Time semantics
+
+The API accepts a minute-precision local `YYYY-MM-DDTHH:mm` and the plan's explicit `timeZone`. The server uses pinned `@js-temporal/polyfill` with the Node/ICU IANA timezone database, converts with `disambiguation: "reject"`, and stores `proposedAt` as a BSON UTC instant plus `localDateTime` and `timeZone`. Invalid dates, past instants, nonexistent spring-forward times and repeated fall-back times are rejected. Choose a different unambiguous time; callers cannot override ambiguity with a supplied offset. React formats the stored instant in the recorded timezone, even when the viewer's browser uses another zone.
+
+Availability **labels** retain their existing YYYY-MM-DD values. For appointments, the proposed instant's date **in the giver-selected timezone** must fall between explicit `availableFrom` (or immediate) and `availableUntil ?? moveOutDeadline`, inclusive. The instant must also be before **00:00 UTC on the following end date**, preserving the existing global listing expiration. For example, a Los Angeles listing ending July 3 cannot book 11pm local July 3, because it has already expired in UTC; choose an earlier time or extend its dates. This deliberate extra cutoff prevents a future accepted appointment from outliving listing availability. Discovery's Now/Later badges still use the existing UTC date convention, so they describe calendar eligibility rather than a neighborhood's exact current clock time.
+
+Expired listings reject new requests and acceptances. Pending proposals whose time has passed cannot be accepted; either party can cancel or the giver can decline them. Accepted appointments whose time has passed remain available for truthful handoff/no-show reporting, including after date expiry; expiry alone does not falsely record a missed or successful pickup. No background job changes their outcome. Completion/no-show before the scheduled instant is refused. Giver-declared zones can be wrong, and future timezone legislation/ICU updates can change wall-clock rendering: the stored UTC appointment remains authoritative. Location verification, time rescheduling/counteroffers, grace periods and a neighborhood-aware expiry migration need later product decisions.
+
+### State machine, authorization and concurrency
+
+| From | Action | Authorized party | To / effect |
+| --- | --- | --- | --- |
+| New | Submit | Signed-in receiver other than owner | `pending`; no reservation |
+| `pending` | Accept | Giver | `accepted`; one reservation |
+| `pending` | Decline | Giver | `declined` |
+| `pending`, `accepted` | Cancel | Either party | `cancelled`; release reservation |
+| `accepted` | Confirm handoff | Giver, at/after appointment | `completed`; clear item and cancel competitors |
+| `accepted` | Record no-show | Giver, after appointment | `no_show`; release without clearing |
+
+Terminal requests cannot reopen. A new proposal is a new request. Documents store server-derived giver/receiver/item/plan IDs, appointment, status, `active` (pending/accepted), timestamps, decision/completion timestamps, monotonically increasing version, and actor/time history. Participant DTOs expose actor roles and timestamps, never actor IDs or account secrets. IDs from the browser never establish ownership. Nonparticipants receive 404. Writes reuse session, Origin, CSRF header, JSON, bounded validation and safe logging conventions. Notes never enter public discovery or application logs. Pickup endpoints have an in-process 120 requests/minute/IP limit; deployment proxy/distributed-limit decisions remain as documented for discovery.
+
+All request creation/decisions and inventory/plan writes touch the same parent plan inside a snapshot/majority transaction. MongoDB write conflicts retry against fresh data. Acceptance rechecks listing ownership/state, plan status, appointment/window and existing reservation; unique partial indexes independently enforce one accepted request per item and one active proposal per receiver/item. Stale request versions return `409 PICKUP_CHANGED`. Concurrent submissions, competing accepts, completion/no-show races and withdrawal races are tested. Completion updates the request, clears/version-increments the item, and cancels competing proposals in one transaction. Locks are plan-scoped rather than held while a user reviews a dialog; very large/busy plans may need a narrower measured coordination strategy later.
+
+### Inventory conflicts
+
+| Inventory change | Outstanding-request behavior |
+| --- | --- |
+| Unlist / external clearance | Cancel all pending/accepted requests; retain unlisted versus cleared distinction |
+| Complete/cancel plan | Cancel all outstanding requests; hide its listings |
+| Change plan timezone or city/neighborhood | Cancel all outstanding requests so an acceptance never silently changes place/time interpretation |
+| Change item dates or plan deadline | Keep requests still inside the new window; cancel incompatible ones |
+| Edit description/name or compatible dates | Preserve requests and reservations |
+| Successful pickup | Complete selected request, clear item, cancel all competing pending proposals |
+| Cancellation/no-show | Release only that reservation; other requests stay pending; never auto-transfer |
+
+Consequential edits first return `409 PICKUP_CONFIRMATION_REQUIRED` with a count and no mutation. React asks explicitly whether to cancel affected requests, then retries with boolean `confirmCancelRequests: true`. Backend rechecks the current state and cancels affected requests with reason, giver actor, time and version increment **in the same transaction** as the edit. A denied confirmation leaves both unchanged. Existing `ITEM_DATE_CONFLICT` checks still require invalid item date overrides to be resolved before shortening a plan; confirmation does not bypass date validation. Reopening a cleared item never restores old requests.
+
+### Authenticated pickup API
+
+| Endpoint | Contract |
+| --- | --- |
+| `POST /api/pickup-requests` | `{ itemId, localDateTime, timeZone, note? }` → `201 { request }` |
+| `GET /api/pickup-requests/sent` | Current receiver's requests, newest ID first |
+| `GET /api/pickup-requests/received` | Current giver's requests, newest ID first |
+| `GET /api/pickup-requests/:id` | Participant-only `{ request }`, including private item details |
+| `POST /api/pickup-requests/:id/actions` | `{ action: "accept" | "decline" | "cancel" | "complete" | "no_show", version }` → `{ request }` |
+
+Lists accept optional `status` (one of the six states) and `cursor` (the previous page's `nextCursor`); return `{ requests, nextCursor }`, with at most 25 rows. Every page is scoped to the session/role. Unknown, structured, repeated or malformed parameters fail validation. Creation returns a clear 409 if a listing changed, timezone setup is missing/changed, the receiver already has an active proposal, or another pickup is accepted. Protected request routes are `/app/items/:id/request`, `/app/pickups`, `/app/pickups/incoming`, and `/app/pickups/:id`.
+
+Milestone 6 still needs messaging/contact and rendezvous UX, notifications, moderation/reporting, data retention, no-show grace/dispute handling, timezone verification/rescheduling and production abuse controls. This milestone supplies no exact address, chat, notifications, ratings, payments, shipping or external location service.
 
 ### MongoDB pagination, safety and limits
 
@@ -370,7 +430,7 @@ CI=true TZ=America/Los_Angeles npm test -- --watchAll=false --runInBand
 CI=true REACT_APP_BACKEND_URL= npm run build
 ```
 
-GitHub Actions runs frozen installs, backend lint and isolated API/identity/plan/inventory/discovery/preparation tests, frontend account/session/plan/inventory/discovery tests in a non-UTC timezone, and the strict build on PRs to `main` and pushes to `main`. It uses no application/production credentials and does not deploy.
+GitHub Actions runs frozen installs, backend lint and isolated API/identity/plan/inventory/discovery/pickup/preparation tests, frontend account/session/plan/inventory/discovery/pickup tests in a non-UTC timezone, and the strict build on PRs to `main` and pushes to `main`. It uses no application/production credentials and does not deploy.
 
 ## Migration and remaining limitations
 

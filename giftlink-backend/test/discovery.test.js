@@ -40,7 +40,7 @@ describe('anonymous neighborhood discovery on verified isolated MongoDB', functi
         assert.equal(visible.city, 'Oakland'); assert.equal(visible.neighborhood, 'North Temescal');
         assert.equal(visible.availability, 'now');
         assert.deepEqual(Object.keys(visible).sort(), ['id', 'name', 'description', 'category', 'status', 'availability', 'availableFrom',
-            'availableUntil', 'effectiveAvailableUntil', 'city', 'neighborhood', 'moveOutDeadline', 'publishedAt'].sort());
+            'availableUntil', 'effectiveAvailableUntil', 'city', 'neighborhood', 'moveOutDeadline', 'publishedAt', 'pickupTimeZone'].sort());
         for (const secret of [plan.ownerId.toString(), plan._id.toString(), 'private-plan@example.test', 'Private plan title',
             'private-street', 'private-item@example.test', 'private-token', 'hash-secret', 'unit-secret', 'version']) {
             assert.ok(!JSON.stringify(response.body).includes(secret));

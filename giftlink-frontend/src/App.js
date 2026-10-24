@@ -13,6 +13,7 @@ import Navbar from './components/Navbar/Navbar';
 import { MyPlans, CreatePlan, PlanDetail, EditPlan } from './components/MoveOutPlans/Plans';
 import Inventory from './components/Inventory/Inventory';
 import PublicItems from './components/Inventory/PublicItems';
+import { RequestPickup, PickupDashboard, PickupDetail } from './components/Pickups/Pickups';
 
 function App() {
   return (
@@ -33,6 +34,10 @@ function App() {
         <Route path="/app/plans/:planId/items" element={<RequireAuth><Inventory /></RequireAuth>} />
         <Route path="/app/items" element={<PublicItems />} />
         <Route path="/app/items/:itemId" element={<PublicItems />} />
+        <Route path="/app/items/:itemId/request" element={<RequireAuth><RequestPickup /></RequireAuth>} />
+        <Route path="/app/pickups" element={<RequireAuth><PickupDashboard key="sent" /></RequireAuth>} />
+        <Route path="/app/pickups/incoming" element={<RequireAuth><PickupDashboard key="incoming" incoming /></RequireAuth>} />
+        <Route path="/app/pickups/:requestId" element={<RequireAuth><PickupDetail /></RequireAuth>} />
       </Routes>
     </>
   );

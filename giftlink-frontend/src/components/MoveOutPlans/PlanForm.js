@@ -9,8 +9,8 @@ export default function PlanForm({ initialPlan, onSave }) {
   const editing = Boolean(initialPlan);
   const [values, setValues] = useState(() => initialPlan ? {
     moveOutDeadline: initialPlan.moveOutDeadline, city: initialPlan.city, neighborhood: initialPlan.neighborhood,
-    title: initialPlan.title, status: initialPlan.status,
-  } : { moveOutDeadline: '', city: '', neighborhood: '', title: '' });
+    title: initialPlan.title, status: initialPlan.status, pickupTimeZone: initialPlan.pickupTimeZone || '',
+  } : { moveOutDeadline: '', city: '', neighborhood: '', title: '', pickupTimeZone: '' });
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState({});
   const [error, setError] = useState('');
@@ -26,6 +26,8 @@ export default function PlanForm({ initialPlan, onSave }) {
     setError('');
     setConflicts([]);
     const details = { ...values, title: values.title.trim(), city: values.city.trim(), neighborhood: values.neighborhood.trim() };
+    details.pickupTimeZone = values.pickupTimeZone.trim() || null;
+    if (!details.pickupTimeZone && !initialPlan?.pickupTimeZone) delete details.pickupTimeZone;
     const issues = {};
     if (!isCalendarDate(details.moveOutDeadline)) issues.moveOutDeadline = 'Choose a valid move-out date.';
     else if (details.moveOutDeadline < utcToday() && details.moveOutDeadline !== initialPlan?.moveOutDeadline) {
@@ -74,6 +76,12 @@ export default function PlanForm({ initialPlan, onSave }) {
         </select>
         {errors.status && <p className="plan-field-error" id="plan-status-error">{errors.status}</p>}
       </div>}
+      <div className="plan-field"><label htmlFor="plan-timezone">Pickup timezone (needed to receive requests)</label>
+        <input id="plan-timezone" name="pickupTimeZone" list="pickup-timezones" maxLength={100} value={values.pickupTimeZone} onChange={change} placeholder="America/Los_Angeles" />
+        <datalist id="pickup-timezones">{['UTC', ...(Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : ['America/Los_Angeles', 'America/New_York', 'Europe/London', 'Asia/Kolkata'])].map(zone => <option value={zone} key={zone} />)}</datalist>
+        <small>Choose the timezone at the pickup location yourself. We do not infer it from your browser or city. Existing listings remain browsable without it. Changing the timezone or general location cancels outstanding requests after confirmation.</small>
+        {errors.pickupTimeZone && <p className="plan-field-error">{errors.pickupTimeZone}</p>}
+      </div>
     </fieldset>
     {error && <p role="alert" className="plan-field-error">{error}</p>}
     {conflicts.length > 0 && <section aria-label="Items needing date changes" className="plan-panel">
