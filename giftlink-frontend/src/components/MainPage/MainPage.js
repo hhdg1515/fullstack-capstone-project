@@ -1,29 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import {urlConfig} from '../../config';
+import { apiRequest } from '../../api/client';
+import { giftListResponse } from '../../api/gifts';
 
 function MainPage() {
     const [gifts, setGifts] = useState([]);
     const navigate = useNavigate();
 
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [attempt, setAttempt] = useState(0);
     useEffect(() => {
-        // Fetch all gifts
-        const fetchGifts = async () => {
-            try {
-                const url = `${urlConfig.backendUrl}/api/gifts`;
-                const response = await fetch(url);
-                if (!response.ok) {
-                    throw new Error(`HTTP error; ${response.status}`);
-                }
-                const data = await response.json();
-                setGifts(data);
-            } catch (error) {
-                console.log('Fetch error: ' + error.message);
-            }
-        };
-
-        fetchGifts();
-    }, []);
+        let active = true;
+        setLoading(true); setError('');
+        apiRequest('/api/gifts', { validate: giftListResponse }).then(data => {
+            if (active) setGifts(data);
+        }).catch(failure => { if (active) setError(failure.message); })
+            .finally(() => { if (active) setLoading(false); });
+        return () => { active = false; };
+    }, [attempt]);
 
     const goToDetailsPage = (productId) => {
         navigate(`/app/product/${productId}`);
@@ -42,8 +37,11 @@ function MainPage() {
         <main className="container mt-5">
             <h1>Demo gift collection</h1>
             <p><Link to="/app/items">Find community listings</Link> or browse the original collection below.</p>
-            <div className="row">
-                {gifts.map((gift) => (
+            {loading && <p role="status">Loading gifts…</p>}
+            {error && <div role="alert"><p>{error}</p><button className="btn btn-outline-secondary" onClick={() => setAttempt(value => value + 1)}>Retry gifts</button></div>}
+            {!loading && !error && !gifts.length && <p>No gifts are available yet.</p>}
+            <div className="row" aria-busy={loading}>
+                {!loading && !error && gifts.map((gift) => (
                     <div key={gift.id} className="col-md-4 mb-4">
                         <div className="card product-card">
                             <div className="image-placeholder">

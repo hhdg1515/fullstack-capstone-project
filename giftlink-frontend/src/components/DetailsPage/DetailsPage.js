@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import './DetailsPage.css';
-import { urlConfig } from '../../config';
+import { apiRequest } from '../../api/client';
+import { giftResponse } from '../../api/gifts';
 
 function DetailsPage() {
     const navigate = useNavigate();
@@ -10,26 +11,17 @@ function DetailsPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    const [attempt, setAttempt] = useState(0);
     useEffect(() => {
-        const fetchGift = async () => {
-            try {
-                const url = `${urlConfig.backendUrl}/api/gifts/${productId}`;
-                const response = await fetch(url);
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                const data = await response.json();
-                setGift(data);
-            } catch (error) {
-                setError(error.message);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchGift();
+        let active = true;
+        setLoading(true); setError(null); setGift(null);
+        apiRequest('/api/gifts/' + encodeURIComponent(productId), { validate: giftResponse }).then(data => {
+            if (active) setGift(data);
+        }).catch(failure => { if (active) setError(failure.message); })
+            .finally(() => { if (active) setLoading(false); });
         window.scrollTo(0, 0);
-    }, [productId, navigate]);
+        return () => { active = false; };
+    }, [productId, attempt]);
 
     const handleBackClick = () => {
         navigate(-1);
@@ -44,8 +36,10 @@ function DetailsPage() {
         { author: "Sarah Wilson", comment: "My family can use one. DM me if it is still available. Thank you!" }
     ];
 
-    if (loading) return <div>Loading...</div>;
-    if (error) return <div>Error: {error}</div>;
+    if (loading) return <p role="status">Loading gift…</p>;
+    if (error) return <main className="container mt-5"><h1>Gift details unavailable</h1>
+        <p role="alert">{error}</p><button className="btn btn-outline-secondary" onClick={() => setAttempt(value => value + 1)}>Retry gift</button>
+        <p><Link to="/app">Back to gift collection</Link></p></main>;
     if (!gift) return <div>Gift not found</div>;
 
     return (

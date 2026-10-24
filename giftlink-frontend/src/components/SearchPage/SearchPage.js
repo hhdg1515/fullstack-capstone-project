@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './SearchPage.css';
-import { urlConfig } from '../../config';
+import { apiRequest } from '../../api/client';
+import { giftListResponse } from '../../api/gifts';
 
 function SearchPage() {
     const [searchQuery, setSearchQuery] = useState('');
@@ -14,45 +15,27 @@ function SearchPage() {
     const conditions = ['New', 'Like New', 'Older'];
     const navigate = useNavigate();
 
+    const [requestPath, setRequestPath] = useState('/api/gifts');
+    const [attempt, setAttempt] = useState(0);
     useEffect(() => {
-        const fetchProducts = async () => {
-            try {
-                const response = await fetch(`${urlConfig.backendUrl}/api/gifts`);
-                if (!response.ok) {
-                    throw new Error(`HTTP error: ${response.status}`);
-                }
-                setSearchResults(await response.json());
-            } catch (err) {
-                console.error('Fetch error:', err);
-                setError('Unable to load gifts. Please try again.');
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchProducts();
-    }, []);
+        let active = true;
+        setLoading(true); setError('');
+        apiRequest(requestPath, { validate: giftListResponse }).then(data => {
+            if (active) setSearchResults(data);
+        }).catch(failure => { if (active) setError(failure.message); })
+            .finally(() => { if (active) setLoading(false); });
+        return () => { active = false; };
+    }, [requestPath, attempt]);
 
-    const handleSearch = async () => {
+    const handleSearch = () => {
         const queryParams = new URLSearchParams({
             name: searchQuery,
             age_years: ageRange,
             category: document.getElementById('categorySelect').value,
             condition: document.getElementById('conditionSelect').value,
         }).toString();
-        setLoading(true);
-        setError('');
-        try {
-            const response = await fetch(`${urlConfig.backendUrl}/api/search?${queryParams}`);
-            if (!response.ok) {
-                throw new Error('Search failed');
-            }
-            setSearchResults(await response.json());
-        } catch (err) {
-            console.error('Failed to fetch search results:', err);
-            setError('Search failed. Please try again.');
-        } finally {
-            setLoading(false);
-        }
+        setRequestPath('/api/search?' + queryParams);
+        setAttempt(value => value + 1);
     };
 
     const goToDetailsPage = (productId) => {
@@ -109,9 +92,9 @@ function SearchPage() {
 
                     <div className="search-results mt-4">
                         {loading ? (
-                            <div>Loading...</div>
+                            <p role="status">Loading gifts…</p>
                         ) : error ? (
-                            <div className="alert alert-danger" role="alert">{error}</div>
+                            <div className="alert alert-danger" role="alert"><p>{error}</p><button onClick={() => setAttempt(value => value + 1)}>Retry search</button></div>
                         ) : searchResults.length > 0 ? (
                             searchResults.map(product => (
                                 <div key={product.id} className="card search-results-card mb-3">

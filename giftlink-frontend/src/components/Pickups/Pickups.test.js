@@ -8,7 +8,7 @@ import PublicItems from '../Inventory/PublicItems';
 import { RequestPickup, PickupDashboard, PickupDetail } from './Pickups';
 import { confirmPickupChanges } from '../../api/confirmPickupChanges';
 
-const user = { id: 'receiver', firstName: 'Reader' };
+const user = { id: 'receiver', firstName: 'Reader', lastName: 'Neighbor', email: 'reader@example.test' };
 const item = { id: '64a000000000000000000001', name: 'Kitchen box', description: 'One whole box.', city: 'Oakland', neighborhood: 'Temescal',
   pickupTimeZone: 'Asia/Kolkata', availableFrom: '2030-07-01', effectiveAvailableUntil: '2030-07-03', availability: 'later' };
 const base = { id: '64a000000000000000000002', role: 'receiver', status: 'pending', version: 1, note: 'Meet by the library', item,
