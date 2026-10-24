@@ -1,16 +1,12 @@
 const { ObjectId } = require('mongodb');
+const { todayUTC, isCalendarDate } = require('./calendar');
+const { planTransaction, dateConflicts, effectiveStatus, InventoryError } = require('./inventory');
 
 const planProjection = { title: 1, moveOutDeadline: 1, city: 1, neighborhood: 1, status: 1, createdAt: 1, updatedAt: 1 };
 function privatePlan(plan) {
     return { id: plan._id.toString(), title: plan.title, moveOutDeadline: plan.moveOutDeadline,
         city: plan.city, neighborhood: plan.neighborhood, status: plan.status,
         createdAt: plan.createdAt.toISOString(), updatedAt: plan.updatedAt.toISOString() };
-}
-const todayUTC = (now = new Date()) => now.toISOString().slice(0, 10);
-function isCalendarDate(value) {
-    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-    const date = new Date(value + 'T00:00:00.000Z');
-    return !Number.isNaN(date.getTime()) && todayUTC(date) === value;
 }
 
 function createPlanService({ connectToDatabase }) {
@@ -38,10 +34,26 @@ function createPlanService({ connectToDatabase }) {
     }
     async function update(id, ownerId, changes) {
         const db = await connectToDatabase();
-        const plan = await db.collection('moveOutPlans').findOneAndUpdate(owned(id, ownerId), {
-            $set: Object.assign({}, changes, { updatedAt: new Date() })
-        }, { returnDocument: 'after', projection: planProjection });
-        return plan ? privatePlan(plan) : null;
+        return planTransaction(db, ownerId, id, async (previous, session) => {
+            const next = Object.assign({}, previous, changes);
+            if (next.moveOutDeadline !== previous.moveOutDeadline && next.moveOutDeadline < todayUTC()) {
+                throw new InventoryError(400, 'VALIDATION_FAILED', 'Choose today or a later deadline (UTC).');
+            }
+            const items = await db.collection('items').find({ planId: previous._id, ownerId }, { session }).toArray();
+            const affected = items.filter(item => dateConflicts(item, next));
+            if (affected.length) throw new InventoryError(409, 'ITEM_DATE_CONFLICT', 'Resolve the listed item dates before changing this deadline. Your plan was not changed.', {
+                conflicts: affected.map(item => ({ id: item._id.toString(), name: item.name,
+                    availableFrom: item.availableFrom, availableUntil: item.availableUntil }))
+            });
+            // An extension must not silently republish previously expired items.
+            const expiredIds = items.filter(item => effectiveStatus(item, previous) === 'expired').map(item => item._id);
+            if (expiredIds.length) await db.collection('items').updateMany({ _id: { $in: expiredIds }, ownerId, planId: previous._id },
+                { $set: { status: 'expired', updatedAt: new Date() }, $inc: { version: 1 } }, { session });
+            const plan = await db.collection('moveOutPlans').findOneAndUpdate(owned(id, ownerId), {
+                $set: Object.assign({}, changes, { updatedAt: new Date() })
+            }, { session, returnDocument: 'after', projection: planProjection });
+            return privatePlan(plan);
+        });
     }
     return { create, list, find, update };
 }

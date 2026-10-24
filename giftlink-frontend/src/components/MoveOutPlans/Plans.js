@@ -61,6 +61,7 @@ export function PlanDetail() {
     <LoadState request={request} />
     {plan && <>
       <div className="plan-page-header"><h1>{heading(plan)}</h1><Link className="btn btn-outline-primary" to={`/app/plans/${plan.id}/edit`}>Edit plan</Link></div>
+      <p><Link className="btn btn-primary" to={`/app/plans/${plan.id}/items`}>Manage items</Link></p>
       {['Plan created.', 'Plan updated.'].includes(state?.message) && <p role="status">{state.message}</p>}
       <section className="plan-panel" aria-label="Plan details">
         <dl className="plan-details">

@@ -28,6 +28,7 @@ export default function Navbar() {
                     <li className="nav-item"><Link className="nav-link" to="/app">Gifts</Link></li>
                     <li className="nav-item"><Link className="nav-link" to="/app/search">Search</Link></li>
                     <li className="nav-item"><Link className="nav-link" to="/app/plans">My Plans</Link></li>
+                    <li className="nav-item"><Link className="nav-link" to="/app/items">Free items</Link></li>
                 </ul>
                 <ul className="navbar-nav ml-auto">
                     {status === 'loading' ? <li role="status">Checking session…</li> : isLoggedIn ? (

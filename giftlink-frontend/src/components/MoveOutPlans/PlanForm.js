@@ -14,6 +14,7 @@ export default function PlanForm({ initialPlan, onSave }) {
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState({});
   const [error, setError] = useState('');
+  const [conflicts, setConflicts] = useState([]);
   const change = event => {
     const { name, value } = event.target;
     setValues(current => ({ ...current, [name]: value }));
@@ -23,6 +24,7 @@ export default function PlanForm({ initialPlan, onSave }) {
     event.preventDefault();
     if (busy) return;
     setError('');
+    setConflicts([]);
     const details = { ...values, title: values.title.trim(), city: values.city.trim(), neighborhood: values.neighborhood.trim() };
     const issues = {};
     if (!isCalendarDate(details.moveOutDeadline)) issues.moveOutDeadline = 'Choose a valid move-out date.';
@@ -41,6 +43,7 @@ export default function PlanForm({ initialPlan, onSave }) {
     catch (failure) {
       setError(failure.message || 'Could not save your plan. Please try again.');
       setErrors(Object.fromEntries((failure.fields || []).map(field => [field.field, field.message])));
+      setConflicts(failure.conflicts || []);
     } finally { setBusy(false); }
   };
   const fields = [
@@ -73,6 +76,14 @@ export default function PlanForm({ initialPlan, onSave }) {
       </div>}
     </fieldset>
     {error && <p role="alert" className="plan-field-error">{error}</p>}
+    {conflicts.length > 0 && <section aria-label="Items needing date changes" className="plan-panel">
+      <h2>Resolve item dates first</h2>
+      <p>Your plan and item dates have not changed. Open the affected items in a new tab, edit or clear their pickup date overrides, then retry this form. Your draft stays here.</p>
+      <ul>{conflicts.map(item => <li key={item.id}>
+        <a href={`/app/plans/${initialPlan.id}/items?edit=${item.id}`} target="_blank" rel="noopener noreferrer">{item.name} (opens new tab)</a>
+        {' — '}{item.availableFrom || 'Immediately'} to {item.availableUntil || 'Plan deadline'}
+      </li>)}</ul>
+    </section>}
     <div className="plan-actions">
       <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Create plan'}</button>
       <Link to={editing ? `/app/plans/${initialPlan.id}` : '/app/plans'}>Cancel</Link>

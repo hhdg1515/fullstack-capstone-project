@@ -63,7 +63,7 @@ async function createIsolatedMongo() {
         const started = await docker([
             'run', '--detach', '--name', name,
             '--label', 'com.giftlink.test-run=' + runId,
-            '--publish', '127.0.0.1::27017', imageId, '--bind_ip_all'
+            '--publish', '127.0.0.1::27017', imageId, '--bind_ip_all', '--replSet', 'giftlink-test'
         ]);
         containerId = started.stdout.trim();
         assert.match(containerId, /^[a-f0-9]{64}$/);
@@ -78,11 +78,11 @@ async function createIsolatedMongo() {
         assert.equal(ports.length, 1);
         assert.equal(ports[0].HostIp, '127.0.0.1');
         assert.match(ports[0].HostPort, /^[0-9]+$/);
-        const mongoUrl = 'mongodb://127.0.0.1:' + ports[0].HostPort;
+        const mongoUrl = 'mongodb://127.0.0.1:' + ports[0].HostPort + '/?directConnection=true';
         database = createDatabase({
             mongoUrl,
             dbName,
-            clientOptions: { serverSelectionTimeoutMS: 1000 }
+            clientOptions: { serverSelectionTimeoutMS: 1000, directConnection: true }
         });
 
         let db;
@@ -107,6 +107,15 @@ async function createIsolatedMongo() {
         ]);
         assert.match(containerHello.stdout.trim(), /^[a-f0-9]{24}$/);
         assert.equal(hello.topologyVersion.processId.toHexString(), containerHello.stdout.trim());
+        // The container, database and actual process are now verified. Initialize
+        // only this disposable single-member replica set so tests use real transactions.
+        await docker(['exec', containerId, 'mongosh', '--quiet', '--eval',
+            'rs.initiate({_id:"giftlink-test",members:[{_id:0,host:"127.0.0.1:27017"}]})']);
+        const electionDeadline = Date.now() + 30000;
+        while (!(await db.command({ hello: 1 })).isWritablePrimary) {
+            if (Date.now() >= electionDeadline) throw new Error('Isolated replica set did not elect a primary');
+            await pause();
+        }
         assert.deepEqual(await db.listCollections().toArray(), []);
         return { db, mongoUrl, dbName, close };
     } catch (error) {

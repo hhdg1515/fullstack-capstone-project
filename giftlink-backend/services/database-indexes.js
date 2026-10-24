@@ -8,7 +8,9 @@ const definitions = [
     { collection: 'users', name: 'users_email_unique', key: { email: 1 }, options: { unique: true, collation: { locale: 'simple' } } },
     { collection: 'sessions', name: 'sessions_expiry', key: { expiresAt: 1 }, options: { expireAfterSeconds: 0, collation: { locale: 'simple' } } },
     { collection: 'moveOutPlans', name: 'move_out_plans_owner_deadline', key: { ownerId: 1, moveOutDeadline: 1, _id: 1 },
-        options: { collation: { locale: 'simple' } } }
+        options: { collation: { locale: 'simple' } } },
+    { collection: 'items', name: 'items_plan_owner', key: { planId: 1, ownerId: 1, createdAt: 1, _id: 1 }, options: { collation: { locale: 'simple' } } },
+    { collection: 'items', name: 'items_publication', key: { status: 1, publishedAt: -1, _id: -1 }, options: { collation: { locale: 'simple' } } }
 ];
 const sameKey = (index, definition) => JSON.stringify(index.key) === JSON.stringify(definition.key);
 function compatible(index, definition) {

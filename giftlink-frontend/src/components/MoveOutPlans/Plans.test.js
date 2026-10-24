@@ -206,3 +206,18 @@ test('changing accounts discards a draft from the previous account’s creation 
 test('calendar date display does not shift a January 1 deadline into the previous year', () => {
   expect(formatDeadline('2028-01-01')).toBe('Jan 1, 2028');
 });
+test('deadline conflicts name affected items, preserve the proposed date, and link to explicit item-date resolution', async () => {
+  fetch.mockResolvedValueOnce(reply(200, { plan })).mockResolvedValueOnce(reply(409, { error: {
+    code: 'ITEM_DATE_CONFLICT', message: 'Resolve item dates first', conflicts: [{ id: 'item-one', name: 'Late chair', availableFrom: null, availableUntil: deadline }]
+  } }));
+  mount(`/app/plans/${plan.id}/edit`); await screen.findByLabelText('Move-out deadline');
+  const proposed = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
+  fireEvent.change(screen.getByLabelText('Move-out deadline'), { target: { value: proposed } });
+  submit('Save changes');
+  expect(await screen.findByRole('alert')).toHaveTextContent('Resolve item dates first');
+  const link = screen.getByRole('link', { name: 'Late chair (opens new tab)' });
+  expect(link).toHaveAttribute('target', '_blank');
+  expect(link).toHaveAttribute('href', `/app/plans/${plan.id}/items?edit=item-one`);
+  expect(screen.getByLabelText('Move-out deadline')).toHaveValue(proposed);
+  expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled();
+});

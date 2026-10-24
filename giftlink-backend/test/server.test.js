@@ -12,9 +12,10 @@ const { readServerConfig } = require('../config');
 
 describe('server bootstrap and configuration', function () {
     const logger = pino({ level: 'silent' });
-    const indexedDb = { collection: name => ({ indexes: async () => name === 'users' ?
+    const indexedDb = { command: async () => ({ ok: 1, setName: 'isolated-test' }), collection: name => ({ indexes: async () => name === 'users' ?
         [{ key: { email: 1 }, unique: true }] : name === 'sessions' ? [{ key: { expiresAt: 1 }, expireAfterSeconds: 0 }] :
-        [{ key: { ownerId: 1, moveOutDeadline: 1, _id: 1 } }] }) };
+        name === 'moveOutPlans' ? [{ key: { ownerId: 1, moveOutDeadline: 1, _id: 1 } }] :
+        [{ key: { planId: 1, ownerId: 1, createdAt: 1, _id: 1 } }, { key: { status: 1, publishedAt: -1, _id: -1 } }] }) };
 
     afterEach(function () {
         sinon.restore();
@@ -69,6 +70,12 @@ describe('server bootstrap and configuration', function () {
         await assert.rejects(startServer({ port: 0 }, { database, logger }), /Database indexes are required/);
         assert.equal(listen.callCount, 0);
         assert.equal(database.close.callCount, 1);
+    });
+    it('refuses standalone MongoDB without initializing a replica set or listening', async function () {
+        const database = { connect: async () => Object.assign({}, indexedDb, { command: async () => ({ ok: 1 }) }), close: sinon.stub().resolves() };
+        const listen = sinon.spy(express.application, 'listen');
+        await assert.rejects(startServer({ port: 0 }, { database, logger }), /replica set required/);
+        assert.equal(listen.callCount, 0); assert.equal(database.close.callCount, 1);
     });
 
     it('closes the database when the HTTP port is already occupied', async function () {
