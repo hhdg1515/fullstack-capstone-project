@@ -51,7 +51,7 @@ describe('transactional plan inventory on verified isolated MongoDB', function (
             for (const field of ['city', 'neighborhood', 'moveOutDeadline', 'price', 'address']) assert.equal(item[field], undefined);
         });
         assert.equal(response.headers['cache-control'], 'no-store');
-        assert.deepEqual((await request(app).get('/api/items').expect(200)).body, { items: [] });
+        assert.deepEqual((await request(app).get('/api/items').expect(200)).body.items, []);
     });
     it('publishes with distinct first-publication time and future pickup dates, retaining the timestamp on relist', async function () {
         let item = (await create({ availableFrom: day(5), availableUntil: day(10) })).body.item;

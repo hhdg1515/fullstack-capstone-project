@@ -1,9 +1,11 @@
 const express = require('express');
-const { body, query, validationResult } = require('express-validator');
+const { body } = require('express-validator');
+const { rateLimit } = require('express-rate-limit');
 const { validate } = require('../middleware/validation');
 const { errorResponse } = require('../middleware/identity');
 const { isCalendarDate } = require('../services/calendar');
 const { createInventoryService } = require('../services/inventory');
+const { createDiscoveryService } = require('../services/discovery');
 const id = value => /^[a-fA-F0-9]{24}$/.test(value);
 const text = (field, max, required) => body(field).isString().bail().trim().isLength({ min: required ? 1 : 0, max }).bail()
     .not().matches(required ? /[<>\u0000-\u001f\u007f]/ : /[<>\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/)
@@ -16,8 +18,9 @@ function itemRules(editing) {
     else rules.push(body('publish').optional().isBoolean().custom(value => typeof value === 'boolean'));
     return validate(['name', 'description', 'category', 'availableFrom', 'availableUntil', editing ? 'version' : 'publish'], rules, editing);
 }
-function createItemRoutes({ connectToDatabase, auth }) {
+function createItemRoutes({ connectToDatabase, auth, discoveryLimit = 120 }) {
     const service = createInventoryService({ connectToDatabase });
+    const discovery = createDiscoveryService({ connectToDatabase });
     const privateRouter = express.Router({ mergeParams: true });
     privateRouter.use(auth.requireAuth, (req, res, next) => {
         if (!id(req.params.planId)) return errorResponse(res, 404, 'ITEM_NOT_FOUND', 'Item or plan not found');
@@ -40,16 +43,16 @@ function createItemRoutes({ connectToDatabase, auth }) {
     });
     const publicRouter = express.Router();
     publicRouter.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
-    publicRouter.get('/', query(['q', 'city', 'neighborhood']).optional().isString().bail().trim().isLength({ max: 100 }), async (req, res, next) => {
-        if (!validationResult(req).isEmpty()) return errorResponse(res, 400, 'VALIDATION_FAILED', 'Use search text of at most 100 characters');
-        try { res.json({ items: await service.publicRead({ q: req.query.q, city: req.query.city, neighborhood: req.query.neighborhood }) }); } catch (error) { next(error); }
+    publicRouter.use(rateLimit({ windowMs: 60000, limit: discoveryLimit, standardHeaders: 'draft-7', legacyHeaders: false,
+        handler: (req, res) => errorResponse(res, 429, 'DISCOVERY_RATE_LIMIT', 'Too many discovery requests. Please wait a minute and retry.') }));
+    publicRouter.get('/', async (req, res, next) => {
+        try { res.json(await discovery.browse(req.query)); } catch (error) { next(error); }
+    });
+    publicRouter.get('/locations', async (req, res, next) => {
+        try { res.json(await discovery.locations(req.query)); } catch (error) { next(error); }
     });
     publicRouter.get('/:itemId', async (req, res, next) => {
-        try {
-            const rows = id(req.params.itemId) ? await service.publicRead({ id: req.params.itemId }) : [];
-            if (!rows.length) return errorResponse(res, 404, 'ITEM_NOT_FOUND', 'Listing unavailable');
-            res.json({ item: rows[0] });
-        } catch (error) { next(error); }
+        try { res.json(await discovery.detail(req.params.itemId)); } catch (error) { next(error); }
     });
     return { privateRouter, publicRouter };
 }

@@ -7,3 +7,15 @@
 .inventory-progress { padding: 1rem; background: #e7f2e9; border-radius: .25rem; }
 .inventory-page button { overflow-wrap: anywhere; }
 .public-item-description { white-space: pre-wrap; }
+.plans-page.discovery-page { max-width: 70rem; }
+.discovery-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); column-gap: 1rem; }
+.discovery-filters .plan-field { margin: .6rem 0; }
+.discovery-search, .discovery-filters .plan-actions { grid-column: 1 / -1; }
+.discovery-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); list-style: none; gap: 1rem; padding: 0; }
+.discovery-grid .plan-panel { margin: 0; }
+.discovery-card { min-width: 0; }
+.discovery-category { font-weight: 600; }
+.pickup-now { background: #e3f2e5; color: #185126; }
+.pickup-later { background: #eef0fa; color: #303d7b; }
+.discovery-more { margin: 1.5rem 0; }
+.discovery-page article > .btn { margin: .4rem .5rem .4rem 0; }

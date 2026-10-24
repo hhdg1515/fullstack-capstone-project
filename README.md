@@ -1,6 +1,6 @@
-# GiftLink — Move-out Inventory
+# GiftLink — Neighborhood Discovery
 
-GiftLink remains a React, Express, Node.js, and MongoDB native-driver application. Milestone 3 adds fast, plan-based item inventory: add multiple items or groups in one session, save drafts, publish, withdraw, clear, and reopen them. Items inherit their plan's current city, neighborhood, and deadline. Public GiftLink browsing/search and all 16 demo records remain separate and unchanged. Messaging, reservations, pickup appointments, payments, shipping, property integrations, image uploads, and geographical APIs are not implemented.
+GiftLink remains a React, Express, Node.js, and MongoDB native-driver application. Milestone 4 adds anonymous neighborhood discovery with search, city/neighborhood selectors, pickup-window filters, sorting, cursor pagination, and shareable details. Existing plan inventory, lifecycle actions and authenticated ownership stay intact. Public GiftLink browsing/search and all 16 demo records remain separate and unchanged. Messaging, reservations, pickup appointments, payments, shipping, property integrations, image uploads, and geographical APIs are not implemented.
 
 ## Requirements
 
@@ -96,6 +96,7 @@ The tool rechecks the live target and accounts before creating:
 - A TTL index on `sessions.expiresAt`; expiration is also enforced on every authenticated request.
 - A non-unique compound `moveOutPlans` index on `{ ownerId: 1, moveOutDeadline: 1, _id: 1 }` for private owner listings in deadline order.
 - Non-unique `items` indexes on `{ planId: 1, ownerId: 1, createdAt: 1, _id: 1 }` and `{ status: 1, publishedAt: -1, _id: -1 }` for management and public discovery.
+- Non-unique `items_pickup_start` on `{ status: 1, availableFrom: 1, publishedAt: -1, _id: -1 }` for pickup-start filtering during discovery.
 
 Equivalent existing indexes, including ones with different names, are retained. Repeated initialization is safe. Incompatible names, keys, uniqueness, sparse/partial/collation settings, or TTL values block preparation; the command never drops indexes or changes them with `collMod`. It never normalizes, deletes, merges, or claims accounts. Resolve email/index conflicts through a separately reviewed migration with backups and authorized access; the report intentionally does not identify private accounts. A missing/blank/non-string email is an invalid-email conflict. Other existing email syntax is not automatically revalidated or repaired.
 
@@ -103,7 +104,7 @@ Pause application writers during preparation. Preflight cannot prevent concurren
 
 Normal server startup only **checks** these indexes; it never creates them, imports demo data, or migrates accounts/plans. Startup fails closed if required indexes are missing. Prepare a new database before starting the backend; it will still have no gifts or plan documents until an explicit seed operation or authenticated plan creation.
 
-**Upgrading from Milestone 2:** verify a transaction-capable target, then run the same preview/approval workflow before startup. The preview retains compatible identity/plan indexes and reports the two item indexes. Initialization preserves accounts, sessions, plans, items, and gifts; it imports no records and never assigns demo gifts to a plan. The `db:prepare` interface and remote safeguards are unchanged. Replica-set initialization is separate administration and is never performed by application startup or `db:prepare`.
+**Upgrading from Milestone 3:** run the same preview/approval workflow before startup. The preview retains the five compatible existing indexes and reports creation of `items_pickup_start`. Initialization preserves accounts, sessions, plans, items, and gifts; no label normalization or document migration is performed. The transaction-capable target requirement, `db:prepare` interface and remote safeguards are unchanged. Replica-set initialization remains separate administration and is never performed by startup or `db:prepare`.
 
 ### Remote MongoDB and deployment preparation
 
@@ -280,7 +281,8 @@ Editing an expired item's dates keeps it expired until explicit publication. A p
 | `POST /api/move-out-plans/:planId/items` | `{ name, description?, category?, availableFrom?, availableUntil?, publish? }` → `201 { item }`. `publish` is an explicit boolean intent; default false. |
 | `PATCH /api/move-out-plans/:planId/items/:id` | Partial item details plus numeric `version` → `{ item }`. No ownership, status, price or shared-location changes. |
 | `POST /api/move-out-plans/:planId/items/:id/actions` | `{ action: "publish" | "unlist" | "clear" | "reopen", version }` → `{ item }`. |
-| `GET /api/items?q=&city=&neighborhood=` | Anonymous published discovery, at most 50 newest first-publication records. Name search is literal; city/neighborhood are exact case-insensitive labels. |
+| `GET /api/items` | Anonymous filtered, sorted and cursor-paginated discovery; see below. |
+| `GET /api/items/locations` | Public city/neighborhood options, derived exclusively from visible listings. |
 | `GET /api/items/:id` | Anonymous detail only while currently publicly offered; unavailable/nonexistent/malformed IDs all return 404. |
 
 Both item ownership and parent-plan ownership are required; mismatched/orphaned records cannot leak through management or public joins. All writes reuse sessions, Origin/CSRF/JSON requirements, bounded validation and safe error handling. `409 ITEM_CHANGED` rejects stale versions. Multi-document transactions touch the parent on **every** plan/item mutation, preventing concurrent deadline edits and item writes from committing incompatible data. Driver retries revalidate against a fresh snapshot. Public reads use snapshot aggregation joining the current plan and check matching ownership, active plan, publication, available state and effective end/range. The collection has no TTL index or automatic record deletion.
@@ -288,6 +290,48 @@ Both item ownership and parent-plan ownership are required; mismatched/orphaned 
 **Free items** (`/app/items`) demonstrates public search/detail separately from legacy Gifts. Public DTOs allowlist name, description, category, safe general location, pickup dates, deadline, state and first publication timestamp. Owner IDs, parent IDs, versions, email, contact/address fields, hashes and tokens are excluded. Responses and fetches use no-store; public pages refresh on focus or explicit refresh. Previously downloaded public text cannot be revoked, and an already-open page needs a refresh to reflect withdrawal.
 
 Publication blocks obvious restricted-goods keywords and email patterns, and the form requires safe, lawful household goods with no contact/address details in public text. This narrow, conservative filter is **not complete content moderation**: it can miss obfuscated or other prohibited goods and private details, and can reject harmless matching text. There is no automated safety guarantee, reporting/review system or external moderation service yet. Those controls and marketplace abuse handling need design before public launch; there is no claim that plain-text validation makes listings safe.
+
+## Anonymous neighborhood discovery
+
+Open **Free items** (`/app/items`) without registering, signing in, or selecting a location. Search names, full descriptions and optional tags, choose a city and/or neighborhood, filter pickup availability, and sort by newest publication or earliest effective pickup deadline. Location labels are approximate public text; they do not restrict who may browse or eventually receive an item. There is no location tracking, GPS permission, map, geocoder or external search provider.
+
+City/neighborhood selectors are populated from currently public listings and deduplicated after whitespace normalization and case-insensitive comparison, including common Unicode whitespace/case variants. Choosing a city narrows neighborhood suggestions and clears a previous neighborhood selection. With All cities, a neighborhood label searches across cities. A city can be selected without a neighborhood. Raw stored plan labels are preserved; comparison/display normalization happens at read time.
+
+Filters and sort order are stored in URL query parameters, so filtered pages can be shared and browser Back works normally. Changing filters restarts pagination, and late responses from an earlier query cannot replace new results. **Load more** appends the next server page and deduplicates IDs. Loading, empty, retry and expired-cursor states have explicit controls. Location-option failures have an independent retry and do not block general browsing. Focus/Refresh rechecks current publication visibility and restarts the first page while retaining filters.
+
+Cards show name, optional category, general location, **Available Now** or **Available Later**, earliest pickup when specified, and effective latest pickup. Details include the full description, first publication date, and a read-only direct URL with Copy link/manual-copy fallback. Links work anonymously. Cards use text; no photos are fabricated and no fake reservation/pickup control is provided.
+
+### Query and availability contract
+
+`GET /api/items` accepts only these single-valued parameters:
+
+| Parameter | Meaning/default |
+| --- | --- |
+| `q` | Optional literal phrase across name, description, or category. Case-insensitive; whitespace collapses. Maximum 100 input characters; regex operators are escaped. |
+| `city`, `neighborhood` | Optional exact labels after whitespace/case normalization. Each at most 100 input characters. Neither is required. |
+| `availability` | `all` (default), `now`, `later`, or `date`. |
+| `date` | Required only with `availability=date`: valid `YYYY-MM-DD`, today or later in UTC. Other combinations are rejected. |
+| `sort` | `newest` (default) or `deadline`. |
+| `limit` | Canonical integer 1–50; default 12. This is a per-page bound, replacing the old total 50-result cap. |
+| `cursor` | Opaque continuation from the previous page; retain the same filters, sort and page size. At most 1,024 characters. |
+
+Unknown parameters, repeated/array/object values, oversized text, invalid dates, excessive page sizes and unsupported sort/filter modes return `400 INVALID_DISCOVERY_QUERY`. Text errors never echo submitted values. `GET /api/items/locations` accepts no query parameters.
+
+Each feed response is `{ items, today, page: { limit, hasMore, nextCursor } }`. `today` is the server's UTC calendar date. `nextCursor` is `null` at the end. Item/detail DTOs retain the Milestone 3 public fields and add `availability: "now" | "later"`; detail also returns `today`. Owner IDs, plan IDs, versions, credentials and private fields remain excluded.
+
+**Now** means the explicit start is today/past or omitted; **Later** means an explicit start is after today. General browsing includes both. For a selected date, an item matches only if its start is omitted or on/before the date, and its effective end (`availableUntil ?? plan.moveOutDeadline`) is on/after the date. Boundaries are inclusive. Expired items are excluded even if a caller requests another date. Publication time is never substituted for a pickup start. React displays the API's availability classification and uses UTC-preserving calendar formatting. Neighborhood-specific timezone/date-time design remains deferred.
+
+### MongoDB pagination, safety and limits
+
+Search, location/date filtering, visibility and sorting run in MongoDB before page limiting. Public aggregation joins the current plan under snapshot read concern and always checks exact available/publication state, matching item/plan ownership, active plan and valid unexpired dates. Location metadata uses the same gate, so private/empty/inactive plans cannot leak location options. Details apply the gate again; draft, unlisted, cleared, expired, unpublished, orphaned or inactive-parent IDs return `404 ITEM_NOT_FOUND`. Direct URLs are not an authorization bypass.
+
+Newest ordering is `(publishedAt DESC, _id DESC)`; deadline ordering is `(effectiveAvailableUntil ASC, _id ASC)`. Keyset comparisons use the last displayed pair, with one extra record to determine `hasMore`; no offset/skip pagination is used for item pages. A continuation binds the normalized query, sort, page size and initial publication cutoff. Publications newer than the first request wait for a refresh. Cursors expire after 15 minutes or at the next UTC date boundary. Changed filters/page size/sort or malformed cursors return `400 INVALID_CURSOR`; expired/day-boundary cursors return `409 STALE_CURSOR`. The UI offers Start again. A withdrawn anchor need not remain public; its key is only a position, and every next-page record passes current visibility checks.
+
+Cursors are versioned base64url JSON containing public ordering keys and a query fingerprint. They are opaque client state, not encrypted secrets, signed capabilities or authentication. A forged position cannot override filters or reveal private records. Pagination is live, not a long-lived historical snapshot: item/plan edits can move records between pages or filters. The client deduplicates IDs; refresh to obtain a complete current ordering after changes. Already downloaded public text cannot be revoked.
+
+The existing publication and parent indexes remain useful; the new pickup-start index narrows now/later/date candidates. Effective deadlines and normalized locations depend on joined plan data and are not duplicated/backfilled into items. Substring/phrase regex search, cross-collection filters and deadline sorts can scan many candidates and do not offer external-search relevance, stemming, accent-insensitive matching or a precomputed location taxonomy. Aggregations have a 5-second execution cap and disallow disk spilling; time/memory limits return `503 DISCOVERY_BUSY`, asking the caller to narrow filters/retry. Public discovery/detail/options share a per-process limit of 120 requests/minute/IP and return `429 DISCOVERY_RATE_LIMIT` with retry guidance. Review proxy/IP configuration and distributed limiting with the chosen host.
+
+Location suggestions are capped at 500 distinct public city/neighborhood pairs with a `truncated` flag. Existing shared/API filters still work outside the suggestion list. There is no global geographic registry or guarantee that free-text labels represent official boundaries. Advanced search/index optimization and larger metadata catalogs are future scale decisions.
 
 ## Public gift API compatibility
 
@@ -312,7 +356,7 @@ The command only accepts loopback `mongodb://` targets, refuses production/SRV/p
 cd giftlink-backend
 npm run lint
 npm test
-# Public API, identity and private-plan integration suites:
+# Public API, identity, plans, inventory and discovery integration suites:
 npm run test:integration
 # Guarded database preparation suite (also included in npm test):
 npm run test:preparation
@@ -326,7 +370,7 @@ CI=true TZ=America/Los_Angeles npm test -- --watchAll=false --runInBand
 CI=true REACT_APP_BACKEND_URL= npm run build
 ```
 
-GitHub Actions runs frozen installs, backend lint and isolated API/identity/plan/preparation tests, frontend account/session/plan tests in a non-UTC timezone, and the strict frontend build on PRs to `main` and pushes to `main`. It uses no application/production credentials and does not deploy.
+GitHub Actions runs frozen installs, backend lint and isolated API/identity/plan/inventory/discovery/preparation tests, frontend account/session/plan/inventory/discovery tests in a non-UTC timezone, and the strict build on PRs to `main` and pushes to `main`. It uses no application/production credentials and does not deploy.
 
 ## Migration and remaining limitations
 
