@@ -9,5 +9,8 @@
     "remote:run": "node remote.cjs run",
     "remote:cleanup": "node remote.cjs cleanup"
   },
-  "devDependencies": { "@playwright/test": "1.64.1" }
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.64.1"
+  }
 }

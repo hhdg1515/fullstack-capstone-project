@@ -109,7 +109,7 @@ test('the diagnostic CLI records missing/invalid credential categories without H
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'bypass-diagnostic-'));
   try {
     for (const relative of ['deployment/staging-https-diagnostics.cjs', 'deployment/staging-preview.cjs', 'deployment/staging-target.cjs',
-      'deployment/frontend-config.cjs', 'deployment/vercel-api.cjs', 'e2e/https-preflight.cjs', 'e2e/vercel-bypass.cjs']) {
+      'deployment/frontend-config.cjs', 'deployment/vercel-api.cjs', 'deployment/readiness-snapshot.cjs', 'e2e/https-preflight.cjs', 'e2e/vercel-bypass.cjs']) {
       const destination = path.join(directory, relative); fs.mkdirSync(path.dirname(destination), { recursive: true });
       fs.copyFileSync(path.join(__dirname, '..', relative), destination);
     }

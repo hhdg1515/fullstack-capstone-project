@@ -6,6 +6,7 @@ const { frontendConfig } = require('./frontend-config.cjs');
 const { health, HttpsPreflightError } = require('../e2e/https-preflight.cjs');
 const { StagingError, vercelApi } = require('./vercel-api.cjs');
 const { AutomationBypassError, assertBypass, assertPrivateAutomation, bypassRequest, withoutBypassSecret } = require('../e2e/vercel-bypass.cjs');
+const { readinessSnapshot } = require('./readiness-snapshot.cjs');
 
 function settings(env) {
   if (env.GITHUB_REPOSITORY !== 'hhdg1515/fullstack-capstone-project' || env.GITHUB_EVENT_NAME !== 'workflow_dispatch' ||
@@ -61,6 +62,9 @@ async function inspect({ origin, api }) {
   }
   const matches = (project, id, name, root, node) => project?.id === id && project.accountId === staging.teamId && project.name === name &&
     project.rootDirectory === root && (!node || project.nodeVersion === node);
+  const alias = await probe('/v4/aliases/' + new URL(staging.frontendOrigin).hostname);
+  const previewId = alias.value?.deploymentId;
+  const preview = typeof previewId === 'string' && /^dpl_[a-zA-Z0-9]+$/.test(previewId) ? await probe('/v13/deployments/' + previewId) : {};
   return { operation: 'inspect', remoteChanges: false,
     firstLegacyValidationFailure: [frontend, backend, production, previous].find(result => result.failure)?.failure || null,
     teamReadAccess: team.value?.id === staging.teamId,
@@ -72,7 +76,9 @@ async function inspect({ origin, api }) {
     backendConfigurationMatches: matches(backend.value, staging.backendProjectId, 'fullstack-capstone-project-vkwm', 'giftlink-backend', '22.x'),
     frontendNameMatchesId: frontendByName.value?.id === staging.frontendProjectId,
     backendNameMatchesId: backendByName.value?.id === staging.backendProjectId,
-    frontendAliasResolved: aliases[0], backendAliasResolved: aliases[1] };
+    frontendAliasResolved: aliases[0], backendAliasResolved: aliases[1],
+    operational: readinessSnapshot({ frontend: frontend.value, backend: backend.value, production: production.value, api: previous.value,
+      team: team.value, alias: alias.value, preview: preview.value }) };
 }
 
 function diagnosticReporter(env, write = value => console.log(value)) {

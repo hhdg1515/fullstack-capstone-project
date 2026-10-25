@@ -22,6 +22,12 @@ body,
   margin-right: calc(100vw - 100%);
 }
 
+/* Keep secondary controls readable on the existing light grey page surface. */
+.btn-outline-secondary {
+  --bs-btn-color: #505960;
+  --bs-btn-border-color: #505960;
+}
+
 /* Background color for cards */
 .card {
   background-color: #ffffff; /* White */

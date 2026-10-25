@@ -1,5 +1,12 @@
 # Move-Out Marketplace — Give Away & Find Free Items
 
+Milestone 6.0 operational status: **protected staging; public launch is not approved**.
+See the [readiness audit and launch blockers](docs/production-readiness.md) and
+[deployment, diagnostics, Atlas access, recovery and rollback runbook](docs/operations-runbook.md).
+The audit distinguishes local/CI tests, existing live staging evidence and
+unverified production configuration. No provider security or production database
+change is part of this milestone.
+
 Move-Out Marketplace remains a React, Express, Node.js, and MongoDB native-driver application. Milestone 5.5 organizes the product around **Give Away** and **Find Free Items**, with one shared account and no fixed account roles. Plans, inventory, anonymous discovery, pickup coordination and handoffs retain their existing APIs and data model. The original GiftLink collection/search and all 16 demo records remain available. Messaging, notifications, payments, shipping, property integrations, image uploads, and geographical APIs are not implemented.
 
 ## Two journeys, one account
@@ -448,6 +455,12 @@ Location suggestions are capped at 500 distinct public city/neighborhood pairs w
 
 `GET /api/gifts`, `GET /api/gifts/:id`, and `GET /api/search` remain public with the same listing/detail/search behavior and legacy IDs. The original fixture JSON and images are intact. Public responses allowlist existing listing fields; arbitrary private fields are not returned.
 
+Legacy search accepts single string `name`, `category`, `condition`, `age_years`
+fields (up to 200 characters; age is a nonnegative whole number of up to three
+digits). Regex syntax is treated literally. Unknown/structured/repeated or
+malformed filters return `400 INVALID_SEARCH_QUERY`; a five-second query deadline
+returns `503 SEARCH_BUSY`. Normal searches and the 16 demo records are unchanged.
+
 `POST /api/gifts` now requires a session and CSRF headers. Its acknowledgment response remains `201 { acknowledged, insertedId }`. It accepts validated existing listing fields and derives `posted_by` from the authenticated user. Caller-supplied owners/private fields are rejected. This is access control on the existing endpoint, not a new item-management feature. Legacy fixture poster IDs are not migrated or assigned to real accounts.
 
 ## Explicit demo seeding
@@ -505,6 +518,14 @@ Derived from the IBM Developer Skills Network capstone, with the existing [Apach
 See [the deployment audit, setup/approval checklist, safe remote test workflow and rollback plan](docs/deployment-test-environment.md). The existing frontend project is retained; a separate Vercel Express API is prepared in `giftlink-backend/index.js` with cached initialization, safe JSON readiness, unchanged security checks and no startup DDL/seeding. A host-scoped frontend proxy configuration can be generated for review without automatically changing Production.
 
 Normal PR CI now runs desktop/mobile Chromium against the production build and a real hosted-runtime Express API with an owned disposable MongoDB replica set. It covers two-account registration/login/logout, secure cookies, discovery, plan/inventory, pickup acceptance/cancellation/completion/no-show, authorization and frontend-only recovery. Run `npm --prefix e2e ci`, finish the frontend production build, then `npm --prefix e2e test` to reproduce where prerequisites exist.
+
+It also checks anonymous home/discovery/login/register with axe WCAG A/AA rules
+and keyboard skip/menu focus on desktop/mobile. These checks remain local and do
+not increase remote E2E data budgets; manual assistive-technology/mobile acceptance
+is still required. Hosted `/api/live` is cheap liveness; `/api/health` retains DB
+readiness/fingerprint verification. API responses include server-generated
+`X-Request-Id`; failure diagnostics omit private fields. Frontend waits are bounded
+at 15 seconds; refresh to verify an interrupted write before resubmitting.
 
 The manual remote workflow uses the existing `isolated-e2e` Environment without requiring a Required Reviewer. Only the repository owner `hhdg1515` may dispatch or rerun it, on `main`, with the exact reviewed commit SHA; run/cleanup also need the existing target confirmations. See the [single-owner authorization model and limitations](docs/hosted-staging-integration.md#single-owner-e2e-authorization). It never provisions Atlas, creates remote indexes, seeds demos or automatically deletes remote data. Repository/CI checks do not establish hosted E2E success.
 

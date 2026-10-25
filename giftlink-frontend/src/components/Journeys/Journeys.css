@@ -25,7 +25,7 @@
 .journey-sign-in { display: inline-block; margin-left: .4rem; color: #41534d; }
 .site-footer { max-width: 72rem; margin: 2rem auto 0; padding: 1.5rem; border-top: 1px solid #cdd6d2; color: #41534d; font-size: .9rem; }
 .site-footer p { margin-bottom: .5rem; }
-.site-footer a { display: inline-flex; align-items: center; min-height: 44px; margin-right: 1.5rem; }
+.site-footer a { display: inline-flex; align-items: center; min-height: 44px; margin-right: 1.5rem; color: #245487; }
 .skip-link { position: fixed; top: -5rem; left: 1rem; z-index: 100; background: #fff; padding: .7rem 1rem; border: 2px solid #183e37; }
 .skip-link:focus { top: .5rem; }
 :focus-visible { outline: 3px solid #8b4100; outline-offset: 3px; }

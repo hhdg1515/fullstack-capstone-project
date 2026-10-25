@@ -12,6 +12,7 @@ const createPickupRoutes = require('./routes/pickupRoutes');
 const { InventoryError } = require('./services/inventory');
 const { createIdentityService } = require('./services/identity');
 const { createIdentityMiddleware } = require('./middleware/identity');
+const { requestDiagnostics } = require('./middleware/diagnostics');
 
 function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', secureCookies = false,
     sessionTtlSeconds = 28800, authLimit = 30, discoveryLimit = 120, pickupNow, logger = require('./logger') }) {
@@ -20,7 +21,8 @@ function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', sec
     const auth = createIdentityMiddleware({ identity, appOrigin, secureCookies, sessionTtlSeconds });
     const items = createItemRoutes({ connectToDatabase, auth, discoveryLimit });
     app.disable('x-powered-by');
-    app.use(pinoHttp({ logger, serializers: {
+    app.use(requestDiagnostics);
+    app.use(pinoHttp({ logger, genReqId: req => req.id, serializers: {
         req: req => ({ id: req.id, method: req.method }),
         res: res => ({ statusCode: res.statusCode }),
         err: () => ({ message: 'Request failed' })
@@ -42,7 +44,7 @@ function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', sec
     app.use((err, req, res, next) => {
         if (err instanceof InventoryError) return res.status(err.status).json({ error: Object.assign({ code: err.code, message: err.message }, err.details) });
         // Driver/validator errors can contain emails, input, or connection details.
-        logger.error({ event: 'request_failed' }, 'Request failed');
+        logger.error({ event: 'request_failed', requestId: req.id }, 'Request failed');
         const status = err.type === 'entity.parse.failed' ? 400 : err.type === 'entity.too.large' ? 413 : 500;
         res.status(status).json({ error: { code: 'REQUEST_FAILED',
             message: status === 500 ? 'Internal server error' : 'Invalid or oversized JSON request' } });
