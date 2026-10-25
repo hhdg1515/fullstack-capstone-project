@@ -12,7 +12,7 @@ export const pickupLabels = { pending: 'Awaiting giver decision', accepted: 'Acc
 const actionLabels = { accept: 'Accept pickup', decline: 'Decline request', cancel: 'Cancel request', complete: 'Confirm handoff', no_show: 'Record no-show' };
 function Appointment({ request }) {
   const display = new Intl.DateTimeFormat('en', { dateStyle: 'full', timeStyle: 'short', timeZone: request.timeZone }).format(new Date(request.proposedAt));
-  return <p><time dateTime={request.proposedAt}>{display}</time><br /><strong>{request.timeZone}</strong></p>;
+  return <p><b>{request.status === 'pending' ? 'Proposed pickup' : 'Pickup time'}:</b><br /><time dateTime={request.proposedAt}>{display}</time><br /><strong>{request.timeZone}</strong></p>;
 }
 function LoadState({ data }) {
   if (data.loading) return <p role="status">Loading pickup requests…</p>;
@@ -76,10 +76,18 @@ export function PickupDashboard({ incoming = false }) {
     </select></div>
     <button className="btn btn-outline-secondary" onClick={data.retry}>Refresh requests</button><LoadState data={data} />
     {data.data && <>
-      {!data.data.requests.length && <p>No pickup requests here yet.</p>}
+      {!data.data.requests.length && (status ? <div role="status"><p>No requests match this status.</p>
+        <button className="btn btn-outline-secondary" onClick={() => { setStatus(''); setCursor(''); }}>Clear status filter</button></div> : <p>No pickup requests here yet.</p>)}
       <ul className="plans-grid">{data.data.requests.map(request => <li className="plan-panel" key={request.id}>
-        <h2><Link to={`/app/pickups/${request.id}`} state={{ journey: incoming ? 'give' : 'find' }}>{request.item?.name || 'Former listing'}</Link></h2><p className="plan-status">{pickupLabels[request.status]}</p>
-        <p>{incoming ? 'Receiver' : 'Giver'}: {request.counterpart.firstName}</p><Appointment request={request} />
+        <h2>{request.item ? <Link to={`/app/items/${request.item.id}`}>{request.item.name}</Link> : 'Former listing'}</h2><p className="plan-status">{pickupLabels[request.status]}</p>
+        <p>Applicant: {incoming ? request.counterpart.firstName : 'You'}</p>
+        {!incoming && <p>Giver: {request.counterpart.firstName}</p>}<Appointment request={request} />
+        <Link className="btn btn-outline-primary" to={`/app/pickups/${request.id}`} state={{ journey: incoming ? 'give' : 'find' }}
+          aria-label={`Review request ${incoming ? 'from' : 'to'} ${request.counterpart.firstName} for ${request.item?.name || 'former listing'}`}>Review request</Link>
+        <details className="pickup-request-details"><summary>Note and request reference</summary>
+          <p className="pickup-note">{request.note || 'No note provided.'}</p><p>Request reference: <code>{request.id}</code></p>
+        </details>
+        {!request.item && <p>The listing is no longer available. You can still review the request.</p>}
         {incoming && request.plan && <p><Link to={`/app/plans/${request.plan.id}`}>{request.plan.title || 'Move-out plan'}</Link></p>}
       </li>)}</ul>
       <div className="plan-actions">{cursor && <button onClick={() => setCursor('')}>First page</button>}
@@ -109,13 +117,15 @@ export function PickupDetail() {
     <h1>Pickup request</h1><LoadState data={data} />{error && <p role="alert">{error}</p>}
     <button className="btn btn-outline-secondary" disabled={busy} onClick={data.retry}>Reload request</button>
     {request && <article className="plan-panel"><h2>{request.item?.name || 'Former listing'}</h2><p className="plan-status">{pickupLabels[request.status]}</p>
-      <p>{request.role === 'giver' ? 'Receiver' : 'Giver'}: {request.counterpart.firstName}</p><Appointment request={request} />
+      <p>Applicant: {request.role === 'giver' ? request.counterpart.firstName : 'You'}</p>
+      {request.role === 'receiver' && <p>Giver: {request.counterpart.firstName}</p>}<Appointment request={request} />
       {request.status === 'pending' && <p>The item is not reserved. The giver must accept a future appointment.</p>}
       {request.status === 'accepted' && <p>This appointment reserves one whole listing. It does not mean a handoff has occurred. No address is disclosed automatically.</p>}
       {request.cancellationReason && <p>Cancellation reason: {request.cancellationReason.replace(/_/g, ' ')}.</p>}
       {request.item && <><p>{request.item.neighborhood}, {request.item.city}</p><p className="pickup-note">{request.item.description}</p><Link to={`/app/items/${request.item.id}`}>Public listing (if still available)</Link></>}
       {request.plan && <p><Link to={`/app/plans/${request.plan.id}`}>{request.plan.title || 'Move-out plan'}</Link></p>}
       <h3>Private coordination note</h3><p className="pickup-note">{request.note || 'No note provided.'}</p>
+      <details className="pickup-request-details"><summary>Request reference</summary><code>{request.id}</code></details>
       <div className="plan-actions">{actions.map(name => <button key={name} className="btn btn-outline-primary" disabled={busy || (['complete', 'no_show'].includes(name) && Date.parse(request.proposedAt) > Date.now())} onClick={() => action(name)}>{actionLabels[name]}</button>)}</div>
       {request.role === 'giver' && request.status === 'accepted' && <p>Record completion or no-show after the appointment time. Reload the request to update these controls.</p>}
       <h3>Request history</h3><ul>{request.history.map((entry, index) => <li key={index}>{pickupLabels[entry.action]} — {entry.actor}, <time dateTime={entry.at}>{new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short', timeZone: request.timeZone }).format(new Date(entry.at))}</time> ({request.timeZone})</li>)}</ul>

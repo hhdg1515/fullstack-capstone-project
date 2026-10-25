@@ -119,7 +119,7 @@ test('Give Away provides consolidated incoming requests and per-plan inventory/c
   await click(context('Give Away').getByRole('link', { name: 'Incoming requests' }));
   expect(await screen.findByRole('heading', { name: 'Incoming pickup requests' })).toBeInTheDocument();
   expect(fetch.mock.calls.some(([url]) => url.includes('/api/pickup-requests/received'))).toBe(true);
-  detailRole = 'giver'; await click(await screen.findByRole('link', { name: item.name }));
+  detailRole = 'giver'; await click(await screen.findByRole('link', { name: /^Review request from/ }));
   expect(await screen.findByRole('button', { name: 'Accept pickup' })).toBeInTheDocument();
   expect(primary().getByRole('link', { name: 'Give Away' })).toHaveAttribute('aria-current', 'location');
   await click(primary().getByRole('link', { name: 'Find Free Items' }));

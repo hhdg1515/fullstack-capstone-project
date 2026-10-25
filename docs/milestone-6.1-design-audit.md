@@ -1,6 +1,9 @@
 # Milestone 6.1 — UI/UX design audit and refinement proposal
 
-Status: **design review only; no UI implementation is approved or included**.
+Status: **historical design audit**. The owner subsequently selected Functional
+Minimalism and authorized small, testable usability PRs. See the
+[implementation progress and remaining findings](milestone-6.1-progress.md);
+this audit preserves the original observations and proposals.
 This develops the [initial plan](milestone-6.1-ui-ux-plan.md) against the existing
 product. Engineering Hardening remains complete; its
 [deferred public-launch gates](production-readiness.md#deferred-public-launch-readiness-items)
