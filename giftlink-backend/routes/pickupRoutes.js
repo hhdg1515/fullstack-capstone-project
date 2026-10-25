@@ -4,12 +4,14 @@ const { rateLimit } = require('express-rate-limit');
 const { validate } = require('../middleware/validation');
 const { errorResponse } = require('../middleware/identity');
 const { createPickupService } = require('../services/pickups');
+const createPickupCommunicationRoutes = require('./pickupCommunicationRoutes');
 
-function createPickupRoutes({ connectToDatabase, auth, now }) {
+function createPickupRoutes({ connectToDatabase, auth, now, messageLimit }) {
     const service = createPickupService({ connectToDatabase, now }); const router = express.Router();
     router.use(auth.requireAuth);
     router.use(rateLimit({ windowMs: 60000, limit: 120, standardHeaders: 'draft-7', legacyHeaders: false,
         handler: (req, res) => errorResponse(res, 429, 'PICKUP_RATE_LIMIT', 'Too many pickup requests. Wait a minute and retry.') }));
+    router.use('/:requestId/conversation', createPickupCommunicationRoutes({ connectToDatabase, now, messageLimit }));
     router.post('/', validate(['itemId', 'localDateTime', 'timeZone', 'note'], [
         body('itemId').isString().bail().matches(/^[a-fA-F0-9]{24}$/),
         body('localDateTime').isString().bail().isLength({ min: 16, max: 16 }),

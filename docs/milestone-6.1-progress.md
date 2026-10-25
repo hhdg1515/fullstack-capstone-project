@@ -5,8 +5,11 @@ short forms and recovery before visual consistency. The [original audit](milesto
 remains historical evidence, not a description of every current screen.
 
 This continuation starts at merged main `52b7d099501b74bf4b62c6747e234405704bc70c`
-(PRs #30 and #31). Changes below are **implemented for review, not merged or
-deployed**. Milestone 6.1 is not yet closed.
+(PRs #30 and #31). PRs #32–#35 were subsequently **merged by the owner**. The closure audit at
+`26e1722ec33700b916c776995a9938784416f1bb` found no new critical regression
+in automated verification. The prioritized continuation is code-complete;
+remaining noncritical audit findings below are explicitly deferred as the owner
+transitions to Milestone 6.2. This is not a hosted or public-launch sign-off.
 
 ## Review units
 
@@ -17,10 +20,31 @@ deployed**. Milestone 6.1 is not yet closed.
 | [#34](https://github.com/hhdg1515/fullstack-capstone-project/pull/34) | A4, A5, A6, C3 | Field errors describe their inputs; the first invalid control receives focus after busy state ends, including inside collapsed item details. Generic/conflict errors focus a summary. Corrections retain other fields and do not jump focus. Limited existing-color/44px-control fixes cover account contrast and full-width private note entry. Server rules remain authoritative, including DST and UTC cutoffs; legacy login remains compatible. |
 | [#35](https://github.com/hhdg1515/fullstack-capstone-project/pull/35) | A12; review-card part of B4 | Cards show the linked item, applicant, proposed/appointment time and actual request status. Review opens the exact participant-only request. Notes and full request references are available in a disclosure for ambiguous or identically named applicants. Sent views identify the applicant as You and name the giver. Missing listings retain a review path. Empty status-filter results have a clear-filter action. No guessed identities/counts, global sorting of partial pages, messaging, negotiation or rescheduling. |
 
-The PRs are stacked to keep each diff focused: review #32 → #33 → #34 → #35. Retarget each child to main after its parent merges. Each branch runs
-the unchanged normal CI workflow; stacked PRs need manual normal-CI dispatch
-because its pull-request trigger targets main. No remote E2E workflow is needed.
-Do not merge or deploy without the owner's approval.
+The four review units were stacked and are now merged into main. Normal CI on
+merged main [40243481459](https://github.com/hhdg1515/fullstack-capstone-project/actions/runs/40243481459)
+passed. The owner performed the merges; Codex did not merge or deploy them.
+
+## Closure compatibility audit
+
+A fresh run at merged main passed **195 backend tests**, **180 frontend tests**,
+backend lint, strict production build and **16 local HTTPS browser tests**.
+The request/inventory/plan state machine and participant checks were reviewed:
+
+- Inventory's timezone is still an owner-scoped read projection. Missing-zone
+  guidance does not infer a zone or prevent previously allowed publication.
+- List-first inventory keeps empty-plan entry and repeated add/focus behavior.
+- Navigation/reload/editor/logout guards protect meaningful edits without browser
+  draft storage; successful saves and forced session invalidation still proceed.
+- Field errors remain associated, actionable and focused after writes stop;
+  existing UTC, DST, authorization and backend-validation rules are unchanged.
+- Request cards use exact request IDs and backend status, keep same-item
+  applicants distinct and preserve both participant journeys and confirmations.
+- Existing transactions enforce request versions, acceptance exclusivity,
+  cancellation, handoff/clearance and no-show constraints on the server.
+
+No new critical regression was found in this tested scope. Browser-specific
+warning suppression and manual accessibility/device gaps below remain limits;
+this is not proof that every possible interaction is regression-free.
 
 ## Verification boundaries
 
@@ -30,7 +54,7 @@ Do not merge or deploy without the owner's approval.
   CSRF, secure cookies, reservations, handoff/no-show, desktop and mobile flows
   remain covered. New browser scenarios explicitly skip hosted runs, so remote
   synthetic-account budgets and cleanup bounds stay unchanged.
-- The final combined branch has 195 backend tests, 180 frontend tests,
+- The merged 6.1 revision has 195 backend tests, 180 frontend tests,
   56 deployment/E2E policy tests and 16 local HTTPS Chromium browser tests.
   Exact pass/failure results and normal CI links belong in the PR descriptions;
   these counts describe coverage, not evidence of a hosted deployment.
@@ -45,10 +69,11 @@ Do not merge or deploy without the owner's approval.
   passed on rerun without a code change. Local desktop/mobile scenarios passed.
   The transient failure's underlying cause has not been established.
 
-## Remaining before closeout
+## Deferred usability backlog
 
-Review/merge these small PRs, then explicitly complete or defer the remaining
-usability findings; this batch does not silently close the whole audit:
+The following noncritical usability findings are deferred, not silently marked
+resolved. They can be addressed in later focused UI work; Phase 1 of Milestone
+6.2 is backend-only:
 
 - A8: make draft/publication success provide a clearer next publication action.
   Repeated addition is preserved, but no default save/publication choice changed.

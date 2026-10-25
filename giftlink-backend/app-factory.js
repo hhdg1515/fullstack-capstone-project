@@ -15,7 +15,7 @@ const { createIdentityMiddleware } = require('./middleware/identity');
 const { requestDiagnostics } = require('./middleware/diagnostics');
 
 function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', secureCookies = false,
-    sessionTtlSeconds = 28800, authLimit = 30, discoveryLimit = 120, pickupNow, logger = require('./logger') }) {
+    sessionTtlSeconds = 28800, authLimit = 30, discoveryLimit = 120, pickupNow, messageLimit, logger = require('./logger') }) {
     const app = express();
     const identity = createIdentityService({ connectToDatabase, sessionTtlSeconds });
     const auth = createIdentityMiddleware({ identity, appOrigin, secureCookies, sessionTtlSeconds });
@@ -39,7 +39,7 @@ function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', sec
     app.use('/api/move-out-plans', createPlanRoutes({ connectToDatabase, auth }));
     app.use('/api/move-out-plans/:planId/items', items.privateRouter);
     app.use('/api/items', items.publicRouter);
-    app.use('/api/pickup-requests', createPickupRoutes({ connectToDatabase, auth, now: pickupNow }));
+    app.use('/api/pickup-requests', createPickupRoutes({ connectToDatabase, auth, now: pickupNow, messageLimit }));
     app.use('/api', (req, res) => res.status(404).json({ error: { code: 'NOT_FOUND', message: 'API route not found' } }));
     app.use((err, req, res, next) => {
         if (err instanceof InventoryError) return res.status(err.status).json({ error: Object.assign({ code: err.code, message: err.message }, err.details) });
