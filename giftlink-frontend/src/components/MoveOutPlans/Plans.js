@@ -82,6 +82,7 @@ export function PlanDetail() {
 
 export function EditPlan() {
   const { planId } = useParams();
+  const { state } = useLocation();
   const navigate = useNavigate();
   const request = usePlansData(`${base}/${encodeURIComponent(planId)}`);
   const plan = request.data?.plan;
@@ -91,6 +92,6 @@ export function EditPlan() {
   };
   return <main className="plans-page"><JourneyNav journey="give" planId={plan?.id} /><h1>Edit move-out plan</h1>
     <LoadState request={request} />
-    {plan && <PlanForm key={plan.id} initialPlan={plan} onSave={save} />}
+    {plan && <PlanForm key={plan.id} initialPlan={plan} onSave={save} focusPickupTimeZone={state?.focusPickupTimeZone === true} />}
   </main>;
 }

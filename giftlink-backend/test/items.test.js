@@ -39,6 +39,14 @@ describe('transactional plan inventory on verified isolated MongoDB', function (
         }
         plan = await parent(owner); otherPlan = await parent(other);
     });
+    it('reports the owner plan timezone explicitly without requiring it to publish', async function () {
+        assert.equal((await list().expect(200)).body.plan.pickupTimeZone, null);
+        const item = (await create({ publish: true }).expect(201)).body.item;
+        await publicGet(item).expect(200);
+        await updatePlan({ pickupTimeZone: 'America/Los_Angeles' }).expect(200);
+        assert.equal((await list().expect(200)).body.plan.pickupTimeZone, 'America/Los_Angeles');
+        await list(plan, other).expect(404);
+    });
     it('adds multiple free-text/grouped items as private drafts without copying plan information', async function () {
         for (const name of ['Box of kitchen supplies', 'Three identical chairs', 'Miscellaneous craft supplies']) await create({ name }).expect(201);
         const response = await list().expect(200);

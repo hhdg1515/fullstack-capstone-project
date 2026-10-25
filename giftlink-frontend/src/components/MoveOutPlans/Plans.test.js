@@ -30,6 +30,12 @@ function fillForm() {
     fireEvent.change(screen.getByLabelText(label), { target: { value } });
   }
 }
+test('a pickup-setup link focuses the existing optional timezone field without selecting a value', async () => {
+  fetch.mockReset().mockImplementation(async url => reply(200, url.endsWith('/api/me') ? { user } : { plan }));
+  mount({ pathname: `/app/plans/${plan.id}/edit`, state: { focusPickupTimeZone: true } });
+  const zone = await screen.findByLabelText('Pickup timezone (needed to receive requests)');
+  await waitFor(() => expect(zone).toHaveFocus()); expect(zone).toHaveValue(''); expect(zone).not.toBeRequired();
+});
 const submit = label => fireEvent.submit(screen.getByRole('button', { name: label }).closest('form'));
 beforeEach(() => { global.fetch = jest.fn().mockResolvedValueOnce(reply(200, { user })); });
 

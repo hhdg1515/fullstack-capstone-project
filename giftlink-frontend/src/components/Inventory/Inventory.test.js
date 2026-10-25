@@ -35,7 +35,11 @@ beforeEach(() => {
   jest.spyOn(window, 'confirm').mockReturnValue(true);
 });
 afterEach(() => jest.restoreAllMocks());
-const formReady = () => screen.findByLabelText('Item name');
+const formReady = async () => {
+  const input = await screen.findByLabelText('Item name');
+  if (input.closest('[hidden]')) fireEvent.click(screen.getByRole('button', { name: 'Add item' }));
+  return input;
+};
 const name = value => fireEvent.change(screen.getByLabelText('Item name'), { target: { value } });
 const submitDraft = () => fireEvent.submit(screen.getByRole('button', { name: 'Save draft & add another' }).closest('form'));
 
@@ -47,6 +51,27 @@ test('inventory loads an empty plan with inherited location/deadline and a name-
   expect(screen.getByLabelText('Category or tag (optional)')).not.toBeRequired();
   expect(screen.queryByLabelText('City')).not.toBeInTheDocument();
   expect(screen.queryByLabelText(/price|address|dimensions|brand/i)).not.toBeInTheDocument();
+});
+test('populated plans put existing items first and preserve a temporarily collapsed add draft', async () => {
+  data = inventory([item]); mount(); await screen.findByRole('heading', { name: item.name });
+  expect(screen.getByLabelText('Item name')).not.toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Add item' }));
+  expect(screen.getByLabelText('Item name')).toBeVisible(); expect(screen.getByLabelText('Item name')).toHaveFocus();
+  name('Unfinished new item'); fireEvent.click(screen.getByRole('button', { name: 'Back to items' }));
+  expect(screen.getByLabelText('Item name')).not.toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Add item' }));
+  expect(screen.getByLabelText('Item name')).toHaveValue('Unfinished new item');
+  const section = screen.getByRole('region', { name: 'Inventory items' });
+  expect(section.compareDocumentPosition(screen.getByLabelText('Item name')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+test.each([null, 'UTC', undefined])('pickup setup uses the server value %s without treating absent metadata as configured', async zone => {
+  data = { ...inventory([]), plan: { ...plan, pickupTimeZone: zone } }; mount(); await formReady();
+  if (zone === null) {
+    expect(screen.getByRole('link', { name: 'Set pickup timezone' })).toHaveAttribute('href', `/app/plans/${plan.id}/edit`);
+    expect(screen.getByText(/still save drafts and publish/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Publish & add another' })).toBeEnabled();
+  } else if (zone === undefined) expect(screen.getByRole('link', { name: 'Check pickup setup' })).toBeInTheDocument();
+  else expect(screen.queryByRole('link', { name: /pickup (timezone|setup)/ })).not.toBeInTheDocument();
 });
 test('quick entry adds multiple grouped belongings in the same plan and focuses the next name', async () => {
   const created = [];

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useAppContext } from '../../context/AuthContext';
 import { confirmPickupChanges } from '../../api/confirmPickupChanges';
@@ -21,6 +21,8 @@ export default function Inventory() {
   const [params] = useSearchParams();
   const request = usePlansData(`/api/move-out-plans/${encodeURIComponent(planId)}/items`, true);
   const [editor, setEditor] = useState(params.get('edit'));
+  const [adding, setAdding] = useState(false);
+  const itemsHeading = useRef();
   const [sequence, setSequence] = useState(0);
   const [filter, setFilter] = useState('all');
   const [busy, setBusy] = useState(false);
@@ -28,6 +30,7 @@ export default function Inventory() {
   const [error, setError] = useState('');
   const data = request.data;
   const item = data?.items.find(value => value.id === editor);
+  const formVisible = !data?.items.length || Boolean(item) || adding;
   const root = `/api/move-out-plans/${encodeURIComponent(planId)}/items`;
   const save = async (details, publish) => {
     setBusy(true);
@@ -35,7 +38,7 @@ export default function Inventory() {
       await confirmPickupChanges(item ? `${root}/${item.id}` : root, { method: item ? 'PATCH' : 'POST',
         body: item ? { ...details, version: item.version } : { ...details, publish } });
       setMessage(item ? 'Item saved.' : publish ? 'Item published. Add another below.' : 'Draft saved. Add another below.');
-      setEditor(null); setSequence(value => value + 1); request.retry();
+      setAdding(!item); setEditor(null); setSequence(value => value + 1); request.retry();
     } finally { setBusy(false); }
   };
   const action = async (entry, name) => {
@@ -64,16 +67,20 @@ export default function Inventory() {
     {data && <>
       <p>{data.plan.neighborhood}, {data.plan.city} · Move out by {data.plan.moveOutDeadline}</p>
       <p className="inventory-progress"><strong>{data.progress.cleared} of {data.progress.total} items cleared</strong></p>
-      <p>Unlisted items stay private but do not count as cleared. Cleared items can be reopened.</p>
+      {data.plan.pickupTimeZone === null && <section aria-label="Pickup setup" role="status">
+        <p>Set a pickup timezone so people can request your published items. You can still save drafts and publish without it.</p>
+        <Link to={`/app/plans/${planId}/edit`} state={{ focusPickupTimeZone: true }}>Set pickup timezone</Link>
+      </section>}
+      {data.plan.pickupTimeZone === undefined && <p>Check your plan’s pickup timezone before receiving requests. <Link to={`/app/plans/${planId}/edit`} state={{ focusPickupTimeZone: true }}>Check pickup setup</Link></p>}
       {data.plan.status !== 'active' && <p>This plan is inactive. <Link to={`/app/plans/${planId}/edit`}>Activate it</Link> before publishing.</p>}
-      <ItemForm key={`${user.id}:${planId}:${item?.id || 'new'}:${item?.version || 0}:${sequence}`} plan={data.plan} item={item}
-        onSave={save} onCancel={() => setEditor(null)} focusName={sequence > 0} disabled={busy || request.loading} />
       <section aria-label="Inventory items">
-        <div className="plan-field"><label htmlFor="inventory-filter">Show items</label>
+        {data.items.length > 0 && <div className="plan-page-header"><h2 ref={itemsHeading} tabIndex={-1}>Your items</h2>
+          <button className="btn btn-primary" disabled={busy || request.loading} onClick={() => { setEditor(null); setAdding(true); }}>Add item</button></div>}
+        {data.items.length > 0 && <div className="plan-field"><label htmlFor="inventory-filter">Show items</label>
           <select id="inventory-filter" value={filter} onChange={event => setFilter(event.target.value)}>
             <option value="all">All items</option>{itemStates.map(state => <option key={state} value={state}>{labels[state]}</option>)}
-          </select></div>
-        {!data.items.length && <p>No items yet. Add the first one above; the plan supplies its location and deadline.</p>}
+          </select></div>}
+        {!data.items.length && <p>No items yet. Add your first item below; the plan supplies its location and deadline.</p>}
         {data.items.length > 0 && !data.items.some(entry => filter === 'all' || entry.status === filter) && <p>No items match this status.</p>}
         <ul className="inventory-list">{data.items.filter(entry => filter === 'all' || entry.status === filter).map(entry => <li className="plan-panel" key={entry.id}>
           <h2>{entry.name}</h2><p><span className="plan-status">{labels[entry.status]}</span> {entry.category}
@@ -82,7 +89,7 @@ export default function Inventory() {
           {entry.status === 'available' && !entry.isPublic && <p>Hidden while the plan is inactive.</p>}
           {entry.status === 'expired' && <p>Edit the pickup dates or extend the plan deadline, then explicitly publish again.</p>}
           <div className="inventory-actions">
-            <button aria-label={`Edit ${entry.name}`} disabled={busy || request.loading} className="btn btn-outline-primary" onClick={() => { setEditor(entry.id); setError(''); }}>Edit</button>
+            <button aria-label={`Edit ${entry.name}`} disabled={busy || request.loading} className="btn btn-outline-primary" onClick={() => { setEditor(entry.id); setAdding(false); setError(''); }}>Edit</button>
             {['draft', 'unlisted', 'expired'].includes(entry.status) && <button aria-label={`${entry.status === 'unlisted' ? 'Relist' : 'Publish'} ${entry.name}`} disabled={busy || request.loading || data.plan.status !== 'active'} className="btn btn-primary" onClick={() => action(entry, 'publish')}>{entry.status === 'unlisted' ? 'Relist' : 'Publish'}</button>}
             {['available', 'expired'].includes(entry.status) && <button aria-label={`Unlist ${entry.name}`} disabled={busy || request.loading} className="btn btn-outline-secondary" onClick={() => action(entry, 'unlist')}>Unlist</button>}
             {entry.status !== 'cleared' ? <button aria-label={`Mark ${entry.name} cleared`} disabled={busy || request.loading} className="btn btn-outline-secondary" onClick={() => action(entry, 'clear')}>Mark cleared</button> :
@@ -91,6 +98,12 @@ export default function Inventory() {
           </div>
         </li>)}</ul>
       </section>
+      <div hidden={!formVisible}>
+        {data.items.length > 0 && !item && <button className="btn btn-outline-secondary" onClick={() => { setAdding(false); itemsHeading.current?.focus(); }}>Back to items</button>}
+        <ItemForm key={`${user.id}:${planId}:${item?.id || 'new'}:${item?.version || 0}:${sequence}`} plan={data.plan} item={item}
+          onSave={save} onCancel={() => { setEditor(null); setAdding(false); itemsHeading.current?.focus(); }}
+          focusName={formVisible && !item && (adding || sequence > 0)} disabled={busy || request.loading} />
+      </div>
     </>}
   </main>;
 }

@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { isCalendarDate, utcToday } from './dates';
 
 export const statusLabels = { active: 'Active', completed: 'Completed', cancelled: 'Cancelled' };
 const hasControlCharacters = value => Array.from(value).some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127);
 
-export default function PlanForm({ initialPlan, onSave }) {
+export default function PlanForm({ initialPlan, onSave, focusPickupTimeZone = false }) {
+  const timezoneInput = useRef();
+  useEffect(() => { if (focusPickupTimeZone) timezoneInput.current?.focus(); }, [focusPickupTimeZone]);
   const editing = Boolean(initialPlan);
   const [values, setValues] = useState(() => initialPlan ? {
     moveOutDeadline: initialPlan.moveOutDeadline, city: initialPlan.city, neighborhood: initialPlan.neighborhood,
@@ -77,7 +79,7 @@ export default function PlanForm({ initialPlan, onSave }) {
         {errors.status && <p className="plan-field-error" id="plan-status-error">{errors.status}</p>}
       </div>}
       <div className="plan-field"><label htmlFor="plan-timezone">Pickup timezone (needed to receive requests)</label>
-        <input id="plan-timezone" name="pickupTimeZone" list="pickup-timezones" maxLength={100} value={values.pickupTimeZone} onChange={change} placeholder="America/Los_Angeles" />
+        <input id="plan-timezone" ref={timezoneInput} name="pickupTimeZone" list="pickup-timezones" maxLength={100} value={values.pickupTimeZone} onChange={change} placeholder="America/Los_Angeles" />
         <datalist id="pickup-timezones">{['UTC', ...(Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : ['America/Los_Angeles', 'America/New_York', 'Europe/London', 'Asia/Kolkata'])].map(zone => <option value={zone} key={zone} />)}</datalist>
         <small>Choose the timezone at the pickup location yourself. We do not infer it from your browser or city. Existing listings remain browsable without it. Changing the timezone or general location cancels outstanding requests after confirmation.</small>
         {errors.pickupTimeZone && <p className="plan-field-error">{errors.pickupTimeZone}</p>}

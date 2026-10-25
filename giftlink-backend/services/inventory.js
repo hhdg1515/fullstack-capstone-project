@@ -62,7 +62,7 @@ function createInventoryService({ connectToDatabase }) {
         if (!plan) throw notFound();
         const items = plan.items.map(item => itemResponse(item, plan, true, item.isReserved));
         return { items, plan: { id: plan._id.toString(), title: plan.title, city: plan.city, neighborhood: plan.neighborhood,
-            moveOutDeadline: plan.moveOutDeadline, status: plan.status },
+            moveOutDeadline: plan.moveOutDeadline, status: plan.status, pickupTimeZone: plan.pickupTimeZone || null },
             progress: { total: items.length, cleared: items.filter(item => item.status === 'cleared').length } };
     }
     async function create(ownerId, planId, input) {
