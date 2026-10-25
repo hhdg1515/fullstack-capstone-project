@@ -1,6 +1,9 @@
 # Milestone 6.1 — UI/UX Refinement plan
 
-Status: **proposed product-design scope; implementation has not started**.
+Status: **design audit and refinement proposal ready for owner review;
+implementation has not started**. Read the
+[page-by-page audit, prioritized matrix and proposed flows](milestone-6.1-design-audit.md)
+and [local screenshot evidence](assets/milestone-6.1/README.md).
 Milestone 6.0 Engineering Hardening is code-complete; its
 [deferred launch-readiness items](production-readiness.md#deferred-public-launch-readiness-items)
 remain separate. This plan does not authorize launch or infrastructure work.
