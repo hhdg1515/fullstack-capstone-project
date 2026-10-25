@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { isCalendarDate, utcToday } from '../MoveOutPlans/dates';
+import { useUnsavedForm } from '../../forms/UnsavedChanges';
 
 export function availabilityError(values, plan, publishing = false) {
   for (const field of ['availableFrom', 'availableUntil']) {
@@ -16,6 +17,8 @@ export default function ItemForm({ plan, item, onSave, onCancel, disabled, focus
   const [values, setValues] = useState({ name: item?.name || '', description: item?.description || '', category: item?.category || '',
     availableFrom: item?.availableFrom || '', availableUntil: item?.availableUntil || '' });
   const [busy, setBusy] = useState(false);
+  const guard = useUnsavedForm(values, { name: item?.name || '', description: item?.description || '', category: item?.category || '',
+    availableFrom: item?.availableFrom || '', availableUntil: item?.availableUntil || '' });
   const [error, setError] = useState('');
   const change = event => setValues(current => ({ ...current, [event.target.name]: event.target.value }));
   const submit = async publishing => {
@@ -26,7 +29,7 @@ export default function ItemForm({ plan, item, onSave, onCancel, disabled, focus
     if (dateError) { setError(dateError); return; }
     if (item?.status === 'available' && !window.confirm('Save changes to this public listing?')) return;
     setBusy(true); setError('');
-    try { await onSave({ ...details, availableFrom: details.availableFrom || null, availableUntil: details.availableUntil || null }, publishing); }
+    try { await onSave({ ...details, availableFrom: details.availableFrom || null, availableUntil: details.availableUntil || null }, publishing, guard.markSaved); guard.markSaved(); }
     catch (failure) { setError(failure.fields?.map(field => `${field.field}: ${field.message}`).join('. ') || failure.message); }
     finally { setBusy(false); }
   };
@@ -55,7 +58,7 @@ export default function ItemForm({ plan, item, onSave, onCancel, disabled, focus
       <div className="plan-actions">
         <button type="submit" className="btn btn-primary" value="draft">{busy ? 'Saving…' : item ? 'Save changes' : 'Save draft & add another'}</button>
         {!item && <button type="button" className="btn btn-outline-primary" onClick={() => submit(true)} disabled={plan.status !== 'active'}>Publish & add another</button>}
-        {item && <button type="button" className="btn btn-outline-secondary" onClick={onCancel}>Cancel edit</button>}
+        {item && <button type="button" className="btn btn-outline-secondary" onClick={() => { if (guard.confirmDiscard()) onCancel(); }}>Cancel edit</button>}
       </div>
     </fieldset>
   </form>;

@@ -4,6 +4,7 @@ import { useAppContext } from '../../context/AuthContext';
 import './RegisterPage.css';
 import { authDestination } from '../authDestination';
 import AccountServiceNotice from '../AccountServiceNotice';
+import { useUnsavedForm } from '../../forms/UnsavedChanges';
 
 export default function RegisterPage() {
   const { register, isLoggedIn, status } = useAppContext();
@@ -11,6 +12,7 @@ export default function RegisterPage() {
   const requested = useLocation().state?.from;
   const destination = authDestination(requested);
   const [details, setDetails] = useState({ firstName: '', lastName: '', email: '', password: '' });
+  useUnsavedForm(details, { firstName: '', lastName: '', email: '', password: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (isLoggedIn) navigate(destination, { replace: true }); }, [isLoggedIn, navigate, destination]);

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAppContext } from '../../context/AuthContext';
 import './Profile.css';
+import { useUnsavedForm } from '../../forms/UnsavedChanges';
 
 export default function Profile() {
   const { user, updateProfile } = useAppContext();
@@ -8,10 +9,11 @@ export default function Profile() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  useEffect(() => { setDetails({ firstName: user.firstName, lastName: user.lastName }); }, [user.firstName, user.lastName]);
+  const guard = useUnsavedForm(details, { firstName: user.firstName, lastName: user.lastName });
+  useEffect(() => { if (!guard.dirty) setDetails({ firstName: user.firstName, lastName: user.lastName }); }, [user.firstName, user.lastName, guard.dirty]);
   const submit = async event => {
     event.preventDefault(); setBusy(true); setError(''); setMessage('');
-    try { await updateProfile(details); setMessage('Account updated.'); }
+    try { await updateProfile(details); guard.markSaved(); setMessage('Account updated.'); }
     catch (failure) { setError(failure.fields?.map(field => `${field.field}: ${field.message}`).join('. ') || failure.message); }
     finally { setBusy(false); }
   };

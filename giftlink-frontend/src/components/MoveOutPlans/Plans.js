@@ -46,8 +46,9 @@ export function MyPlans() {
 export function CreatePlan() {
   const navigate = useNavigate();
   const { user } = useAppContext();
-  const save = async details => {
+  const save = async (details, committed) => {
     const data = await apiRequest(base, { method: 'POST', body: details });
+    committed?.();
     navigate(`/app/plans/${data.plan.id}`, { replace: true, state: { message: 'Plan created.' } });
   };
   return <main className="plans-page"><JourneyNav journey="give" />
@@ -86,8 +87,9 @@ export function EditPlan() {
   const navigate = useNavigate();
   const request = usePlansData(`${base}/${encodeURIComponent(planId)}`);
   const plan = request.data?.plan;
-  const save = async details => {
+  const save = async (details, committed) => {
     const data = await confirmPickupChanges(`${base}/${encodeURIComponent(planId)}`, { method: 'PATCH', body: details });
+    committed?.();
     navigate(`/app/plans/${data.plan.id}`, { replace: true, state: { message: 'Plan updated.' } });
   };
   return <main className="plans-page"><JourneyNav journey="give" planId={plan?.id} /><h1>Edit move-out plan</h1>

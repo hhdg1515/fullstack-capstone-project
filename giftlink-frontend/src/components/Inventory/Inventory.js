@@ -7,6 +7,7 @@ import ItemForm, { availabilityError } from './ItemForm';
 import '../MoveOutPlans/Plans.css';
 import './Inventory.css';
 import JourneyNav from '../Journeys/JourneyNav';
+import { useDiscardChanges } from '../../forms/UnsavedChanges';
 
 export const itemStates = ['draft', 'available', 'unlisted', 'cleared', 'expired'];
 const labels = { draft: 'Draft', available: 'Published', unlisted: 'Unlisted', cleared: 'Cleared', expired: 'Expired' };
@@ -18,6 +19,7 @@ const confirmations = { publish: 'Publish this item for everyone to see? Future 
 export default function Inventory() {
   const { planId } = useParams();
   const { user } = useAppContext();
+  const drafts = useDiscardChanges();
   const [params] = useSearchParams();
   const request = usePlansData(`/api/move-out-plans/${encodeURIComponent(planId)}/items`, true);
   const [editor, setEditor] = useState(params.get('edit'));
@@ -32,11 +34,12 @@ export default function Inventory() {
   const item = data?.items.find(value => value.id === editor);
   const formVisible = !data?.items.length || Boolean(item) || adding;
   const root = `/api/move-out-plans/${encodeURIComponent(planId)}/items`;
-  const save = async (details, publish) => {
+  const save = async (details, publish, committed) => {
     setBusy(true);
     try {
       await confirmPickupChanges(item ? `${root}/${item.id}` : root, { method: item ? 'PATCH' : 'POST',
         body: item ? { ...details, version: item.version } : { ...details, publish } });
+      committed?.();
       setMessage(item ? 'Item saved.' : publish ? 'Item published. Add another below.' : 'Draft saved. Add another below.');
       setAdding(!item); setEditor(null); setSequence(value => value + 1); request.retry();
     } finally { setBusy(false); }
@@ -58,7 +61,11 @@ export default function Inventory() {
     <JourneyNav journey="give" planId={planId} />
     <Link to={`/app/plans/${planId}`}>Back to plan</Link><h1>Plan inventory</h1>
     <button className="btn btn-outline-secondary" disabled={busy || request.loading} onClick={() => {
-      if (!item || window.confirm('Refresh and review the latest saved item details? An outdated edit draft may be replaced.')) request.retry();
+      if (item) {
+        if (drafts ? !drafts.confirmDiscard() : !window.confirm('Refresh and review the latest saved item details? An outdated edit draft may be replaced.')) return;
+        setSequence(value => value + 1);
+      }
+      request.retry();
     }}>Refresh inventory</button>
     {request.loading && <p role="status">{data ? 'Refreshing inventory…' : 'Loading inventory…'}</p>}
     {(error || request.error) && <div role="alert"><p>{error || (request.error.status === 404 ? 'This inventory is unavailable.' : request.error.message)}</p>
@@ -75,7 +82,7 @@ export default function Inventory() {
       {data.plan.status !== 'active' && <p>This plan is inactive. <Link to={`/app/plans/${planId}/edit`}>Activate it</Link> before publishing.</p>}
       <section aria-label="Inventory items">
         {data.items.length > 0 && <div className="plan-page-header"><h2 ref={itemsHeading} tabIndex={-1}>Your items</h2>
-          <button className="btn btn-primary" disabled={busy || request.loading} onClick={() => { setEditor(null); setAdding(true); }}>Add item</button></div>}
+          <button className="btn btn-primary" disabled={busy || request.loading} onClick={() => { if (item && drafts && !drafts.confirmDiscard()) return; setEditor(null); setAdding(true); }}>Add item</button></div>}
         {data.items.length > 0 && <div className="plan-field"><label htmlFor="inventory-filter">Show items</label>
           <select id="inventory-filter" value={filter} onChange={event => setFilter(event.target.value)}>
             <option value="all">All items</option>{itemStates.map(state => <option key={state} value={state}>{labels[state]}</option>)}
@@ -89,7 +96,10 @@ export default function Inventory() {
           {entry.status === 'available' && !entry.isPublic && <p>Hidden while the plan is inactive.</p>}
           {entry.status === 'expired' && <p>Edit the pickup dates or extend the plan deadline, then explicitly publish again.</p>}
           <div className="inventory-actions">
-            <button aria-label={`Edit ${entry.name}`} disabled={busy || request.loading} className="btn btn-outline-primary" onClick={() => { setEditor(entry.id); setAdding(false); setError(''); }}>Edit</button>
+            <button aria-label={`Edit ${entry.name}`} disabled={busy || request.loading} className="btn btn-outline-primary" onClick={() => {
+              if (editor !== entry.id && drafts && !drafts.confirmDiscard()) return;
+              setEditor(entry.id); setAdding(false); setError('');
+            }}>Edit</button>
             {['draft', 'unlisted', 'expired'].includes(entry.status) && <button aria-label={`${entry.status === 'unlisted' ? 'Relist' : 'Publish'} ${entry.name}`} disabled={busy || request.loading || data.plan.status !== 'active'} className="btn btn-primary" onClick={() => action(entry, 'publish')}>{entry.status === 'unlisted' ? 'Relist' : 'Publish'}</button>}
             {['available', 'expired'].includes(entry.status) && <button aria-label={`Unlist ${entry.name}`} disabled={busy || request.loading} className="btn btn-outline-secondary" onClick={() => action(entry, 'unlist')}>Unlist</button>}
             {entry.status !== 'cleared' ? <button aria-label={`Mark ${entry.name} cleared`} disabled={busy || request.loading} className="btn btn-outline-secondary" onClick={() => action(entry, 'clear')}>Mark cleared</button> :

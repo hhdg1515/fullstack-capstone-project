@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { isCalendarDate, utcToday } from './dates';
+import { useUnsavedForm } from '../../forms/UnsavedChanges';
 
 export const statusLabels = { active: 'Active', completed: 'Completed', cancelled: 'Cancelled' };
 const hasControlCharacters = value => Array.from(value).some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127);
@@ -13,6 +14,9 @@ export default function PlanForm({ initialPlan, onSave, focusPickupTimeZone = fa
     moveOutDeadline: initialPlan.moveOutDeadline, city: initialPlan.city, neighborhood: initialPlan.neighborhood,
     title: initialPlan.title, status: initialPlan.status, pickupTimeZone: initialPlan.pickupTimeZone || '',
   } : { moveOutDeadline: '', city: '', neighborhood: '', title: '', pickupTimeZone: '' });
+  const guard = useUnsavedForm(values, initialPlan ? { moveOutDeadline: initialPlan.moveOutDeadline, city: initialPlan.city,
+    neighborhood: initialPlan.neighborhood, title: initialPlan.title, status: initialPlan.status, pickupTimeZone: initialPlan.pickupTimeZone || '' } :
+    { moveOutDeadline: '', city: '', neighborhood: '', title: '', pickupTimeZone: '' });
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState({});
   const [error, setError] = useState('');
@@ -43,7 +47,7 @@ export default function PlanForm({ initialPlan, onSave, focusPickupTimeZone = fa
     setErrors(issues);
     if (Object.keys(issues).length) { setError('Check the highlighted fields.'); return; }
     setBusy(true);
-    try { await onSave(details); }
+    try { await onSave(details, guard.markSaved); guard.markSaved(); }
     catch (failure) {
       setError(failure.message || 'Could not save your plan. Please try again.');
       setErrors(Object.fromEntries((failure.fields || []).map(field => [field.field, field.message])));
