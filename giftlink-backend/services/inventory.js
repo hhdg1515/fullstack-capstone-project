@@ -1,7 +1,7 @@
 const { ObjectId } = require('mongodb');
 const { todayUTC } = require('./calendar');
 const { InventoryError } = require('./inventory-error');
-const { invalidateRequests } = require('./pickup-policy');
+const { invalidateRequests, pickupReservationStages } = require('./pickup-policy');
 const notFound = () => new InventoryError(404, 'ITEM_NOT_FOUND', 'Item or plan not found');
 const endDate = (item, plan) => item.availableUntil || plan.moveOutDeadline;
 const effectiveStatus = (item, plan) => item.status === 'available' && endDate(item, plan) < todayUTC() ? 'expired' : item.status;
@@ -37,7 +37,7 @@ async function planTransaction(db, ownerId, planId, operation) {
         throw error;
     } finally { await session.endSession(); }
 }
-function itemResponse(item, plan, privateResponse = true) {
+function itemResponse(item, plan, privateResponse = true, isReserved = null) {
     const result = { id: item._id.toString(), name: item.name, description: item.description, category: item.category,
         status: effectiveStatus(item, plan), availableFrom: item.availableFrom, availableUntil: item.availableUntil,
         effectiveAvailableUntil: endDate(item, plan), city: plan.city, neighborhood: plan.neighborhood,
@@ -45,6 +45,7 @@ function itemResponse(item, plan, privateResponse = true) {
     if (privateResponse) Object.assign(result, { planId: plan._id.toString(), version: item.version,
         createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString(),
         isPublic: effectiveStatus(item, plan) === 'available' && plan.status === 'active' && Boolean(item.publishedAt) });
+    if (privateResponse && typeof isReserved === 'boolean') result.isReserved = isReserved;
     return result;
 }
 function createInventoryService({ connectToDatabase }) {
@@ -55,11 +56,11 @@ function createInventoryService({ connectToDatabase }) {
             { $lookup: { from: 'items', let: { parent: '$_id', owner: '$ownerId' }, pipeline: [
                 { $match: { $expr: { $and: [{ $eq: ['$planId', '$$parent'] }, { $eq: ['$ownerId', '$$owner'] }] } } },
                 { $sort: { createdAt: 1, _id: 1 } }
-            ], as: 'items' } }
-        ], { readConcern: { level: 'snapshot' } }).toArray();
+            ].concat(pickupReservationStages()), as: 'items' } }
+        ], { readConcern: { level: 'snapshot' }, collation: { locale: 'simple' } }).toArray();
         const plan = rows[0];
         if (!plan) throw notFound();
-        const items = plan.items.map(item => itemResponse(item, plan));
+        const items = plan.items.map(item => itemResponse(item, plan, true, item.isReserved));
         return { items, plan: { id: plan._id.toString(), title: plan.title, city: plan.city, neighborhood: plan.neighborhood,
             moveOutDeadline: plan.moveOutDeadline, status: plan.status },
             progress: { total: items.length, cleared: items.filter(item => item.status === 'cleared').length } };

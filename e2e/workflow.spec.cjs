@@ -162,10 +162,18 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
       await a.getByText('Accepted appointment', { exact: true }).first().waitFor();
     }
     await test.step('Three pending requests explicitly accepted by giver', async () => {});
+    await b.goto('/app/items/' + itemIds[0]);
+    await expect(b.getByText('Pickup arranged', { exact: true })).toBeVisible();
+    await expect(b.getByRole('link', { name: 'Request pickup', exact: true })).toHaveCount(0);
+    await b.goto('/app/items/' + itemIds[0] + '/request');
+    await expect(b.getByRole('button', { name: 'Check availability', exact: true })).toBeVisible();
+    await expect(b.getByLabel('Pickup date and time', { exact: true })).toHaveCount(0);
     const duplicate = await write(receiver, '/api/pickup-requests', { itemId: itemIds[0], localDateTime: localTime, timeZone: 'America/Los_Angeles' }); must(duplicate.status() === 409, 'Accepted item allowed another active reservation');
     for (const id of itemIds) must(await deployment.db.collection('pickupRequests').countDocuments({ itemId: new (require(root + '/giftlink-backend/node_modules/mongodb').ObjectId)(id), status: 'accepted' }) === 1, 'Reservation uniqueness violated');
     const unauthorizedAction = await write(receiver, '/api/pickup-requests/' + requestIds[0] + '/actions', { action: 'complete', version: 2 }); must(unauthorizedAction.status() === 409, 'Receiver completed giver handoff');
     await b.goto('/app/pickups/' + requestIds[1]); await b.getByRole('button', { name: 'Cancel request', exact: true }).click(); await b.getByText('Cancelled', { exact: true }).first().waitFor();
+    await b.goto('/app/items/' + itemIds[1]);
+    await expect(b.getByRole('link', { name: 'Request pickup', exact: true })).toBeVisible();
     const early = await write(giver, '/api/pickup-requests/' + requestIds[2] + '/actions', { action: 'no_show', version: 2 }); must(early.status() === 409, 'No-show allowed before appointment');
     await test.step('Reservation constraints, authorization, cancellation and early no-show rejection verified', async () => {});
     if (deployment.local) {
@@ -179,7 +187,8 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     must((await read(receiver, deployment.origin + '/api/items/' + itemIds[0])).status() === 404, 'Cleared item remained public');
     const planRow = await deployment.db.collection('moveOutPlans').findOne({ ownerId: userA._id }); await a.goto('/app/plans/' + planRow._id + '/items'); await expect(a.getByText('1 of 3 items cleared', { exact: true })).toBeVisible();
     await a.goto('/app/pickups/' + requestIds[2]); await a.getByRole('button', { name: 'Record no-show', exact: true }).click(); await a.getByText('Receiver did not arrive', { exact: true }).first().waitFor();
-    must((await read(receiver, deployment.origin + '/api/items/' + itemIds[2])).status() === 200, 'No-show cleared the item');
+    const noShowListing = await read(receiver, deployment.origin + '/api/items/' + itemIds[2]);
+    must(noShowListing.status() === 200 && (await noShowListing.json()).item.isReserved === false, 'No-show did not release public availability');
     const laterTime = Temporal.Instant.fromEpochMilliseconds(deployment.now() + 86400000).toZonedDateTimeISO('America/Los_Angeles').toPlainDateTime().toString({ smallestUnit: 'minute' });
     const released = await write(receiver, '/api/pickup-requests', { itemId: itemIds[2], localDateTime: laterTime, timeZone: 'America/Los_Angeles' });
     must(released.status() === 201, 'No-show did not release the reservation');

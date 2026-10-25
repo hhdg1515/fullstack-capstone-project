@@ -77,6 +77,58 @@ describe('two-party pickup lifecycle on verified isolated MongoDB', function () 
         assert.equal(result.headers['cache-control'], 'no-store');
         await submit({}, other).expect(201);
     });
+    async function assertReservation(expected) {
+        const detail = (await request(app).get('/api/items/' + item.id).expect(200)).body.item;
+        const listing = (await request(app).get('/api/items').expect(200)).body.items.find(row => row.id === item.id);
+        const owned = (await request(app).get('/api/move-out-plans/' + plan.id + '/items').set('Cookie', giver.cookie).expect(200)).body.items.find(row => row.id === item.id);
+        for (const row of [detail, listing, owned]) assert.equal(row.isReserved, expected);
+        for (const value of ['pickupReservations', 'receiverId', 'giverId', 'public library', receiver.id, plan.id]) {
+            assert.ok(!JSON.stringify(detail).includes(value));
+        }
+    }
+    it('reports authoritative reservations across browsing and inventory without exposing pickup details', async function () {
+        await assertReservation(false);
+        let row = (await submit().expect(201)).body.request;
+        await assertReservation(false);
+        row = (await act(row, 'accept').expect(200)).body.request;
+        await db.collection('items').updateOne({ _id: new ObjectId(item.id) }, { $set: { isReserved: false } });
+        await assertReservation(true);
+        await act(row, 'cancel', receiver).expect(200);
+        await assertReservation(false);
+        row = (await submit().expect(201)).body.request;
+        row = (await act(row, 'accept').expect(200)).body.request;
+        const service = createPickupService({ connectToDatabase: async () => db, now: () => new Date(day(1) + 'T12:01:00Z') });
+        await service.act(new ObjectId(giver.id), row.id, { action: 'no_show', version: row.version });
+        await assertReservation(false);
+        row = (await submit().expect(201)).body.request;
+        row = (await act(row, 'accept').expect(200)).body.request;
+        await service.act(new ObjectId(giver.id), row.id, { action: 'complete', version: row.version });
+        await request(app).get('/api/items/' + item.id).expect(404);
+        const owned = (await request(app).get('/api/move-out-plans/' + plan.id + '/items').set('Cookie', giver.cookie).expect(200)).body;
+        assert.equal(owned.items[0].status, 'cleared'); assert.equal(owned.items[0].isReserved, false);
+    });
+    it('matches the write guard conservatively for inconsistent legacy references without repairing records', async function () {
+        for (const mismatch of [{ giverId: new ObjectId(other.id) }, { planId: new ObjectId() }]) {
+            const row = Object.assign({ itemId: new ObjectId(item.id), giverId: new ObjectId(giver.id), planId: new ObjectId(plan.id),
+                receiverId: new ObjectId(receiver.id), status: 'accepted', active: true }, mismatch);
+            const inserted = await db.collection('pickupRequests').insertOne(row);
+            await assertReservation(true);
+            const blocked = await submit({}, other).expect(409);
+            assert.equal(blocked.body.error.code, 'ITEM_RESERVED');
+            assert.deepEqual(await db.collection('pickupRequests').findOne({ _id: inserted.insertedId }), Object.assign({}, row, { _id: inserted.insertedId }));
+            await db.collection('pickupRequests').deleteOne({ _id: inserted.insertedId });
+        }
+        await db.collection('pickupRequests').insertOne({ itemId: new ObjectId(), status: 'accepted' });
+        await assertReservation(false);
+    });
+    it('keeps an accepted reservation visible to its owner after the listing deadline', async function () {
+        let row = (await submit().expect(201)).body.request;
+        await act(row, 'accept').expect(200);
+        await db.collection('items').updateOne({ _id: new ObjectId(item.id) }, { $set: { availableUntil: day(-1) } });
+        await request(app).get('/api/items/' + item.id).expect(404);
+        const owned = (await request(app).get('/api/move-out-plans/' + plan.id + '/items').set('Cookie', giver.cookie).expect(200)).body;
+        assert.equal(owned.items[0].status, 'expired'); assert.equal(owned.items[0].isReserved, true);
+    });
     it('rejects own items and hidden, expired, unpublished, inactive and mismatched-owner listings', async function () {
         await submit({}, giver).expect(409);
         for (const status of ['draft', 'unlisted', 'cleared', 'expired']) {

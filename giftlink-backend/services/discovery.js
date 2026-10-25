@@ -2,6 +2,7 @@ const { createHash } = require('crypto');
 const { ObjectId } = require('mongodb');
 const { InventoryError } = require('./inventory');
 const { todayUTC, isCalendarDate } = require('./calendar');
+const { pickupReservationStages } = require('./pickup-policy');
 
 const normalizeLabel = value => value.trim().replace(/\s+/g, ' ');
 const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -57,10 +58,10 @@ function readCursor(token, query, now) {
     return value;
 }
 const projection = { name: 1, description: 1, category: 1, status: 1, availableFrom: 1, availableUntil: 1,
-    publishedAt: 1, effectiveAvailableUntil: 1, 'plan.city': 1, 'plan.neighborhood': 1, 'plan.moveOutDeadline': 1, 'plan.pickupTimeZone': 1 };
+    publishedAt: 1, effectiveAvailableUntil: 1, isReserved: 1, 'plan.city': 1, 'plan.neighborhood': 1, 'plan.moveOutDeadline': 1, 'plan.pickupTimeZone': 1 };
 function publicItem(row, today) {
     return { id: row._id.toString(), name: row.name, description: row.description, category: row.category,
-        status: 'available', availability: row.availableFrom && row.availableFrom > today ? 'later' : 'now',
+        status: 'available', isReserved: row.isReserved, availability: row.availableFrom && row.availableFrom > today ? 'later' : 'now',
         availableFrom: row.availableFrom || null, availableUntil: row.availableUntil || null,
         effectiveAvailableUntil: row.effectiveAvailableUntil, city: normalizeLabel(row.plan.city),
         neighborhood: normalizeLabel(row.plan.neighborhood), moveOutDeadline: row.plan.moveOutDeadline,
@@ -120,7 +121,8 @@ function createDiscoveryService({ connectToDatabase, now = () => new Date() }) {
             { effectiveAvailableUntil: { $gt: cursor.value } }, { effectiveAvailableUntil: cursor.value, _id: { $gt: new ObjectId(cursor.id) } }
         ] } });
         pipeline.push({ $sort: query.sort === 'newest' ? { publishedAt: -1, _id: -1 } : { effectiveAvailableUntil: 1, _id: 1 } },
-            { $limit: query.limit + 1 }, { $project: projection });
+            { $limit: query.limit + 1 });
+        pipeline.push(...pickupReservationStages(), { $project: projection });
         const rows = await aggregate(pipeline);
         const hasMore = rows.length > query.limit; const selected = rows.slice(0, query.limit);
         const last = selected[selected.length - 1];
@@ -132,7 +134,8 @@ function createDiscoveryService({ connectToDatabase, now = () => new Date() }) {
     async function detail(id) {
         if (!/^[a-fA-F0-9]{24}$/.test(id)) throw new InventoryError(404, 'ITEM_NOT_FOUND', 'Listing unavailable');
         const current = now(); const today = todayUTC(current);
-        const rows = await aggregate(visibilityPipeline(Object.assign(initialMatch(current.getTime()), { _id: new ObjectId(id) }), today).concat([{ $project: projection }]));
+        const rows = await aggregate(visibilityPipeline(Object.assign(initialMatch(current.getTime()), { _id: new ObjectId(id) }), today)
+            .concat(pickupReservationStages(), [{ $project: projection }]));
         if (!rows.length) throw new InventoryError(404, 'ITEM_NOT_FOUND', 'Listing unavailable');
         return { item: publicItem(rows[0], today), today };
     }

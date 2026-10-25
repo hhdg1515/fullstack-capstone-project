@@ -1,9 +1,27 @@
 # Milestone 6.1 — UI/UX Refinement plan
 
-Status: **proposed product-design scope; implementation has not started**.
+Status: **Functional Minimalism selected by the owner; implementation proceeds
+through focused, tested PRs**. The [design audit in PR #29](https://github.com/hhdg1515/fullstack-capstone-project/pull/29)
+is the issue backlog; visual consistency is secondary to task completion.
 Milestone 6.0 Engineering Hardening is code-complete; its
 [deferred launch-readiness items](production-readiness.md#deferred-public-launch-readiness-items)
 remain separate. This plan does not authorize launch or infrastructure work.
+
+## Approved implementation direction
+
+One clear task and next action per screen. Put useful content first, collapse
+infrequent controls, use concise familiar English and avoid repeated input or
+navigation. Keep forms short, protect meaningful drafts and make errors actionable.
+Mobile usability, truthful backend-derived status, accessibility, privacy,
+confirmations and recovery take priority over decorative changes. Reuse existing
+React/CSS without a new framework, animations or a general-purpose design system.
+
+The first focused change addresses A1/D1 from the audit: an authoritative boolean
+reservation read from existing accepted pickups, with no new lifecycle, index or
+stored field. This implements the owner's requirement for accurate status;
+the remaining optional product enhancements are not included. Subsequent
+PRs tackle content-first mobile discovery and the other functional backlog items.
+No merge, hosted E2E, provider change or deployment is authorized here.
 
 ## Goal and priorities
 
