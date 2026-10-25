@@ -10,7 +10,7 @@ import { confirmPickupChanges } from '../../api/confirmPickupChanges';
 
 const user = { id: 'receiver', firstName: 'Reader', lastName: 'Neighbor', email: 'reader@example.test' };
 const item = { id: '64a000000000000000000001', name: 'Kitchen box', description: 'One whole box.', city: 'Oakland', neighborhood: 'Temescal',
-  pickupTimeZone: 'Asia/Kolkata', availableFrom: '2030-07-01', effectiveAvailableUntil: '2030-07-03', availability: 'later' };
+  pickupTimeZone: 'Asia/Kolkata', isReserved: false, availableFrom: '2030-07-01', effectiveAvailableUntil: '2030-07-03', availability: 'later' };
 const base = { id: '64a000000000000000000002', role: 'receiver', status: 'pending', version: 1, note: 'Meet by the library', item,
   proposedAt: '2030-07-01T09:00:00.000Z', localDateTime: '2030-07-01T14:30', timeZone: 'Asia/Kolkata', counterpart: { firstName: 'Giver' },
   history: [{ action: 'pending', actor: 'receiver', at: '2026-01-01T00:00:00Z' }] };
@@ -61,6 +61,23 @@ test('form uses the giver timezone explicitly, never prepopulates browser local 
   const [, options] = fetch.mock.calls.find(([, options]) => options.method === 'POST');
   expect(JSON.parse(options.body)).toEqual({ itemId: item.id, localDateTime: '2030-07-01T14:30', timeZone: 'Asia/Kolkata', note: 'Meet by the library' });
   expect(options.headers['X-CSRF-Protection']).toBe('1'); expect(options.credentials).toBe('include');
+});
+test('a direct request URL stops at a known reservation and can recover after it is released', async () => {
+  let isReserved = true;
+  fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { item: { ...item, isReserved } }));
+  mount();
+  const refresh = await screen.findByRole('button', { name: 'Check availability' });
+  expect(screen.queryByLabelText('Pickup date and time')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Send pickup request' })).not.toBeInTheDocument();
+  expect(fetch.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true);
+  isReserved = false; await click(refresh);
+  expect(await screen.findByLabelText('Pickup date and time')).toHaveValue('');
+});
+test('missing reservation metadata does not silently claim that a pickup is available', async () => {
+  fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { item: { ...item, isReserved: undefined } }));
+  mount();
+  expect(await screen.findByText('Current pickup availability will be checked when you send a request.')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Send pickup request' })).toBeInTheDocument();
 });
 test('missing giver timezone prevents request submission without guessing another zone', async () => {
   fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { item: { ...item, pickupTimeZone: null } }));

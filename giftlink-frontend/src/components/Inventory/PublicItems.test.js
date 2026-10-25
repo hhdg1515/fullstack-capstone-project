@@ -5,7 +5,7 @@ import PublicItems from './PublicItems';
 
 const day = offset => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
 const a = { id: '64a000000000000000000001', name: 'Kitchen supplies', description: 'A full box of cookware and utensils.', category: 'Kitchen & craft',
-  city: 'Oakland', neighborhood: 'Temescal', status: 'available', availability: 'now', availableFrom: null, availableUntil: null,
+  city: 'Oakland', neighborhood: 'Temescal', status: 'available', isReserved: false, availability: 'now', availableFrom: null, availableUntil: null,
   effectiveAvailableUntil: day(20), moveOutDeadline: day(20), publishedAt: '2026-01-01T12:00:00.000Z' };
 const b = { ...a, id: '64a000000000000000000002', name: 'Reading lamp', availability: 'later', availableFrom: day(5), neighborhood: 'Rockridge' };
 const places = { locations: [{ city: 'Oakland', neighborhoods: ['Temescal', 'Rockridge'] }, { city: 'Berkeley', neighborhoods: ['Temescal', 'Downtown'] }], truncated: false };
@@ -31,6 +31,38 @@ const ready = () => screen.findByRole('link', { name: a.name });
 const submit = async () => { await act(async () => { fireEvent.submit(screen.getByRole('button', { name: 'Find free items' }).closest('form')); }); };
 const click = async name => { await act(async () => { fireEvent.click(screen.getByRole('button', { name })); }); };
 const apiCalls = () => fetch.mock.calls.filter(([url]) => !url.endsWith('/locations'));
+
+test.each(['/app/items', '/app/items/' + a.id])('reserved items never promise immediate availability at %s', async path => {
+  const reserved = { ...a, isReserved: true, pickupTimeZone: 'UTC' };
+  handler = async url => url.includes('/api/items?') ? feed([reserved]) : reply(200, { item: reserved });
+  mount(path);
+  expect(await screen.findByText('Pickup arranged')).toBeInTheDocument();
+  const content = path === '/app/items' ? within(screen.getByRole('list', { name: 'Available items' })) : screen;
+  expect(content.queryByText('Available Now')).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Request pickup' })).not.toBeInTheDocument();
+});
+test('refreshing a released listing restores its request action from the new server response', async () => {
+  let isReserved = true;
+  handler = async () => reply(200, { item: { ...a, pickupTimeZone: 'UTC', isReserved } });
+  mount('/app/items/' + a.id); await screen.findByText('Pickup arranged');
+  isReserved = false; await click('Refresh listings');
+  expect(await screen.findByRole('link', { name: 'Request pickup' })).toBeInTheDocument();
+  expect(screen.getByText('Available Now')).toBeInTheDocument();
+});
+test('a listing awaiting giver setup does not advertise immediate pickup', async () => {
+  handler = async () => reply(200, { item: { ...a, pickupTimeZone: null } });
+  mount('/app/items/' + a.id);
+  expect(await screen.findByText('Pickup setup needed')).toBeInTheDocument();
+  expect(screen.queryByText('Available Now')).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Request pickup' })).not.toBeInTheDocument();
+});
+test('an older response without reservation data describes a window rather than inventing availability', async () => {
+  handler = async () => reply(200, { item: { ...a, pickupTimeZone: 'UTC', isReserved: undefined } });
+  mount('/app/items/' + a.id);
+  expect(await screen.findByText('Pickup window')).toBeInTheDocument();
+  expect(screen.getByText('Current pickup availability will be checked when you send a request.')).toBeInTheDocument();
+  expect(screen.queryByText('Available Now')).not.toBeInTheDocument();
+});
 
 test('anonymous discovery needs no account or location and shows useful now/later text cards', async () => {
   mount(); await ready();

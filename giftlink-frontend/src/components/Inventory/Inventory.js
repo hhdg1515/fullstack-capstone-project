@@ -9,7 +9,7 @@ import './Inventory.css';
 import JourneyNav from '../Journeys/JourneyNav';
 
 export const itemStates = ['draft', 'available', 'unlisted', 'cleared', 'expired'];
-const labels = { draft: 'Draft', available: 'Available', unlisted: 'Unlisted', cleared: 'Cleared', expired: 'Expired' };
+const labels = { draft: 'Draft', available: 'Published', unlisted: 'Unlisted', cleared: 'Cleared', expired: 'Expired' };
 const actionLabels = { publish: 'Publish', unlist: 'Unlist', clear: 'Mark cleared', reopen: 'Reopen as draft' };
 const confirmations = { publish: 'Publish this item for everyone to see? Future pickup dates do not delay publication.',
   unlist: 'Remove this item from public discovery now? It will not count as cleared.',
@@ -76,7 +76,8 @@ export default function Inventory() {
         {!data.items.length && <p>No items yet. Add the first one above; the plan supplies its location and deadline.</p>}
         {data.items.length > 0 && !data.items.some(entry => filter === 'all' || entry.status === filter) && <p>No items match this status.</p>}
         <ul className="inventory-list">{data.items.filter(entry => filter === 'all' || entry.status === filter).map(entry => <li className="plan-panel" key={entry.id}>
-          <h2>{entry.name}</h2><p><span className="plan-status">{labels[entry.status]}</span> {entry.category}</p>
+          <h2>{entry.name}</h2><p><span className="plan-status">{labels[entry.status]}</span> {entry.category}
+            {entry.isReserved === true && <> · <span className="plan-status">Pickup arranged</span></>}</p>
           <p>Pickup: {entry.availableFrom || 'Immediately'} through {entry.effectiveAvailableUntil}</p>
           {entry.status === 'available' && !entry.isPublic && <p>Hidden while the plan is inactive.</p>}
           {entry.status === 'expired' && <p>Edit the pickup dates or extend the plan deadline, then explicitly publish again.</p>}

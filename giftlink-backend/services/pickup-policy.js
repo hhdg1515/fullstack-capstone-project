@@ -34,6 +34,18 @@ function eligible(item, plan, now = new Date()) {
         plan.status === 'active' && item.ownerId.equals(plan.ownerId) && end >= todayUTC(now) &&
         end <= plan.moveOutDeadline && (!item.availableFrom || item.availableFrom <= end);
 }
+// Read alongside items in the caller's snapshot. Only a boolean leaves the
+// aggregation: participant IDs, appointment details and notes remain private.
+function pickupReservationStages() {
+    // Use the same item/status predicate as create/accept, including conservative
+    // blocking for inconsistent legacy references. Reads never repair records.
+    return [{ $lookup: { from: 'pickupRequests', let: { item: '$_id' }, pipeline: [
+        { $match: { status: 'accepted', $expr: { $eq: ['$itemId', '$$item'] } } },
+        { $limit: 1 }, { $project: { _id: 0, status: 1 } }
+    ], as: 'pickupReservations' } },
+    { $addFields: { isReserved: { $gt: [{ $size: '$pickupReservations' }, 0] } } },
+    { $project: { pickupReservations: 0 } }];
+}
 // Called inside the same plan transaction as the consequential inventory edit.
 const confirmationRequired = count => new InventoryError(409, 'PICKUP_CONFIRMATION_REQUIRED',
     'This change will cancel ' + count + ' outstanding pickup request(s), including any affected accepted appointment. Review and explicitly confirm cancellation before saving.', { affectedRequests: count });
@@ -49,4 +61,4 @@ async function invalidateRequests(db, session, item, plan, actorId, confirmed, f
         $inc: { version: 1 }, $push: { history: { action: 'cancelled', actorId, actorRole: 'giver', at, reason: forceReason || 'availability_changed' } }
     }, { session });
 }
-module.exports = { validTimeZone, appointment, fitsWindow, eligible, invalidateRequests, confirmationRequired };
+module.exports = { validTimeZone, appointment, fitsWindow, eligible, invalidateRequests, confirmationRequired, pickupReservationStages };

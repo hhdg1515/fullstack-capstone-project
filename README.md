@@ -12,6 +12,18 @@ now has a [design-only audit and local screenshots](docs/milestone-6.1-design-au
 for owner review; UI implementation has not started. This documentation
 closeout makes no application, workflow, provider-setting or manual deployment change.
 
+Milestone 6.1 now follows the owner's **Functional Minimalism** direction. Public
+discovery/detail and owner inventory reads add `isReserved`, derived from a matching
+accepted pickup in the same MongoDB snapshot. It exposes no participant or appointment
+details, requires no migration/index setup, and does not change pickup transitions.
+Reserved listings remain browsable but show **Pickup arranged**; their request form
+is replaced by a check-availability action. Owner inventory calls the stored
+`available` publication state **Published**, distinct from reservation and clearance.
+Missing reservation metadata is treated as unknown rather than guessed; older API
+responses retain a server-checked request path. Deploy the backend before the frontend
+when this change is separately approved. Availability can change after a read, so
+submission still checks ownership, sessions, CSRF and reservation state on the server.
+
 Move-Out Marketplace remains a React, Express, Node.js, and MongoDB native-driver application. Milestone 5.5 organizes the product around **Give Away** and **Find Free Items**, with one shared account and no fixed account roles. Plans, inventory, anonymous discovery, pickup coordination and handoffs retain their existing APIs and data model. The original GiftLink collection/search and all 16 demo records remain available. Messaging, notifications, payments, shipping, property integrations, image uploads, and geographical APIs are not implemented.
 
 ## Two journeys, one account

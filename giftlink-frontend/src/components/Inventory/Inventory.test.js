@@ -86,11 +86,17 @@ test('client rejects invalid availability ranges and empty names without sending
   submitDraft(); expect(screen.getByRole('alert')).toHaveTextContent('Pickup dates must be in order');
   expect(fetch.mock.calls.some(([, options]) => options.method !== 'GET')).toBe(false);
 });
+test.each(['available', 'expired'])('reservation metadata stays distinct from %s publication state and clearance progress', async status => {
+  data = inventory([{ ...item, status, isReserved: true }]); mount(); await formReady();
+  expect(screen.getByText('Pickup arranged')).toBeInTheDocument();
+  expect(screen.getByText('0 of 1 items cleared')).toBeInTheDocument();
+  expect(screen.getAllByText(status === 'available' ? 'Published' : 'Expired').length).toBeGreaterThan(0);
+});
 test('all five item states, availability and real clearance progress remain distinguishable', async () => {
   data = inventory(['draft', 'available', 'unlisted', 'cleared', 'expired'].map((status, index) => ({ ...item, id: String(index), name: `${status} item`, status })));
   mount(); await formReady();
   expect(screen.getByText('1 of 5 items cleared')).toBeInTheDocument();
-  for (const label of ['Draft', 'Available', 'Unlisted', 'Cleared', 'Expired']) expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+  for (const label of ['Draft', 'Published', 'Unlisted', 'Cleared', 'Expired']) expect(screen.getAllByText(label).length).toBeGreaterThan(0);
   fireEvent.change(screen.getByLabelText('Show items'), { target: { value: 'unlisted' } });
   expect(screen.getByRole('heading', { name: 'unlisted item' })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'cleared item' })).not.toBeInTheDocument();
