@@ -202,6 +202,8 @@ function inspectionFixture(overrides = {}) {
     ['/v13/deployments/' + new URL(staging.apiOrigin).hostname]: 404,
     ['/v4/aliases/' + new URL(staging.productionFrontendOrigin).hostname]: { projectId: staging.frontendProjectId, deploymentId: 'dpl_frontend' },
     ['/v4/aliases/' + new URL(staging.apiOrigin).hostname]: { projectId: staging.backendProjectId, deploymentId: 'dpl_backend' },
+    ['/v4/aliases/' + new URL(staging.frontendOrigin).hostname]: { projectId: staging.frontendProjectId, deploymentId: 'dpl_preview' },
+    '/v13/deployments/dpl_preview': { projectId: staging.frontendProjectId, target: null, readyState: 'READY' },
     '/v13/deployments/dpl_frontend': { id: 'dpl_frontend', projectId: staging.frontendProjectId, target: 'production', readyState: 'READY' },
     '/v13/deployments/dpl_backend': { id: 'dpl_backend', projectId: staging.backendProjectId, target: 'production', readyState: 'READY' },
     ...overrides
@@ -216,12 +218,29 @@ function inspectionFixture(overrides = {}) {
 
 test('inspection locates the first legacy 404 and independently verifies both project IDs, team and canonical alias bindings using GETs only', async () => {
   const f = inspectionFixture(); const result = await inspect({ origin, api: f.api });
-  assert.deepEqual(result, { operation: 'inspect', remoteChanges: false, firstLegacyValidationFailure: 'get_frontend_production_deployment_by_hostname',
+  const { operational, ...access } = result;
+  assert.deepEqual(access, { operation: 'inspect', remoteChanges: false, firstLegacyValidationFailure: 'get_frontend_production_deployment_by_hostname',
     teamReadAccess: true, frontendProjectAccess: true, backendProjectAccess: true, frontendNameMatchesId: true, backendNameMatchesId: true,
     frontendTeamMatches: true, backendTeamMatches: true, frontendConfigurationMatches: true, backendConfigurationMatches: true,
     frontendAliasResolved: true, backendAliasResolved: true });
+  assert.equal(operational.assignedStagingAlias.pointsToReadyPreview, true);
   assert.ok(f.calls.every(call => call.method === 'GET' && call.teamId === staging.teamId));
   assert.ok(!/synthetic-token|Authorization|accountId/.test(JSON.stringify(f.events)));
+});
+
+test('readiness projection never returns provider environment values, bypass secrets, private response fields or undeclared resources', () => {
+  const { readinessSnapshot } = require('./readiness-snapshot.cjs');
+  const result = readinessSnapshot({ frontend: { ssoProtection: { deploymentType: 'all' }, protectionBypass: { 'private-secret': {} },
+    env: [{ key: 'REACT_APP_BACKEND_URL', type: 'plain', value: '', target: ['production'] }] },
+  backend: { nodeVersion: '22.x', env: [{ key: 'MONGO_URL', type: 'encrypted', value: 'private-connection-string', target: ['production'] },
+    { key: 'APP_ORIGIN', type: 'plain', value: staging.frontendOrigin, target: ['production'] }] },
+  production: { projectId: staging.frontendProjectId, target: 'production', routes: [{ dest: staging.apiOrigin + '/api/$1' }] },
+  team: { billing: { plan: 'hobby', privateField: 'private-secret' } } });
+  assert.equal(result.providerPlan, 'hobby'); assert.equal(result.frontend.productionRoutesExposeStaging, true);
+  assert.equal(result.stagingApi.databaseCredential, 'present'); assert.equal(result.stagingApi.origin, 'matches_expected');
+  assert.equal(result.stagingApi.database, 'absent'); assert.ok(!/private-secret|private-connection-string|vercel\.app/.test(JSON.stringify(result)));
+  assert.equal(readinessSnapshot({}).frontend.productionRoutesExposeStaging, null);
+  assert.equal(readinessSnapshot({}).atlasControlPlane, 'not_observed');
 });
 
 test('one inaccessible project never hides the second project check; wrong IDs and team ownership remain explicit', async () => {
