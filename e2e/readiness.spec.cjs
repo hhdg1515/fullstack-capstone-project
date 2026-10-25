@@ -13,6 +13,14 @@ test('public/account pages have no automated WCAG A/AA violations and support ke
       const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
       const rules = results.violations.map(value => value.id).join(', ') || 'none';
       await test.step('Accessibility ' + route + ' rules: ' + rules, async () => { expect(results.violations.length).toBe(0); });
+      if (route === '/app/items') {
+        const filters = page.getByRole('button', { name: /^Filters/ });
+        await expect(filters).toHaveAttribute('aria-expanded', 'false'); await filters.click();
+        const expanded = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+        const expandedRules = expanded.violations.map(value => value.id).join(', ') || 'none';
+        await test.step('Accessibility expanded discovery filters rules: ' + expandedRules, async () => { expect(expanded.violations.length).toBe(0); });
+        await filters.click();
+      }
     }
     await page.goto(deployment.origin + '/');
     await page.keyboard.press('Tab');

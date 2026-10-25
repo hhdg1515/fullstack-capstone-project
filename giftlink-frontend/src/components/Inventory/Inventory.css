@@ -11,6 +11,14 @@
 .discovery-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); column-gap: 1rem; }
 .discovery-filters .plan-field { margin: .6rem 0; }
 .discovery-search, .discovery-filters .plan-actions { grid-column: 1 / -1; }
+.discovery-search-actions { margin: .5rem 0; }
+.discovery-search-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .4rem; }
+.discovery-search-heading label { margin: 0; }
+.discovery-search-heading .btn { transition: none; }
+.discovery-options { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 0 1rem; }
+.discovery-options[hidden] { display: none; }
+.discovery-options small { grid-column: 1 / -1; margin: .5rem 0; }
+.discovery-summary { margin: .75rem 0; }
 .discovery-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); list-style: none; gap: 1rem; padding: 0; }
 .discovery-grid .plan-panel { margin: 0; }
 .discovery-card { min-width: 0; }

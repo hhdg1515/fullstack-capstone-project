@@ -41,6 +41,10 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     const menu = page.getByRole('button', { name: 'Menu', exact: true }); if (await menu.isVisible()) await menu.click();
     await page.getByRole('navigation', { name: 'Primary', exact: true }).getByRole('link', { name: label, exact: true }).click();
   }
+  async function filters(page) {
+    const toggle = page.getByRole('button', { name: /^Filters(?: \(\d+\))?$/ });
+    if (await toggle.getAttribute('aria-expanded') === 'false') await toggle.click();
+  }
   async function register(page, email) {
     await page.goto('/app/register');
     for (const [label, value] of [['First name', 'E2E'], ['Last name', runId], ['Email', email], ['Password', password]]) await page.getByLabel(label, { exact: true }).fill(value);
@@ -108,12 +112,14 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     await b.goto('/app/items?q=' + encodeURIComponent(prefix) + '&limit=1');
     const results = b.getByRole('list', { name: 'Available items', exact: true });
     await expect(results.getByRole('listitem')).toHaveCount(1);
+    await expect(results.getByRole('listitem').first()).toBeInViewport();
     await expect(results.getByRole('link').first()).toHaveText(prefix + ' lamp');
     for (const count of [2, 3]) {
       await b.getByRole('button', { name: 'Load more', exact: true }).click();
       await expect(results.getByRole('listitem')).toHaveCount(count);
     }
     await expect(b.getByRole('button', { name: 'Load more', exact: true })).toHaveCount(0);
+    await filters(b);
     await b.getByRole('option', { name: 'E2E City', exact: true }).waitFor({ state: 'attached' });
     await b.getByLabel('City', { exact: true }).selectOption('E2E City');
     await b.getByLabel('Neighborhood', { exact: true }).selectOption('E2E Neighborhood');
@@ -125,9 +131,11 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     await b.reload(); await expect(results.getByRole('listitem')).toHaveCount(3);
     await expect(b.getByLabel('Neighborhood', { exact: true })).toHaveValue('E2E Neighborhood');
     await expect(b.getByLabel('Sort items', { exact: true })).toHaveValue('deadline');
+    await filters(b);
     await b.getByLabel('Pickup availability', { exact: true }).selectOption('later');
     await b.getByRole('button', { name: 'Find free items', exact: true }).click();
     await expect(b.getByText('No available items match. Try another search or clear filters.', { exact: true })).toBeVisible();
+    await filters(b);
     await b.getByLabel('Pickup availability', { exact: true }).selectOption('now');
     await b.getByLabel('Search items', { exact: true }).fill(prefix + ' desk');
     await b.getByRole('button', { name: 'Find free items', exact: true }).click();

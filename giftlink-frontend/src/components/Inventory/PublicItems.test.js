@@ -19,7 +19,7 @@ function Navigation() {
   return <><output aria-label="Current URL">{location.pathname}{location.search}</output><button onClick={() => navigate(-1)}>Browser back</button></>;
 }
 function mount(path = '/app/items') {
-  return render(<MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+  return render(<MemoryRouter initialEntries={Array.isArray(path) ? path : [path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
     <Navigation /><Routes><Route path="/app/items" element={<PublicItems />} /><Route path="/app/items/:itemId" element={<PublicItems />} /></Routes>
   </MemoryRouter>);
 }
@@ -51,7 +51,7 @@ test('search applies a name/description/tag phrase on the server and persists it
   expect(screen.getByLabelText('Search items')).toHaveValue('cookware and utensils');
 });
 test('city options populate from listings and changing city clears an incompatible neighborhood', async () => {
-  mount(); await ready(); await screen.findByRole('option', { name: 'Oakland' });
+  mount(); await ready(); await click(/^Filters/); await screen.findByRole('option', { name: 'Oakland' });
   fireEvent.change(screen.getByLabelText('Neighborhood'), { target: { value: 'Rockridge' } });
   fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Berkeley' } });
   expect(screen.getByLabelText('Neighborhood')).toHaveValue('');
@@ -60,19 +60,19 @@ test('city options populate from listings and changing city clears an incompatib
   expect(screen.getByLabelText('Current URL')).not.toHaveTextContent('neighborhood=');
 });
 test('neighborhood-only filtering spans cities and does not require an eligibility location', async () => {
-  mount(); await ready(); await screen.findByRole('option', { name: 'Oakland' });
+  mount(); await ready(); await click(/^Filters/); await screen.findByRole('option', { name: 'Oakland' });
   expect(within(screen.getByLabelText('Neighborhood')).getAllByRole('option', { name: 'Temescal' })).toHaveLength(1);
   fireEvent.change(screen.getByLabelText('Neighborhood'), { target: { value: 'Temescal' } }); await submit();
   await waitFor(() => expect(screen.getByLabelText('Current URL')).toHaveTextContent('neighborhood=Temescal'));
   expect(screen.getByLabelText('Current URL')).not.toHaveTextContent('city=');
 });
 test.each(['now', 'later'])('applies the %s availability filter without confusing it with publication order', async availability => {
-  mount(); await ready();
+  mount(); await ready(); await click(/^Filters/);
   fireEvent.change(screen.getByLabelText('Pickup availability'), { target: { value: availability } }); await submit();
   await waitFor(() => expect(apiCalls().some(([url]) => new URL(url, 'http://localhost').searchParams.get('availability') === availability)).toBe(true));
 });
 test('selected pickup dates and deadline sorting are preserved together in the request and URL', async () => {
-  mount(); await ready();
+  mount(); await ready(); await click(/^Filters/);
   fireEvent.change(screen.getByLabelText('Pickup availability'), { target: { value: 'date' } });
   expect(screen.getByLabelText('Pickup date (UTC)')).toHaveAttribute('min', day(0));
   fireEvent.change(screen.getByLabelText('Pickup date (UTC)'), { target: { value: day(6) } });
@@ -149,6 +149,7 @@ test('location metadata failures do not block anonymous browsing and have an ind
   mount(); await ready();
   expect(await screen.findByRole('alert')).toHaveTextContent('Location options could not be loaded');
   await click('Retry location options');
+  await click(/^Filters/);
   expect(await screen.findByRole('option', { name: 'Berkeley' })).toBeInTheDocument();
 });
 test('loading, empty, error and retry states support searching again', async () => {
@@ -193,4 +194,53 @@ test('focus refresh keeps an unsubmitted search draft while checking current pub
   await act(async () => { fireEvent(window, new Event('focus')); });
   expect(screen.getByLabelText('Search items')).toHaveValue('Unsaved search');
   expect(apiCalls().length).toBe(2);
+});
+test('filters start collapsed and opening or closing them neither fetches nor discards an unsubmitted search', async () => {
+  mount(); await ready();
+  expect(screen.getByRole('button', { name: 'Filters' })).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.getByLabelText('City')).not.toBeVisible();
+  expect(screen.getByRole('button', { name: 'Find free items' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Refresh listings' })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Search items'), { target: { value: 'Unsaved kitchen search' } });
+  const count = fetch.mock.calls.length;
+  await click('Filters'); expect(screen.getByLabelText('City')).toBeVisible();
+  await click('Filters'); expect(screen.getByLabelText('City')).not.toBeVisible();
+  expect(screen.getByLabelText('Search items')).toHaveValue('Unsaved kitchen search');
+  expect(fetch).toHaveBeenCalledTimes(count);
+});
+test('shared URL conditions remain visible while controls are collapsed and reopen with their saved values', async () => {
+  mount('/app/items?q=lamp&city=Oakland&availability=later&sort=deadline'); await ready();
+  expect(screen.getByRole('button', { name: 'Filters (3)' })).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.getByLabelText('Applied filters')).toHaveTextContent('Search: lamp · City: Oakland · Pickup: later · Sort: earliest pickup deadline');
+  await click('Filters (3)'); expect(screen.getByLabelText('City')).toBeVisible();
+  expect(screen.getByLabelText('City')).toHaveValue('Oakland');
+  expect(screen.getByLabelText('Pickup availability')).toHaveValue('later');
+});
+test('an incomplete date filter reopens with an actionable error and safe focus, then applies without hiding focus', async () => {
+  mount(); await ready(); await click('Filters');
+  fireEvent.change(screen.getByLabelText('Pickup availability'), { target: { value: 'date' } });
+  await click('Filters'); const reads = apiCalls().length;
+  await submit();
+  expect(screen.getByRole('alert')).toHaveTextContent('Choose today or a later pickup date');
+  expect(screen.getByLabelText('Pickup date (UTC)')).toHaveFocus();
+  expect(screen.getByLabelText('Pickup date (UTC)')).toHaveAttribute('aria-invalid', 'true');
+  expect(apiCalls()).toHaveLength(reads);
+  fireEvent.change(screen.getByLabelText('Pickup date (UTC)'), { target: { value: day(2) } });
+  await submit(); await ready();
+  expect(screen.getByRole('button', { name: 'Filters (1)' })).toHaveFocus();
+  expect(screen.getByLabelText('Pickup date (UTC)')).not.toBeVisible();
+  expect(screen.getByLabelText('Applied filters')).toHaveTextContent(day(2));
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+test('Find free items refreshes results/options without adding an identical history entry', async () => {
+  mount(['/app/items?q=before', '/app/items?q=lamp']); await ready();
+  const reads = apiCalls().length, locations = fetch.mock.calls.filter(([url]) => url.endsWith('/locations')).length;
+  await submit(); await ready();
+  expect(apiCalls()).toHaveLength(reads + 1);
+  expect(fetch.mock.calls.filter(([url]) => url.endsWith('/locations'))).toHaveLength(locations + 1);
+  await click('Clear filters'); await ready();
+  await click('Browser back'); await ready();
+  expect(screen.getByLabelText('Search items')).toHaveValue('lamp');
+  await click('Browser back'); await ready();
+  expect(screen.getByLabelText('Search items')).toHaveValue('before');
 });
