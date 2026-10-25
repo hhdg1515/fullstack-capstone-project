@@ -2,6 +2,7 @@ const { spawnSync } = require('node:child_process');
 const { approve, inspectRemote, assertBudget, newRunId, runPattern } = require('./policy.cjs');
 const { cleanup } = require('./cleanup.cjs');
 const { recordRun } = require('./run-receipt.cjs');
+const { AutomationBypassError } = require('./vercel-bypass.cjs');
 (async () => {
   let remote;
   try {
@@ -28,6 +29,10 @@ const { recordRun } = require('./run-receipt.cjs');
     await remote.database.close(); remote = undefined;
     const child = spawnSync(process.execPath, [require.resolve('@playwright/test/cli'), 'test'], { stdio: 'inherit', env: { ...process.env, E2E_RUN_ID: runId, E2E_REMOTE_RUN: 'confirmed' } });
     process.exitCode = typeof child.status === 'number' ? child.status : 1;
-  } catch { console.error('E2E operation refused or failed. Review the guarded setup/approvals and target privately. No broad cleanup or index creation was attempted.'); process.exitCode = 1; }
+  } catch (error) {
+    console.error(error instanceof AutomationBypassError ? JSON.stringify({ check: 'automation_bypass', status: null, category: error.category }) :
+      'E2E operation refused or failed. Review the guarded setup/approvals and target privately. No broad cleanup or index creation was attempted.');
+    process.exitCode = 1;
+  }
   finally { if (remote) await remote.database.close().catch(() => {}); }
 })();

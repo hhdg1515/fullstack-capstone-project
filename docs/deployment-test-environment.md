@@ -71,6 +71,7 @@ Hosted cold initialization shares one promise/pool (maximum ten connections per 
 | Dedicated API test deployment only | `SESSION_TTL_SECONDS` | Existing default 28800; valid 300–604800 |
 | Frontend approved test build | `REACT_APP_BACKEND_URL` | Empty for same-origin proxy; never MongoDB secrets |
 | Protected GitHub Environment `isolated-e2e` secret | `E2E_MONGO_URL` | Scoped verifier/cleanup connection secret for the same test database |
+| Protected GitHub Environment `isolated-e2e` secret | `VERCEL_AUTOMATION_BYPASS_SECRET` | Owner-created frontend project automation bypass; exact staging alias only, never a frontend build variable |
 | Protected GitHub Environment variables | `E2E_APP_ORIGIN`, `E2E_DB_NAME` | Exact approved test origin/database |
 | Operator workflow inputs | Commit SHA, operation, origin, database, fingerprint, optional run ID | Explicit scoped approvals, not secrets |
 
@@ -96,7 +97,7 @@ Routes are ordered:
 
 The host condition prevents a later merge from silently routing existing Production or unrelated Preview domains to the test database. Production API integration requires a separate approved mapping. Keep original Origin, Cookie, Set-Cookie and CSRF headers intact. The browser cookie belongs to the frontend host because it has no Domain; the API's direct hostname is not used as the browser API base. Do not enable wildcard CORS, SameSite=None or arbitrary Preview-origin reflection. A stable approved frontend hostname is needed because the backend accepts exactly one Origin. Reuse an existing suitable alias if approved; otherwise creating/changing an alias/domain needs separate approval.
 
-Deployment protection must permit authorized automation to reach both frontend/API paths without SSO redirects. No protection bypass token is included or requested in logs. If the chosen protected preview needs automation access, approve that provider configuration separately; do not disable security just to pass tests.
+Deployment Protection remains enabled for ordinary visitors. The owner-created frontend automation secret is supported through the exact staging alias only; see [scoped header/cookie access and post-merge execution](hosted-staging-integration.md#approved-protection-bypass-for-automation). It is never requested or printed in chat/logs, embedded in URLs, or sent directly to the API/production frontend. A frontend bypass cannot authorize a separately protected backend; stop on rejected access rather than broadening its scope or disabling security.
 
 ## Atlas setup plan: no remote writes performed
 

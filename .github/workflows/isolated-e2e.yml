@@ -71,6 +71,7 @@ jobs:
           E2E_APP_ORIGIN: ${{ vars.E2E_APP_ORIGIN }}
           E2E_DB_NAME: ${{ vars.E2E_DB_NAME }}
           E2E_MONGO_URL: ${{ secrets.E2E_MONGO_URL }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           E2E_EXPECTED_TARGET: 8ea1ee6b3396707c1c838e0ae254401c0c58c980993cb6988c0071c7def91acf
           E2E_APPROVE_OPERATION: ${{ inputs.operation }}
           E2E_CONFIRM_ORIGIN: ${{ inputs.confirm_origin }}

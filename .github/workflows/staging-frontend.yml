@@ -65,8 +65,9 @@ jobs:
         run: node deployment/staging-preview.cjs
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ inputs.operation == 'deploy' && secrets.VERCEL_AUTOMATION_BYPASS_SECRET || '' }}
           VERCEL_CLI_PATH: ${{ runner.temp }}/vercel-cli/node_modules/.bin/vercel
-      - name: Validate the exact reviewed HTTPS diagnostic target without credentials
+      - name: Validate the exact reviewed HTTPS diagnostic target
         if: inputs.operation == 'diagnose-https'
         run: node -e 'require("./deployment/staging-preview.cjs").settings(process.env)'
       - name: Read the original failed-run receipt without modifying its deployment
@@ -79,11 +80,12 @@ jobs:
           run-id: ${{ inputs.failed_run_id }}
           repository: hhdg1515/fullstack-capstone-project
           github-token: ${{ github.token }}
-      - name: Inspect each HTTPS assertion without Vercel or database credentials
+      - name: Inspect each HTTPS assertion with scoped provider automation access
         if: inputs.operation == 'diagnose-https'
         run: node deployment/staging-https-diagnostics.cjs
         env:
           STAGING_FAILURE_RECEIPT: ${{ runner.temp }}/failed-staging-receipt/staging-deployment.json
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Preserve sanitized HTTPS checks and partial deployment state
         if: always() && inputs.operation == 'diagnose-https'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

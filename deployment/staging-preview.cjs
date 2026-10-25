@@ -5,16 +5,19 @@ const { staging, testOrigin } = require('./staging-target.cjs');
 const { frontendConfig } = require('./frontend-config.cjs');
 const { health, HttpsPreflightError } = require('../e2e/https-preflight.cjs');
 const { StagingError, vercelApi } = require('./vercel-api.cjs');
+const { AutomationBypassError, assertBypass, assertPrivateAutomation, bypassRequest, withoutBypassSecret } = require('../e2e/vercel-bypass.cjs');
 
 function settings(env) {
   if (env.GITHUB_REPOSITORY !== 'hhdg1515/fullstack-capstone-project' || env.GITHUB_EVENT_NAME !== 'workflow_dispatch' ||
       !/^refs\/heads\/.+/.test(env.GITHUB_REF || '') || (env.GITHUB_REF !== 'refs/heads/main' && !['inspect', 'diagnose-https'].includes(env.STAGING_OPERATION)) ||
       !/^[a-f0-9]{40}$/.test(env.APPROVED_SHA || '') || env.APPROVED_SHA !== env.GITHUB_SHA) throw new StagingError('Use a reviewed manual main run');
   const origin = testOrigin(env.STAGING_FRONTEND_ORIGIN);
+  if (origin !== staging.frontendOrigin) throw new StagingError('Use the existing approved staging alias');
   if (!new URL(origin).hostname.endsWith('.vercel.app')) throw new StagingError('Use an approved free Vercel test alias; custom DNS is outside this workflow');
   if (!['plan', 'inspect', 'diagnose-https', 'deploy'].includes(env.STAGING_OPERATION)) throw new StagingError('Choose plan, inspect, diagnose-https or deploy');
   if (env.STAGING_OPERATION === 'diagnose-https' && env.STAGING_FAILED_RUN_ID && !/^[1-9][0-9]+$/.test(env.STAGING_FAILED_RUN_ID)) throw new StagingError('Use an exact failed staging run ID');
   if (['inspect', 'deploy'].includes(env.STAGING_OPERATION) && !env.VERCEL_TOKEN) throw new StagingError('Configure VERCEL_TOKEN in isolated-e2e');
+  if (env.STAGING_OPERATION === 'deploy') { assertBypass(origin, env.VERCEL_AUTOMATION_BYPASS_SECRET); assertPrivateAutomation(env); }
   return { origin, operation: env.STAGING_OPERATION };
 }
 
@@ -91,6 +94,7 @@ function diagnosticReporter(env, write = value => console.log(value)) {
 
 async function deploy({ origin, api, cli, preflight = health, pause = ms => new Promise(resolve => setTimeout(resolve, ms)), record = () => {} }) {
   testOrigin(origin);
+  if (origin !== staging.frontendOrigin) throw new StagingError('Use the existing approved staging alias');
   const receipt = { origin, apiOrigin: staging.apiOrigin, fingerprint: staging.fingerprint, phase: 'validate_projects' };
   const stage = phase => { receipt.phase = phase; record({ ...receipt }); };
   const verify = async phase => {
@@ -161,7 +165,7 @@ async function deploy({ origin, api, cli, preflight = health, pause = ms => new 
 
 async function main(env = process.env) {
   const config = settings(env);
-  if (config.operation === 'diagnose-https') throw new StagingError('Use the credential-free staging-https-diagnostics entry point');
+  if (config.operation === 'diagnose-https') throw new StagingError('Use the GET-only staging-https-diagnostics entry point');
   const report = diagnosticReporter(env);
   if (config.operation === 'inspect') {
     const result = await inspect({ origin: config.origin, api: vercelApi(env.VERCEL_TOKEN, fetch, { readOnly: true, report }) });
@@ -186,10 +190,12 @@ async function main(env = process.env) {
     console.log(JSON.stringify({ phase: receipt.phase }));
     if (receipt.httpsFailure) report(receipt.httpsFailure);
   };
+  const request = bypassRequest(config.origin, env.VERCEL_AUTOMATION_BYPASS_SECRET);
   const result = await deploy({ origin: config.origin, api: vercelApi(env.VERCEL_TOKEN, fetch, { report }), record,
+    preflight: (origin, target, unused, options) => health(origin, target, request, options),
     cli: async () => {
       const child = spawnSync(env.VERCEL_CLI_PATH, ['deploy', '--prebuilt', '--environment=preview', '--yes', '--scope', staging.teamId, '--token', env.VERCEL_TOKEN],
-        { cwd: repository, encoding: 'utf8', timeout: 600000 });
+        { cwd: repository, encoding: 'utf8', timeout: 600000, env: withoutBypassSecret(env) });
       if (child.status !== 0) throw new StagingError('Preview deployment failed; raw CLI output suppressed');
       return child.stdout.trim().split(/\r?\n/).findLast(line => /^https:\/\/[a-z0-9.-]+\.vercel\.app$/.test(line)) || '';
     } });
@@ -197,7 +203,7 @@ async function main(env = process.env) {
   console.log('Set isolated-e2e variable E2E_APP_ORIGIN to the receipt origin, then run the reviewed HTTPS preview workflow before bounded E2E.');
 }
 if (require.main === module) main().catch(error => {
-  console.error(error instanceof StagingError || error instanceof HttpsPreflightError ? error.message : 'Staging preparation/deployment failed. Review the sanitized phase receipt and provider access privately; no protection or network controls were relaxed.');
+  console.error(error instanceof StagingError || error instanceof HttpsPreflightError || error instanceof AutomationBypassError ? error.message : 'Staging preparation/deployment failed. Review the sanitized phase receipt and provider access privately; no protection or network controls were relaxed.');
   process.exitCode = 1;
 });
 module.exports = { settings, preparePreview, vercelApi, inspect, diagnosticReporter, deploy };

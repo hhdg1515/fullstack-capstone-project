@@ -1,7 +1,8 @@
+const { AutomationBypassError } = require('./vercel-bypass.cjs');
 class HttpsPreflightError extends Error {
   constructor(results) {
     const first = results.find(result => result.failures.length);
-    const failure = first.failures.find(value => value.category.startsWith('deployment_protection')) || first.failures[0];
+    const failure = first.failures.find(value => value.category.startsWith('deployment_protection') || value.category === 'automation_bypass_rejected') || first.failures[0];
     super('HTTPS ' + failure.check + ' failed (' + (failure.status === null ? 'no HTTP response' : 'HTTP ' + failure.status) + '; ' + failure.category + ')');
     this.diagnostic = failure;
     this.results = results;
@@ -9,6 +10,7 @@ class HttpsPreflightError extends Error {
 }
 
 function transportCategory(error) {
+  if (error instanceof AutomationBypassError) return error.category;
   const code = error?.cause?.code || error?.code;
   if (['CERT_HAS_EXPIRED', 'CERT_NOT_YET_VALID', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'SELF_SIGNED_CERT_IN_CHAIN', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'ERR_TLS_CERT_ALTNAME_INVALID', 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY'].includes(code)) return 'tls_error';
   if (['ENOTFOUND', 'EAI_AGAIN'].includes(code)) return 'dns_error';
@@ -56,7 +58,8 @@ async function inspectHttps(origin, fingerprint, request = fetch, { phase = 'aft
       const cache = response.headers.get('cache-control') || '';
       result.cacheControl = /(?:^|[,\s])no-store(?:$|[,\s])/i.test(cache) ? 'no_store' : cache ? 'not_no_store' : 'missing';
       if (response.status >= 300 && response.status < 400) {
-        fail('redirect', redirectCategory(response.headers.get('location'), origin));
+        const category = redirectCategory(response.headers.get('location'), origin);
+        fail('redirect', request.usesVercelBypass && category === 'deployment_protection_redirect' ? 'automation_bypass_rejected' : category);
       } else {
         if (response.status !== definition.status) fail('status', 'unexpected_status');
         if (result.contentType !== definition.type) fail('content_type', result.contentType === 'html' ? 'html_instead_of_json' : 'unexpected_content_type');
@@ -65,7 +68,7 @@ async function inspectHttps(origin, fingerprint, request = fetch, { phase = 'aft
         let text;
         try { text = await response.text(); } catch (error) { fail('body_read', transportCategory(error)); }
         if (typeof text === 'string') {
-          if ([401, 403].includes(response.status) && result.contentType === 'html' && /Authentication Required|Vercel Authentication|vercel\.com\/sso-api/i.test(text)) fail('protection', 'deployment_protection_html');
+          if ([401, 403].includes(response.status) && result.contentType === 'html' && /Authentication Required|Vercel Authentication|vercel\.com\/sso-api/i.test(text)) fail('protection', request.usesVercelBypass ? 'automation_bypass_rejected' : 'deployment_protection_html');
           if (text.length > 262144) fail('body_size', 'response_too_large');
           else if (result.contentType === definition.type && definition.type === 'html') {
             if (!/<div\s+id=["']root["']/.test(text) || !/<script\b[^>]*\bsrc=["'][^"']*\/static\/js\//.test(text)) fail('react_markup', 'unexpected_html_application');
@@ -87,7 +90,7 @@ async function inspectHttps(origin, fingerprint, request = fetch, { phase = 'aft
         try { await response.body?.cancel(); } catch { /* Keep the precise redirect failure. */ }
       }
     }
-    result.category = result.failures.find(failure => failure.category.startsWith('deployment_protection'))?.category || result.failures[0]?.category || 'passed';
+    result.category = result.failures.find(failure => failure.category.startsWith('deployment_protection') || failure.category === 'automation_bypass_rejected')?.category || result.failures[0]?.category || 'passed';
     results.push(result);
   }
   return { phase, passed: results.every(result => !result.failures.length), results };

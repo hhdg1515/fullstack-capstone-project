@@ -6,6 +6,7 @@ const { Temporal } = require(root + '/giftlink-backend/node_modules/@js-temporal
 const { randomUUID } = require('node:crypto');
 const { cleanup } = require('./cleanup.cjs');
 const { health: httpsPreflight } = require('./https-preflight.cjs');
+const { bootstrapBypassCookie } = require('./vercel-bypass.cjs');
 const day = value => new Date(value).toISOString().slice(0, 10);
 
 test('two real accounts complete discovery, pickup coordination and secure sessions', async ({ browser, deployment }, testInfo) => {
@@ -49,7 +50,10 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     const saved = (await context.cookies()).find(cookie => cookie.name === '__Host-giftlink_session'); must(Boolean(saved), 'Secure session cookie missing');
     const menu = page.getByRole('button', { name: 'Menu', exact: true }); if (await menu.isVisible()) await menu.click();
     await page.getByRole('button', { name: 'Logout', exact: true }).click(); await page.waitForURL(deployment.origin + '/');
-    const old = await context.request.get(deployment.origin + '/api/me', { maxRedirects: 0, headers: { Cookie: saved.name + '=' + saved.value } });
+    // Replay only the revoked application session; retain the independent
+    // provider cookie so Deployment Protection cannot mask the auth assertion.
+    await context.addCookies([saved]);
+    const old = await context.request.get(deployment.origin + '/api/me', { maxRedirects: 0 });
     must(old.status() === 401, 'Logged-out session remained usable');
     must(await deployment.db.collection('sessions').countDocuments({ _id: tokenHash(saved.value) }) === 0, 'Logout did not revoke database session');
   }
@@ -60,6 +64,9 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
   }
   let userA, userB;
   try {
+    if (!deployment.local) {
+      for (const context of [giver, receiver]) await bootstrapBypassCookie(context, deployment.origin, process.env.VERCEL_AUTOMATION_BYPASS_SECRET);
+    }
     await httpsPreflight(deployment.origin, deployment.fingerprint, async (url, options) => {
       const response = await giver.request.get(url, { maxRedirects: 0, headers: options.headers });
       return { status: response.status(), headers: new Headers(response.headers()), json: () => response.json(), text: () => response.text() };

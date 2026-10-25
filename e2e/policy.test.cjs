@@ -1,7 +1,9 @@
 const { test } = require('node:test'); const assert = require('node:assert/strict');
 const { remoteSettings, approve, expectedEmails } = require('./policy.cjs');
 const { frontendConfig } = require('../deployment/frontend-config.cjs');
-const env = { E2E_APP_ORIGIN: 'https://approved-test.example.invalid', E2E_DB_NAME: 'moveout_e2e', E2E_MONGO_URL: 'mongodb+srv://test.example.invalid/', E2E_EXPECTED_TARGET: 'a'.repeat(64) };
+const { staging } = require('../deployment/staging-target.cjs');
+const env = { E2E_APP_ORIGIN: staging.frontendOrigin, E2E_DB_NAME: 'moveout_e2e', E2E_MONGO_URL: 'mongodb+srv://test.example.invalid/',
+  E2E_EXPECTED_TARGET: 'a'.repeat(64), VERCEL_AUTOMATION_BYPASS_SECRET: 'synthetic-bypass' };
 test('remote policy refuses default/production databases and non-exact HTTPS origins before connecting', () => {
   for (const changes of [{ E2E_DB_NAME: 'giftdb' }, { E2E_DB_NAME: 'production' }, { E2E_APP_ORIGIN: 'http://test.example.invalid' }, { E2E_APP_ORIGIN: env.E2E_APP_ORIGIN + '/path' }, { E2E_APP_ORIGIN: 'https://user:secret@test.example.invalid' }, { E2E_APP_ORIGIN: 'https://localhost' },
     { E2E_APP_ORIGIN: 'https://fullstack-capstone-project-flax.vercel.app' }, { E2E_APP_ORIGIN: 'https://fullstack-capstone-project-vkwm.vercel.app' },
@@ -14,6 +16,12 @@ test('write approval binds operation, origin, database, staging and full fingerp
   assert.throws(() => approve(approved, 'cleanup'));
   assert.throws(() => approve({ ...approved, E2E_CONFIRM_TARGET: 'b'.repeat(64) }, 'run'));
 });
+test('remote mode requires exact staging alias and private automation credentials before connecting to Atlas', () => {
+  assert.throws(() => remoteSettings({ ...env, VERCEL_AUTOMATION_BYPASS_SECRET: '' }), /bypass_secret_missing/);
+  assert.throws(() => remoteSettings({ ...env, E2E_APP_ORIGIN: 'https://another-staging.vercel.app' }), /bypass_target_refused/);
+  assert.throws(() => remoteSettings({ ...env, DEBUG: 'pw:*' }), /bypass_debug_logging_refused/);
+  assert.ok(!JSON.stringify(remoteSettings(env)).includes(env.VERCEL_AUTOMATION_BYPASS_SECRET));
+});
 test('run identities are bounded, synthetic and unique to a validated run', () => {
   const emails = expectedEmails('a'.repeat(32)); assert.equal(emails.length, 4); assert.equal(new Set(emails).size, 4); assert.ok(emails.every(email => email.endsWith('@example.test')));
   assert.throws(() => expectedEmails('.*'));
@@ -22,7 +30,7 @@ test('generated frontend config puts API before filesystem/SPA and preserves API
   const config = frontendConfig('https://api-test.example.invalid', env.E2E_APP_ORIGIN);
   assert.equal(config.routes[0].dest, 'https://api-test.example.invalid/api/$1');
   assert.equal('/api/items/123'.replace(new RegExp(config.routes[0].src), config.routes[0].dest), 'https://api-test.example.invalid/api/items/123');
-  assert.equal(config.routes[0].has[0].type, 'host'); assert.equal(config.routes[0].has[0].value, 'approved-test.example.invalid');
+  assert.equal(config.routes[0].has[0].type, 'host'); assert.equal(config.routes[0].has[0].value, new URL(env.E2E_APP_ORIGIN).hostname);
   assert.equal(config.routes[1].status, 503); assert.equal(config.routes[2].handle, 'filesystem'); assert.equal(config.routes[3].dest, '/index.html');
   for (const origin of ['http://api.example.invalid', 'https://api.example.invalid/path', 'https://user:password@api.example.invalid', 'https://api.example.invalid/']) assert.throws(() => frontendConfig(origin, env.E2E_APP_ORIGIN));
 });

@@ -3,6 +3,7 @@ const staging = Object.freeze({
   teamId: 'team_Czf2GmSPOjNPQh8cBrmyBBX3',
   frontendProjectId: 'prj_XXZkiz3lq2ZPyJAKSczFcCKTZkBe',
   backendProjectId: 'prj_jzlWNa71F4DWjqsma4JbxPLsUM4c',
+  frontendOrigin: 'https://moveout-e2e-clarkswift1-9306s-projects.vercel.app',
   apiOrigin: 'https://fullstack-capstone-project-vkwm.vercel.app',
   productionFrontendOrigin: 'https://fullstack-capstone-project-flax.vercel.app',
   database: 'moveout_e2e_staging',

@@ -47,6 +47,12 @@ For a future approved deployment:
 
 Never set a hosted frontend's API origin to `localhost`; that points at each visitor's own computer. This fix changes no hosting settings, backend contracts, database schemas or real remote data. Local browser verification covers both frontend-only HTML fallback and recovery against the real Express API using an isolated test database; it does not verify a live deployment's proxy/cookie configuration.
 
+### Protected staging automation
+
+The approved staging alias is `https://moveout-e2e-clarkswift1-9306s-projects.vercel.app`. Store `VERCEL_AUTOMATION_BYPASS_SECRET` only as an `isolated-e2e` Environment secret. The staging and remote E2E workflows use it for provider automation access; never add it to a frontend/Vercel build variable, `REACT_APP_*`, URL, workflow input or saved browser state. Ordinary visitors retain Deployment Protection, and application sessions/CSRF/ownership checks still apply.
+
+See the [staging automation runbook](docs/hosted-staging-integration.md#approved-protection-bypass-for-automation) for scoped headers, browser cookie bootstrap, credential diagnostics and the post-merge sequence: read-only diagnosis, reviewed deployment/API origin update, HTTPS preview, bounded browser tests and owned-run cleanup. Normal CI uses only synthetic bypass credentials and isolated MongoDB; it does not deploy or use the stored staging secret.
+
 ## Requirements
 
 - Node.js 22 and npm.
