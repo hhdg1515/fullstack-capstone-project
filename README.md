@@ -8,7 +8,8 @@ production configuration and dependency audit remain deferred launch-readiness i
 See the [closeout evidence and deferred launch blockers](docs/production-readiness.md) and
 [deployment, diagnostics, Atlas access, recovery and rollback runbook](docs/operations-runbook.md).
 The [Milestone 6.1 UI/UX Refinement plan](docs/milestone-6.1-ui-ux-plan.md)
-proposes product-design work; implementation has not started. This documentation
+now has a [design-only audit and local screenshots](docs/milestone-6.1-design-audit.md)
+for owner review; UI implementation has not started. This documentation
 closeout makes no application, workflow, provider-setting or manual deployment change.
 
 Milestone 6.1 now follows the owner's **Functional Minimalism** direction. Public
