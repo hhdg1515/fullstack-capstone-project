@@ -8,7 +8,7 @@ on:
         options: [preview, run, cleanup]
         default: preview
       approved_sha:
-        description: 'Exact reviewed 40-character commit SHA for this workflow run'
+        description: 'Owner-reviewed full 40-character main commit SHA selected for this manual run'
         required: true
         type: string
       confirm_origin:
@@ -26,25 +26,56 @@ on:
 permissions:
   contents: read
   actions: read
+env:
+  E2E_AUTH_REPOSITORY: ${{ github.repository }}
+  E2E_AUTH_OWNER: ${{ github.repository_owner }}
+  E2E_AUTH_EVENT: ${{ github.event_name }}
+  E2E_AUTH_REF: ${{ github.ref }}
+  E2E_AUTH_ACTOR: ${{ github.actor }}
+  E2E_AUTH_ACTOR_ID: ${{ github.actor_id }}
+  E2E_AUTH_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+  E2E_AUTH_SHA: ${{ github.sha }}
+  E2E_AUTH_APPROVED_SHA: ${{ inputs.approved_sha }}
+  E2E_AUTH_OPERATION: ${{ inputs.operation }}
 concurrency:
   group: approved-isolated-e2e
   cancel-in-progress: false
 jobs:
   gate:
+    # Check trusted contexts before checkout or any Environment reference.
+    if: >-
+      github.repository == 'hhdg1515/fullstack-capstone-project' &&
+      github.repository_owner == 'hhdg1515' &&
+      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+      github.actor == 'hhdg1515' && github.actor_id == '144937930' &&
+      github.triggering_actor == 'hhdg1515'
     runs-on: ubuntu-latest
     steps:
-      - name: Require a reviewed immutable SHA and pre-existing reviewer-protected Environment
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Require owner dispatch and exact reviewed main SHA without secrets
+        run: node e2e/authorize-workflow.cjs context
+      - name: Require the existing isolated-e2e Environment without requiring reviewers
         env:
           GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          EXPECTED_SHA: ${{ inputs.approved_sha }}
-          ACTUAL_SHA: ${{ github.sha }}
         run: |
-          node -e 'if(!/^[a-f0-9]{40}$/.test(process.env.EXPECTED_SHA||"")||process.env.EXPECTED_SHA!==process.env.ACTUAL_SHA)throw Error("Confirm the exact reviewed commit SHA")'
-          gh api "repos/$REPOSITORY/environments/isolated-e2e" > "$RUNNER_TEMP/e2e-environment.json"
-          node -e 'const e=require(process.argv[1]);if(!e.protection_rules?.some(r=>r.type==="required_reviewers"&&r.reviewers?.length))throw Error("Configure required reviewers before any remote E2E operation")' "$RUNNER_TEMP/e2e-environment.json"
+          gh api "repos/$E2E_AUTH_REPOSITORY/environments/isolated-e2e" > "$RUNNER_TEMP/e2e-environment.json"
+          node e2e/authorize-workflow.cjs environment "$RUNNER_TEMP/e2e-environment.json"
   verify:
     needs: gate
+    # Repeat on this job: a collaborator must not rerun only a failed verify job
+    # from an earlier owner-triggered run and inherit the gate's old success.
+    if: >-
+      github.repository == 'hhdg1515/fullstack-capstone-project' &&
+      github.repository_owner == 'hhdg1515' &&
+      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+      github.actor == 'hhdg1515' && github.actor_id == '144937930' &&
+      github.triggering_actor == 'hhdg1515'
     environment: isolated-e2e
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -53,6 +84,9 @@ jobs:
         working-directory: e2e
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1; Node 24 action runtime
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0; application Node remains 22
         with:
           node-version: 22
@@ -60,6 +94,8 @@ jobs:
           cache-dependency-path: |
             giftlink-backend/package-lock.json
             e2e/package-lock.json
+      - name: Recheck owner and immutable main SHA for this attempt before dependency installation
+        run: node authorize-workflow.cjs context
       - run: npm --prefix ../giftlink-backend ci
       - run: npm ci
       - name: Install Chromium for explicitly approved run
@@ -80,7 +116,9 @@ jobs:
           E2E_CONFIRM_TARGET: ${{ inputs.confirm_target }}
           E2E_RUN_ID: ${{ inputs.cleanup_run_id }}
           E2E_OPERATION: ${{ inputs.operation }}
-        run: node remote.cjs "$E2E_OPERATION"
+        run: |
+          node authorize-workflow.cjs target
+          node remote.cjs "$E2E_OPERATION"
       - name: Save non-secret run receipts for later scoped cleanup
         if: always() && inputs.operation == 'run'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
