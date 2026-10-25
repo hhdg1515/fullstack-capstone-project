@@ -83,6 +83,20 @@ describe('existing API contracts against isolated MongoDB', function () {
             const response = await request(app).get('/api/search').query({ name: ' lAmP ' }).expect(200);
             assert.deepEqual(ids(response.body), ['875']);
         });
+        it('treats regex syntax as literal search text without changing the 16 bundled records', async function () {
+            for (const name of ['[', '.*', '(a+)+$']) {
+                const response = await request(app).get('/api/search').query({ name }).expect(200);
+                assert.deepEqual(response.body, []);
+            }
+            assert.equal(await db.collection('gifts').countDocuments(), 16);
+        });
+        it('rejects structured, repeated, oversized and invalid numeric filters as safe validation errors', async function () {
+            for (const query of ['name[$ne]=private', 'category[$ne]=private', 'name=one&name=two', 'unknown=private',
+                'name=' + 'x'.repeat(201), 'age_years=2garbage', 'age_years=-1']) {
+                const response = await request(app).get('/api/search?' + query).expect(400);
+                assert.equal(response.body.error.code, 'INVALID_SEARCH_QUERY'); assert.ok(!JSON.stringify(response.body).includes('private'));
+            }
+        });
 
         it('treats a blank name as no name filter', async function () {
             const response = await request(app).get('/api/search').query({ name: '   ' }).expect(200);

@@ -7,8 +7,32 @@ afterEach(() => jest.restoreAllMocks());
 test('sends cookie credentials and the CSRF header on writes without browser-readable tokens', async () => {
   fetch.mockResolvedValue(reply(200, { user: { id: 'one' } }));
   await apiRequest('/api/me', { method: 'PATCH', body: { firstName: 'Updated' } });
-  expect(fetch.mock.calls[0][1]).toEqual({ method: 'PATCH', credentials: 'include', cache: 'no-store',
+  expect(fetch.mock.calls[0][1]).toEqual({ method: 'PATCH', credentials: 'include', cache: 'no-store', signal: expect.any(AbortSignal),
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Protection': '1' }, body: '{"firstName":"Updated"}' });
+});
+
+test('bounds a stalled write without automatically retrying or invalidating the session', async () => {
+  jest.useFakeTimers();
+  const listener = jest.fn(); window.addEventListener('giftlink:unauthorized', listener);
+  try {
+    fetch.mockImplementation((url, options) => new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(new Error('private upstream details')))));
+    const result = expect(apiRequest('/api/me', { method: 'PATCH', body: { firstName: 'Updated' } })).rejects.toMatchObject({ status: 0, code: 'REQUEST_TIMEOUT' });
+    jest.advanceTimersByTime(15000); await result;
+    expect(fetch).toHaveBeenCalledTimes(1); expect(listener).not.toHaveBeenCalled(); expect(jest.getTimerCount()).toBe(0);
+  } finally { window.removeEventListener('giftlink:unauthorized', listener); jest.useRealTimers(); }
+});
+
+test('also bounds a stalled JSON body and clears the deadline after successful requests', async () => {
+  jest.useFakeTimers();
+  try {
+    let reading;
+    fetch.mockImplementation((url, options) => Promise.resolve({ status: 200, ok: true,
+      json: () => { reading = true; return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(new Error('private body')))); } }));
+    const result = expect(apiRequest('/api/me')).rejects.toMatchObject({ code: 'REQUEST_TIMEOUT' });
+    await Promise.resolve(); expect(reading).toBe(true); jest.advanceTimersByTime(15000); await result;
+    fetch.mockResolvedValue(reply(200, { user: { id: 'one' } }));
+    await apiRequest('/api/me'); expect(jest.getTimerCount()).toBe(0);
+  } finally { jest.useRealTimers(); }
 });
 test('notifies session expiry for a protected request', async () => {
   const listener = jest.fn();
