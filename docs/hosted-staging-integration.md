@@ -43,6 +43,34 @@ These are prepared, locally tested steps; Vercel alias ownership, prebuilt outpu
 
 Provider API shapes were checked against the official [Vercel SDK source](https://github.com/vercel/sdk/tree/49e2e4f3139f3874743d87d3daf5e1c77ca4dbfb/src/funcs) (`projectsCreateProjectEnv`, `aliasesGetAlias`, `aliasesAssignAlias`) and the official [CLI redeploy implementation](https://github.com/vercel/vercel/blob/main/packages/cli/src/commands/redeploy/index.ts). Source inspection and mocks do not replace a real authorized provider run.
 
+## Read-only Vercel validation diagnostics
+
+If `validate_projects` fails, do not retry **deploy** to diagnose access. Select **inspect** in the same workflow, with the approved test origin and exact reviewed commit SHA. Inspection also supports a diagnostic feature branch before merge; **plan** and **deploy** remain manual `main` operations. Inspect skips dependency installation, React build and the CLI entirely. Only its Node management step receives `isolated-e2e.VERCEL_TOKEN`; no MongoDB secret is mapped.
+
+Inspect sends GET requests only, always scoped to the fixed approved team. It independently checks both pinned projects by ID and name, their returned team ownership/configuration, the intended team, the two existing canonical aliases and the deployments bound to those aliases. It also reproduces the original direct deployment-hostname queries to identify the first legacy validation failure. It never creates a deployment, assigns an alias, updates environment variables or changes protection settings. A transport-level read-only guard rejects every non-GET method.
+
+Each request emits only a fixed operation name, resource category, endpoint template, HTTP status and result/classification. Failed requests appear as Actions warning annotations and the complete summary as one notice, within Actions' per-step annotation limits, so diagnosis does not require downloading raw logs. No token, connection string, account metadata, response body or environment-variable values are printed. A 404 is explicitly **not_found_or_inaccessible**: Vercel can hide unavailable resources, so a 404 alone does not prove a stale ID or wrong token scope. HTTP 401, 403, malformed JSON and transport errors have separate classifications. The inspection summary separately reports access, team ownership, configuration and name/ID matches as booleans, plus the first failing legacy operation. Deployment additionally verifies both projects' returned `accountId` before any mutation.
+
+The official pinned SDK defines `GET /v9/projects/{idOrName}`, `GET /v13/deployments/{idOrUrl}`, `GET /v4/aliases/{idOrAlias}` and `GET /v2/teams/{teamId}`. Deployment `idOrUrl` describes a deployment's ID or its unique `url` hostname; a stable project alias is a separate resource. Compare direct-hostname results with explicit alias-to-deployment-ID resolution before changing API versions or IDs.
+
+Interpretation and minimal owner actions:
+
+- Both project checks succeed with the intended `accountId`: token read access to both approved projects in the fixed team is confirmed. This does not prove write permission or deployment readiness.
+- ID lookup fails while name lookup returns a different ID: verify the project's **Settings → General → Project ID** in the intended team and review a pin correction; never select a replacement project automatically.
+- ID lookup fails while the same named project's ID matches: investigate provider resource visibility/permissions; do not infer an ID change.
+- Project/team reads return 401, 403 or unexplained 404: in Vercel **Account Settings → Tokens**, verify that the stored token is unexpired and scoped to the team containing both approved existing projects. If necessary, create a replacement token for that team using an account already authorized for both projects, then replace only GitHub **Settings → Environments → isolated-e2e → VERCEL_TOKEN**. If the token type offers per-project grants, include these two projects only. Do not grant unrelated teams, account administration or Atlas access; never paste the token into a workflow input, PR or chat. Rerun **inspect** before considering deployment.
+- Project and alias/ID reads succeed but a direct alias-hostname deployment query returns 404: fix alias resolution; increasing token scope is not supported by that evidence.
+
+Do not automatically disable protection, change a production frontend route, retry deployment or broaden token privileges in response to a 404.
+
+### Investigation of the initial `validate_projects` failure
+
+Read-only Actions run [40163988334](https://github.com/hhdg1515/fullstack-capstone-project/actions/runs/40163988334) reproduced the first failing original request as **`GET /v9/projects/prj_jzlWNa71F4DWjqsma4JbxPLsUM4c?teamId=team_Czf2GmSPOjNPQh8cBrmyBBX3` → HTTP 404**. The preceding frontend project lookup returned 200. Frontend name lookup and canonical deployment/alias reads also returned 200; backend name and alias reads returned 404, while backend deployment and team metadata reads returned 403. Thus the frontend's direct alias-hostname deployment lookup works with this token; an alias-resolution or API-version change is not justified by this failure.
+
+The [Vercel bot's current project links](https://github.com/hhdg1515/fullstack-capstone-project/pull/23#issuecomment-6393697197) contain the same two project IDs and team ID as the repository pins. No identifier was automatically replaced. A 404 on both backend ID/name plus 403 on its deployment supports an authorization/visibility blocker, but cannot conclusively distinguish hidden resources from a moved/deleted project. An owner should verify the backend still belongs to the approved team and ensure the existing secret's token has access to **both** projects. Frontend access does not prove backend access. No deployment was retried during diagnosis.
+
+Complete-summary confirmation run [40164183497](https://github.com/hhdg1515/fullstack-capstone-project/actions/runs/40164183497) reports frontend access, team ownership, configuration, name/ID match and alias resolution all true; backend access remains false. Ownership/configuration booleans are also false for an unreadable project, so they are not evidence of a wrong stored configuration when access itself failed. Inspect exits nonzero for missing access or required validation; this run's failure correctly records the remaining provider access blocker. A forbidden team metadata read alone does not disprove team ownership: the frontend's returned `accountId` was verified against the pinned team.
+
 ## Minimal owner actions for missing permissions
 
 1. Review/merge the focused PR; agents do not merge. If using Actions for management, securely add **VERCEL_TOKEN** to `isolated-e2e`. An owner with existing Vercel access can instead perform the same scoped settings/deployment steps.
