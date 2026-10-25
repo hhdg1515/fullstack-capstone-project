@@ -1,11 +1,15 @@
 # Move-Out Marketplace — Give Away & Find Free Items
 
-Milestone 6.0 operational status: **protected staging; public launch is not approved**.
-See the [readiness audit and launch blockers](docs/production-readiness.md) and
+Milestone 6.0 **Engineering Hardening is code-complete**, merged in
+[PR #27](https://github.com/hhdg1515/fullstack-capstone-project/pull/27).
+Verification used local tests and passing PR/main CI, **not a new live staging E2E run**.
+Public launch remains unapproved. Atlas network access, backup/recovery,
+production configuration and dependency audit remain deferred launch-readiness items.
+See the [closeout evidence and deferred launch blockers](docs/production-readiness.md) and
 [deployment, diagnostics, Atlas access, recovery and rollback runbook](docs/operations-runbook.md).
-The audit distinguishes local/CI tests, existing live staging evidence and
-unverified production configuration. No provider security or production database
-change is part of this milestone.
+The [Milestone 6.1 UI/UX Refinement plan](docs/milestone-6.1-ui-ux-plan.md)
+proposes product-design work; implementation has not started. This documentation
+closeout makes no application, workflow, provider-setting or manual deployment change.
 
 Move-Out Marketplace remains a React, Express, Node.js, and MongoDB native-driver application. Milestone 5.5 organizes the product around **Give Away** and **Find Free Items**, with one shared account and no fixed account roles. Plans, inventory, anonymous discovery, pickup coordination and handoffs retain their existing APIs and data model. The original GiftLink collection/search and all 16 demo records remain available. Messaging, notifications, payments, shipping, property integrations, image uploads, and geographical APIs are not implemented.
 

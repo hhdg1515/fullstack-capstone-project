@@ -1,8 +1,19 @@
-# Milestone 6.0: readiness audit and controlled launch
+# Milestone 6.0: Engineering Hardening — code-complete
 
-Status: **keep Deployment Protection enabled; public launch is not approved**. This milestone prepares operations and tests, not a production deployment or new marketplace feature.
+Status: **Engineering Hardening is code-complete** as of 2026-10-25. **Keep Deployment Protection enabled; public launch is not approved.** Remaining launch-readiness items are deferred outside this engineering closeout and still gate public launch.
+
+## Closeout evidence
+
+- [PR #27](https://github.com/hhdg1515/fullstack-capstone-project/pull/27) is merged into `main`, merge commit `eb46fcd8d480e1356d4b0f598d91162ac196092a`.
+- [PR CI 40178519645](https://github.com/hhdg1515/fullstack-capstone-project/actions/runs/40178519645) passed on reviewed head `12d69051d693ce2c54d5e8bc3e2f1a698cd64a3b`; [main CI 40214551910](https://github.com/hhdg1515/fullstack-capstone-project/actions/runs/40214551910) passed on the merge commit. Both runs completed all three jobs: backend lint/integration, frontend tests/build and isolated full-stack Chromium E2E.
+- Recorded local verification: backend lint and 191 tests, frontend 146 tests and strict build, 56 deployment/policy tests, eight desktop/mobile browser tests, actionlint and whitespace checks passed. These are Milestone 6.0 results, not newly rerun tests during this documentation closeout.
+- **Milestone 6.0 was verified by local tests and CI, not by a new live staging E2E run.** CI browser tests use disposable local MongoDB/HTTPS fixtures. Milestone 5.7 hosted evidence remains historical and separate; no hosted run, provider change or manual deployment is performed for this closeout.
+
+Next proposed scope: [Milestone 6.1 UI/UX Refinement](milestone-6.1-ui-ux-plan.md), a product-design plan only.
 
 ## Evidence boundary
+
+The following infrastructure observations are the recorded Milestone 6.0 audit snapshot; they were not refreshed during documentation closeout.
 
 - Audit baseline: merged main `6d61d16041ba3c8792174b09352bac6a31b292d3` (PR #26).
 - Live staging: GitHub records a successful staging deploy [40170045941](https://github.com/hhdg1515/fullstack-capstone-project/actions/runs/40170045941), successful owner-authorized HTTPS E2E runs on baseline main, and a synthetic run receipt for [40171965754](https://github.com/hhdg1515/fullstack-capstone-project/actions/runs/40171965754). Later successful workflow records include [40173581994](https://github.com/hhdg1515/fullstack-capstone-project/actions/runs/40173581994) and [40175463291](https://github.com/hhdg1515/fullstack-capstone-project/actions/runs/40175463291). Owner reports successful scoped cleanup. Metadata/receipt existence is independently observed; raw logs, operation inputs and post-cleanup record counts are not independently re-read here. No new remote E2E writes are performed by this audit.
@@ -11,7 +22,9 @@ Status: **keep Deployment Protection enabled; public launch is not approved**. T
 - Current tools expose no Atlas/Vercel management connector or cloud credential. The existing manual GET-only Vercel inspect workflow can use its stored token in Actions. The audit adds a fixed metadata projection: unknown/masked fields remain unknown; secret values and provider response bodies are never returned. Atlas access lists, backup settings and privileges cannot be inferred from a healthy data-plane request.
 - Live read-only Vercel inspection [40177296190](https://github.com/hhdg1515/fullstack-capstone-project/actions/runs/40177296190), at audit-tool commit `744171f9b5f5581cc65ea5d3d0d0bdc7f8165b8d`, succeeded. Both expected projects, team, configured roots, alias/deployment access and Node 22 were confirmed; plan is Hobby. The staging alias points to a Ready Preview in the existing frontend project; the API has a Ready deployment and matching staging `APP_ORIGIN`. The API DB/tier settings are present but their masked values are **not verified**; its DB credential is presence-only. Frontend Production has no project-level `REACT_APP_BACKEND_URL` entry; deployment routing was not returned, so no assertion of safe Production routing follows. SSO protection configuration is present on both projects, but its scope is unobserved; automation-bypass configuration is present on the frontend. No deployment, alias reassignment, environment update or DB operation was performed.
 
-## Launch blockers
+## Deferred public-launch readiness items
+
+Atlas network access, backup/recovery, production configuration/protection and dependency audit remain unresolved launch blockers. Deferral closes the engineering milestone without accepting these risks or authorizing launch. The owner must approve and verify their disposition before public exposure; the related abuse/client-IP and manual acceptance gates remain in force. Detailed recovery and deployment procedures stay in the [operations runbook](operations-runbook.md).
 
 | Finding | Evidence and consequence | Required disposition |
 | --- | --- | --- |
@@ -20,9 +33,11 @@ Status: **keep Deployment Protection enabled; public launch is not approved**. T
 | Durable Atlas access is unresolved | The owner verified a broad temporary rule still exists; expiration is unknown. Standard Vercel/GitHub-hosted egress is not a single stable IP. | Choose an explicit staging/public-launch egress policy, review rule expiration and remove/replace temporary broad access only with owner approval. Never auto-renew or add provider-wide IP ranges. |
 | Recovery is unproven | M0 is not evidence of managed backups; no backup/restore arrangement or recovery drill is confirmed. | Establish encrypted DB-scoped exports and rehearse an isolated restore, or separately approve another supported backup arrangement. No recovery objective is promised until measured. |
 | Public abuse/client-IP controls are not established | Auth/discovery/pickup limits are in-memory per warm instance; Express does not trust proxy headers. A provider proxy can collapse users into one bucket, while scaling defeats a global limit. | Validate authoritative client-IP behavior and approve enforceable edge/global caps before opening registration. Do not set `trust proxy=true` blindly or add paid services automatically. |
-| Frontend dependency risk needs runtime/build separation | Baseline `npm audit`: backend production dependencies 0 findings; frontend dependency tree 387 (112 low, 168 moderate, 96 high, 11 critical). The browser runtime router is included; many other findings are build/dev tooling. | Patch compatible runtime dependencies with tests; evaluate remaining CRA/build advisories and CI credential exposure. Do not treat all findings as deployed server vulnerabilities or run force upgrades/migrate stacks. |
+| Dependency audit requires launch disposition | The recorded final audit has backend production dependencies at 0 findings and frontend full tree at 99 (14 low, 46 moderate, 35 high, 4 critical). The compatible router patch is merged; runtime/build exposure still needs triage. | Review remaining router/CRA/build advisories and CI credential exposure, then remediate or explicitly accept applicable risks before launch. Counts are historical, not a new closeout audit. Do not run force upgrades or migrate stacks. |
 
 ## Important operational improvements
+
+This table records the original audit findings and the focused engineering treatment completed in PR #27. Manual accessibility acceptance and operating-policy decisions remain launch-readiness work.
 
 | Finding | Existing protection / gap | Milestone treatment |
 | --- | --- | --- |
@@ -65,4 +80,4 @@ The compatible router patch removes the previously reported high-severity router
 
 ## Verification boundaries
 
-New changes are verified locally/through PR CI; they are **not deployed to live staging** by this milestone. Existing live staging evidence above belongs to Milestone 5.7. Production readiness remains conditional on the launch blockers, manual acceptance and explicitly approved provider/deployment/recovery decisions. Test counts and CI links are recorded in the PR; do not substitute local test results for a live deployment check or claim a successful backup/restore drill.
+Engineering completion is established by the recorded local tests and passing PR/main CI above. **No new live staging E2E run was performed for Milestone 6.0 or this closeout.** Existing live staging evidence belongs to Milestone 5.7. Automatic Git-linked deployments, if any, are not evidence of hosted E2E verification. Production readiness remains conditional on the deferred launch blockers, manual acceptance and explicitly approved provider/deployment/recovery decisions. No backup/restore drill or public-launch approval is claimed. Application behavior, infrastructure, staging safeguards and CI workflows are unchanged by this documentation closeout.
