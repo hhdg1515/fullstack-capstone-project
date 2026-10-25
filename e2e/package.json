@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "test": "playwright test",
-    "test:policy": "node --test policy.test.cjs https-preflight.test.cjs vercel-bypass.test.cjs ../deployment/staging-preview.test.cjs",
+    "test:policy": "node --test policy.test.cjs https-preflight.test.cjs vercel-bypass.test.cjs authorize-workflow.test.cjs ../deployment/staging-preview.test.cjs",
     "remote:preview": "node remote.cjs preview",
     "remote:run": "node remote.cjs run",
     "remote:cleanup": "node remote.cjs cleanup"
