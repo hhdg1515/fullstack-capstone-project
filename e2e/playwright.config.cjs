@@ -1,4 +1,5 @@
 const { defineConfig, devices } = require('@playwright/test');
+if (process.env.E2E_APP_ORIGIN) require('./vercel-bypass.cjs').assertPrivateAutomation(process.env);
 module.exports = defineConfig({
   testDir: '.', testMatch: '*.spec.cjs', timeout: 300000, expect: { timeout: 15000 }, workers: 1, retries: 0,
   reporter: [['./safe-reporter.cjs']], outputDir: 'test-results',

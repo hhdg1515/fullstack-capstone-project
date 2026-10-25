@@ -3,16 +3,24 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
 const { staging } = require('./staging-target.cjs');
 const { settings, preparePreview, vercelApi, inspect, diagnosticReporter, deploy } = require('./staging-preview.cjs');
-const origin = 'https://moveout-e2e-example.vercel.app';
+const origin = staging.frontendOrigin;
 const env = { GITHUB_REPOSITORY: 'hhdg1515/fullstack-capstone-project', GITHUB_EVENT_NAME: 'workflow_dispatch',
   GITHUB_REF: 'refs/heads/main', GITHUB_SHA: 'a'.repeat(40), APPROVED_SHA: 'a'.repeat(40), STAGING_OPERATION: 'plan', STAGING_FRONTEND_ORIGIN: origin };
 test('staging deployment planning needs no credentials; deployment requires an exact manual main approval and token', () => {
   assert.equal(settings(env).operation, 'plan');
-  assert.equal(settings({ ...env, STAGING_OPERATION: 'deploy', VERCEL_TOKEN: 'synthetic-token' }).operation, 'deploy');
+  assert.equal(settings({ ...env, STAGING_OPERATION: 'deploy', VERCEL_TOKEN: 'synthetic-token', VERCEL_AUTOMATION_BYPASS_SECRET: 'synthetic-bypass' }).operation, 'deploy');
   for (const change of [{ STAGING_OPERATION: 'deploy' }, { STAGING_OPERATION: 'production' }, { GITHUB_REF: 'refs/heads/feature' },
     { GITHUB_EVENT_NAME: 'push' }, { GITHUB_REPOSITORY: 'other/repo' }, { APPROVED_SHA: 'b'.repeat(40) }, { APPROVED_SHA: '' },
     { STAGING_FRONTEND_ORIGIN: staging.productionFrontendOrigin }, { STAGING_FRONTEND_ORIGIN: staging.apiOrigin },
     { STAGING_FRONTEND_ORIGIN: 'https://custom.example.com' }, { STAGING_FRONTEND_ORIGIN: origin + '/path' }]) assert.throws(() => settings({ ...env, ...change }));
+});
+test('deployment requires scoped bypass credentials before it can reach any remote mutation', () => {
+  const approved = { ...env, STAGING_OPERATION: 'deploy', VERCEL_TOKEN: 'synthetic-token', VERCEL_AUTOMATION_BYPASS_SECRET: 'synthetic-bypass' };
+  for (const [changes, category] of [[{ VERCEL_AUTOMATION_BYPASS_SECRET: '' }, 'bypass_secret_missing'],
+    [{ VERCEL_AUTOMATION_BYPASS_SECRET: 'private\nsecret' }, 'bypass_secret_invalid_format'], [{ DEBUG: 'pw:*' }, 'bypass_debug_logging_refused']]) {
+    assert.throws(() => settings({ ...approved, ...changes }), error => error.category === category);
+  }
+  assert.throws(() => settings({ ...approved, STAGING_FRONTEND_ORIGIN: 'https://another-staging.vercel.app' }), /existing approved staging alias/);
 });
 test('prebuilt preview uses the reviewed host-conditional proxy and only compiled assets, without installing active production configuration', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'staging-output-'));
@@ -78,6 +86,9 @@ test('deployment mutates only the test alias and dedicated staging API, after va
   assert.ok(!JSON.stringify(receipt).includes('synthetic-token'));
 });
 test('wrong project configuration or aliases owned by another project/production refuse all remote mutations', async () => {
+  const otherOrigin = fixture(); otherOrigin.options.origin = 'https://another-staging.vercel.app';
+  await assert.rejects(deploy(otherOrigin.options), /existing approved staging alias/);
+  assert.equal(otherOrigin.calls.length, 0); assert.equal(otherOrigin.cliCalls, 0);
   for (const override of [
     (method, url) => url === '/v9/projects/' + staging.backendProjectId ? { id: 'unrelated' } : undefined,
     (method, url) => url === '/v9/projects/' + staging.frontendProjectId ? { id: staging.frontendProjectId, accountId: 'other-team', name: 'fullstack-capstone-project', rootDirectory: 'giftlink-frontend' } : undefined,

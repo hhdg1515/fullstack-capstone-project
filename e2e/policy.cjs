@@ -6,12 +6,15 @@ const { createDatabase } = require(root + '/giftlink-backend/models/db');
 const { assertDatabaseIndexes } = require(root + '/giftlink-backend/services/database-indexes');
 const { testOrigin } = require(root + '/deployment/staging-target.cjs');
 const { health } = require('./https-preflight.cjs');
+const { AutomationBypassError, assertBypass, assertPrivateAutomation, bypassRequest } = require('./vercel-bypass.cjs');
 const runPattern = /^[a-f0-9]{32}$/;
 function remoteSettings(env) {
   const origin = testOrigin(env.E2E_APP_ORIGIN);
   if (!/^moveout_e2e(?:_[a-z0-9_]+)?$/.test(env.E2E_DB_NAME || '')) throw Error('Use a dedicated moveout_e2e test database, never a production/default database');
   if (!env.E2E_MONGO_URL) throw Error('Configure E2E_MONGO_URL securely');
   if (!/^[a-f0-9]{64}$/.test(env.E2E_EXPECTED_TARGET || '')) throw Error('Set the full previously approved E2E_EXPECTED_TARGET fingerprint');
+  assertBypass(origin, env.VERCEL_AUTOMATION_BYPASS_SECRET);
+  assertPrivateAutomation(env);
   return { origin, expectedFingerprint: env.E2E_EXPECTED_TARGET,
     env: { MONGO_URL: env.E2E_MONGO_URL, MONGO_DB_NAME: env.E2E_DB_NAME, DB_ENVIRONMENT: 'staging' } };
 }
@@ -29,9 +32,14 @@ async function inspectRemote(env) {
     database = createDatabase(target); const db = await database.connect(); const inspected = await inspectTarget(db, target);
     if (inspected.fingerprint !== settings.expectedFingerprint) throw Error('The inspected database is not the previously approved staging target');
     if (inspected.deployment !== 'replica-set' && inspected.deployment !== 'sharded') throw Error('Transactions require a replica set');
-    await assertDatabaseIndexes(db); const checks = await health(settings.origin, inspected.fingerprint);
+    await assertDatabaseIndexes(db); const checks = await health(settings.origin, inspected.fingerprint,
+      bypassRequest(settings.origin, env.VERCEL_AUTOMATION_BYPASS_SECRET));
     return { ...settings, database, db, inspected, checks };
-  } catch { if (database) await database.close().catch(() => {}); throw Error('Remote preflight failed. Verify approved origin, Atlas project/cluster/database, TLS, prepared indexes and API fingerprint securely.'); }
+  } catch (error) {
+    if (database) await database.close().catch(() => {});
+    if (error instanceof AutomationBypassError || error.diagnostic?.category === 'automation_bypass_rejected') throw new AutomationBypassError(error.category || error.diagnostic.category);
+    throw Error('Remote preflight failed. Verify approved origin, Atlas project/cluster/database, TLS, prepared indexes and API fingerprint securely.');
+  }
 }
 function expectedEmails(runId) {
   if (!runPattern.test(runId)) throw Error('Invalid run identifier');
