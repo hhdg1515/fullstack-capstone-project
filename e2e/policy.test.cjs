@@ -27,10 +27,11 @@ test('generated frontend config puts API before filesystem/SPA and preserves API
   for (const origin of ['http://api.example.invalid', 'https://api.example.invalid/path', 'https://user:password@api.example.invalid', 'https://api.example.invalid/']) assert.throws(() => frontendConfig(origin, env.E2E_APP_ORIGIN));
 });
 
-const jsonResponse = (status, body, cache = 'private, no-store') => ({ status, headers: new Headers({ 'content-type': 'application/json', 'cache-control': cache }), json: async () => body });
+const jsonResponse = (status, body, cache = 'private, no-store') => ({ status, headers: new Headers({ 'content-type': 'application/json', 'cache-control': cache,
+  'access-control-allow-origin': env.E2E_APP_ORIGIN, 'access-control-allow-credentials': 'true' }), text: async () => JSON.stringify(body) });
 const frontendResponse = () => ({ status: 200, headers: new Headers({ 'content-type': 'text/html' }), text: async () => '<!doctype html><div id="root"></div><script defer src="/static/js/main.example.js"></script>' });
 function healthy(url, options) {
-  if (url.endsWith('/api/health')) return options.headers['X-Deployment-Target'] === '0'.repeat(64) ?
+  if (url.endsWith('/api/health')) return options.headers['X-Deployment-Target'] !== env.E2E_EXPECTED_TARGET ?
     jsonResponse(409, { error: { code: 'DEPLOYMENT_CHANGED' } }) : jsonResponse(200, { status: 'ready', environment: 'staging', databaseFingerprint: env.E2E_EXPECTED_TARGET });
   if (url.endsWith('/api/me')) return jsonResponse(401, { error: { code: 'UNAUTHORIZED' } });
   return frontendResponse();
@@ -41,9 +42,9 @@ test('HTTPS preflight checks React/deep links, anonymous auth, no-store and both
     calls.push([url, options]); return healthy(url, options);
   });
   assert.equal(calls.length, 5); assert.equal(checks.frontend, true); assert.equal(checks.anonymousMe401, true);
-  assert.ok(calls.every(([, options]) => options.redirect === 'error' && !options.method && !options.body));
-  assert.equal(calls[0][1].headers['X-Deployment-Target'], '0'.repeat(64));
-  assert.equal(calls[1][1].headers['X-Deployment-Target'], env.E2E_EXPECTED_TARGET);
+  assert.ok(calls.every(([, options]) => options.redirect === 'manual' && options.method === 'GET' && options.credentials === 'omit' && !options.body));
+  assert.notEqual(calls[2][1].headers['X-Deployment-Target'], env.E2E_EXPECTED_TARGET);
+  assert.equal(calls[3][1].headers['X-Deployment-Target'], env.E2E_EXPECTED_TARGET);
 });
 test('HTTPS preflight refuses HTML APIs, redirects, missing fences, cached/private auth failures and a changed approved fingerprint', async () => {
   const { health } = require('./policy.cjs');
@@ -52,7 +53,7 @@ test('HTTPS preflight refuses HTML APIs, redirects, missing fences, cached/priva
     (url, options) => url.endsWith('/api/health') ? jsonResponse(200, { status: 'ready' }) : healthy(url, options),
     (url, options) => url.endsWith('/api/me') ? jsonResponse(200, {}) : healthy(url, options),
     (url, options) => url.endsWith('/api/me') ? jsonResponse(401, {}, 'public, max-age=600') : healthy(url, options),
-    (url, options) => url.endsWith('/api/health') && options.headers['X-Deployment-Target'] !== '0'.repeat(64) ? jsonResponse(200, { status: 'ready', environment: 'staging', databaseFingerprint: 'b'.repeat(64) }) : healthy(url, options),
+    (url, options) => url.endsWith('/api/health') && options.headers['X-Deployment-Target'] === env.E2E_EXPECTED_TARGET ? jsonResponse(200, { status: 'ready', environment: 'staging', databaseFingerprint: 'b'.repeat(64) }) : healthy(url, options),
     (url, options) => url.endsWith('/app/items') ? { ...frontendResponse(), status: 302 } : healthy(url, options),
     (url, options) => url.endsWith('/app/items') ? { ...frontendResponse(), text: async () => '<html>Provider sign in</html>' } : healthy(url, options)
   ]) await assert.rejects(health(env.E2E_APP_ORIGIN, env.E2E_EXPECTED_TARGET, async (url, options) => change(url, options)));
