@@ -1,6 +1,7 @@
 class HttpsPreflightError extends Error {
   constructor(results) {
-    const failure = results.flatMap(result => result.failures)[0];
+    const first = results.find(result => result.failures.length);
+    const failure = first.failures.find(value => value.category.startsWith('deployment_protection')) || first.failures[0];
     super('HTTPS ' + failure.check + ' failed (' + (failure.status === null ? 'no HTTP response' : 'HTTP ' + failure.status) + '; ' + failure.category + ')');
     this.diagnostic = failure;
     this.results = results;

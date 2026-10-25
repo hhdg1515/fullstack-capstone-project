@@ -71,9 +71,7 @@ The [Vercel bot's current project links](https://github.com/hhdg1515/fullstack-c
 
 Complete-summary confirmation run [40164183497](https://github.com/hhdg1515/fullstack-capstone-project/actions/runs/40164183497) reports frontend access, team ownership, configuration, name/ID match and alias resolution all true; backend access remains false. Ownership/configuration booleans are also false for an unreadable project, so they are not evidence of a wrong stored configuration when access itself failed. Inspect exits nonzero for missing access or required validation; this run's failure correctly records the remaining provider access blocker. A forbidden team metadata read alone does not disprove team ownership: the frontend's returned `accountId` was verified against the pinned team.
 
-## Minimal owner actions for missing permissions
-
-### Diagnose `verify_public_preview` without redeploying
+## Diagnose `verify_public_preview` without redeploying
 
 Use **Prepare or deploy isolated staging frontend → diagnose-https**, the exact reviewed commit SHA, the existing assigned test origin, and optionally the original failed Actions run ID. Read-only diagnostic branches are supported; plan/deploy remain `main` only. This operation skips builds, CLI and management operations. Its HTTPS process receives no Vercel/database token, sends GET only with credentials omitted, validates TLS and never follows redirects or uses protection bypasses. `E2E_APP_ORIGIN` is not required.
 
@@ -84,6 +82,16 @@ Both phases check homepage/deep-link built React HTML, wrong-fingerprint JSON 40
 None of the original five anonymous GET assertions requires an updated APP_ORIGIN: `protectWrites` exempts GET/HEAD/OPTIONS, hosted health checks the target before app routing, and anonymous `/api/me` requires no session. These checks remain mandatory **before** changing backend configuration. The **after_origin** phase additionally sends `Origin: <test origin>` on the anonymous GET and verifies exact `Access-Control-Allow-Origin` plus credential allowance; an old backend origin fails only this later assertion. Both phases are read-only. Actual Origin/CSRF write rejection, login and secure-cookie behavior still require the separately approved browser E2E run; header agreement is not a replacement.
 
 If every request redirects to provider authentication, treat it as deployment protection. Do not disable protection, invent bypass tokens, change production routing or retry deploy as a diagnostic action. A supported staging automation-access arrangement needs a separate owner decision. If JSON routing/readiness fails, use the named assertion and normalized headers to investigate the proxy or backend without skipping the fence/auth/cache requirements.
+
+### Observed protection failure
+
+Owner-run deployment [40166250281](https://github.com/hhdg1515/fullstack-capstone-project/actions/runs/40166250281) passed both project/deployment validations, created the frontend Preview and assigned the test alias, then stopped at `verify_public_preview`. The earlier backend resource-visibility issue is not the current blocker.
+
+GET-only diagnostic [40166846990](https://github.com/hhdg1515/fullstack-capstone-project/actions/runs/40166846990) independently checked homepage, `/app/items`, wrong-fingerprint health, approved-fingerprint health and anonymous `/api/me`. **Every request returned 302 / `deployment_protection_redirect`**, with content-type category `other` and cache-control category `no_store`. The same result occurred with the post-change Origin probe. TLS validation produced HTTP responses without TLS errors; application/proxy JSON behavior and configured APP_ORIGIN remain unverified because provider authentication intercepts the requests. No redirect target/body or cookie was printed or followed. The workflow's nonzero exit records this external blocker.
+
+The original receipt was downloaded successfully using read-only Actions access. Its validated phase and previous/new deployment IDs were preserved in the `staging-https-diagnostics` artifact. The source phase records `frontend_alias_assigned_backend_origin_update_not_reached`: no APP_ORIGIN update or API redeployment had been reached in that failed run. Diagnostics did not assign an alias or invoke deployment. Keep that binding and source receipt when deciding how to grant supported staging automation access; do not repeat a deployment to investigate protection.
+
+## Minimal owner actions for missing permissions
 
 1. Review/merge the focused PR; agents do not merge. If using Actions for management, securely add **VERCEL_TOKEN** to `isolated-e2e`. An owner with existing Vercel access can instead perform the same scoped settings/deployment steps.
 2. Actions → **Prepare or deploy isolated staging frontend** → Run workflow: `main`, exact reviewed current SHA, approved free test origin, **plan**. Review its project/host/target output. Separately choose **deploy** when ready; there is no automatic plan-to-deploy transition.

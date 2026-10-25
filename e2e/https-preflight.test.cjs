@@ -81,6 +81,8 @@ test('generic redirects, protection HTML and a deliberately wrong zero fingerpri
   assert.ok(redirect.results.every(result => result.category === 'http_redirect'));
   const protectedHtml = await inspectHttps(origin, fingerprint, async () => new Response('Authentication Required private-secret', { status: 401, headers: { 'content-type': 'text/html' } }));
   assert.ok(protectedHtml.results.every(result => result.category === 'deployment_protection_html'));
+  await assert.rejects(health(origin, fingerprint, async () => new Response('Authentication Required private-secret', { status: 401, headers: { 'content-type': 'text/html' } })),
+    error => error.diagnostic.check === 'react_homepage.protection' && error.diagnostic.category === 'deployment_protection_html' && !error.message.includes('private-secret'));
   const zero = '0'.repeat(64); let fence;
   await inspectHttps(origin, zero, async (url, options) => {
     if (url.endsWith('/api/health') && !fence) fence = options.headers['X-Deployment-Target'];

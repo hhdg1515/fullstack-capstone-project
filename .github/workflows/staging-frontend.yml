@@ -15,7 +15,7 @@ on:
       approved_sha:
         type: string
         required: true
-        description: 'Exact reviewed commit SHA; plan/deploy require main, inspect also supports a diagnostic branch'
+        description: 'Exact reviewed commit SHA; plan/deploy require main, GET-only diagnostics also allow branches'
       failed_run_id:
         type: string
         required: false
