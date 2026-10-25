@@ -102,18 +102,20 @@ test('both workflow jobs guard trusted actors and branches, including a failed v
     const block = source.split('\n  ' + job + ':\n')[1]; assert.ok(block, job);
     const expression = block.match(/    if: >-\n((?:      [^\n]+\n)+)/)?.[1]; assert.ok(expression, job);
     // Evaluate only this workflow's simple, literal equality/AND predicates.
-    assert.match(expression.trim(), /^(?:(?:github\.[a-z_]+|needs\.gate\.result)\s*==\s*'[A-Za-z0-9_./:-]+'\s*(?:&&\s*|$))+$/);
-    const permits = new Function('github', 'needs', 'return (' + expression + ');');
+    assert.match(expression.trim(), /^(?:(?:github\.[a-z_]+|needs\.gate\.result|inputs\.approved_sha)\s*==\s*(?:'[A-Za-z0-9_./:-]+'|github\.sha)\s*(?:&&\s*|$))+$/);
+    const permits = new Function('github', 'needs', 'inputs', 'return (' + expression + ');');
     const trusted = { repository: context.E2E_AUTH_REPOSITORY, repository_owner: context.E2E_AUTH_OWNER,
       event_name: context.E2E_AUTH_EVENT, ref: context.E2E_AUTH_REF, actor: context.E2E_AUTH_ACTOR,
-      actor_id: context.E2E_AUTH_ACTOR_ID, triggering_actor: context.E2E_AUTH_TRIGGERING_ACTOR };
+      actor_id: context.E2E_AUTH_ACTOR_ID, triggering_actor: context.E2E_AUTH_TRIGGERING_ACTOR, sha: context.E2E_AUTH_SHA };
     const succeeded = { gate: { result: 'success' } };
-    assert.equal(permits(trusted, succeeded), true);
+    const inputs = { approved_sha: context.E2E_AUTH_APPROVED_SHA };
+    assert.equal(permits(trusted, succeeded, inputs), true);
     for (const change of [{ actor: 'collaborator' }, { actor_id: '999' }, { triggering_actor: 'collaborator' },
       { event_name: 'push' }, { ref: 'refs/heads/feature' }, { repository: 'fork/project' }, { repository_owner: 'other' }]) {
-      assert.equal(permits({ ...trusted, ...change }, succeeded), false, job);
+      assert.equal(permits({ ...trusted, ...change }, succeeded, inputs), false, job);
     }
-    if (job === 'verify') for (const result of ['failure', 'skipped', 'cancelled']) assert.equal(permits(trusted, { gate: { result } }), false);
+    for (const approved_sha of ['', 'a'.repeat(7), 'b'.repeat(40)]) assert.equal(permits(trusted, succeeded, { approved_sha }), false, job);
+    if (job === 'verify') for (const result of ['failure', 'skipped', 'cancelled']) assert.equal(permits(trusted, { gate: { result } }, inputs), false);
   }
 });
 

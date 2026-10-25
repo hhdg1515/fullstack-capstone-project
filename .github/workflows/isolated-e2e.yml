@@ -47,6 +47,7 @@ jobs:
       github.repository == 'hhdg1515/fullstack-capstone-project' &&
       github.repository_owner == 'hhdg1515' &&
       github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+      inputs.approved_sha == github.sha &&
       github.actor == 'hhdg1515' && github.actor_id == '144937930' &&
       github.triggering_actor == 'hhdg1515'
     runs-on: ubuntu-latest
@@ -75,6 +76,7 @@ jobs:
       github.repository == 'hhdg1515/fullstack-capstone-project' &&
       github.repository_owner == 'hhdg1515' &&
       github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+      inputs.approved_sha == github.sha &&
       github.actor == 'hhdg1515' && github.actor_id == '144937930' &&
       github.triggering_actor == 'hhdg1515'
     environment: isolated-e2e
