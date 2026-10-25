@@ -100,6 +100,7 @@ test('one account gives in Pasadena and searches Irvine without copying or enfor
   sessionUser = user; mount('/app/plans');
   expect(await screen.findByRole('link', { name: 'Pasadena move' })).toBeInTheDocument();
   await click(primary().getByRole('link', { name: 'Find Free Items' }));
+  await click(screen.getByRole('button', { name: /^Filters/ }));
   await screen.findByRole('option', { name: 'Irvine' }); expect(screen.getByLabelText('City', { exact: true })).toHaveValue('');
   fireEvent.change(screen.getByLabelText('City', { exact: true }), { target: { value: 'Irvine' } });
   await click(screen.getByRole('button', { name: 'Find free items' }));

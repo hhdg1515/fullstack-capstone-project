@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { apiRequest } from '../../api/client';
-import { formatDeadline, utcToday } from '../MoveOutPlans/dates';
+import { formatDeadline, isCalendarDate, utcToday } from '../MoveOutPlans/dates';
 import '../MoveOutPlans/Plans.css';
 import './Inventory.css';
 import JourneyNav from '../Journeys/JourneyNav';
@@ -33,12 +33,16 @@ function Discovery() {
   const [params, setParams] = useSearchParams();
   const query = params.toString();
   const [fields, setFields] = useState(() => fieldsFrom(params));
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filterError, setFilterError] = useState('');
+  const filterRegion = useRef(); const filterToggle = useRef(); const dateInput = useRef();
   const [attempt, setAttempt] = useState(0);
   const [locationAttempt, setLocationAttempt] = useState(0);
   const [places, setPlaces] = useState({ loading: true, locations: [] });
   const [result, setResult] = useState({});
   const revision = useRef(null);
-  useEffect(() => { setFields(fieldsFrom(new URLSearchParams(query))); }, [query]);
+  useEffect(() => { if (filterError && filtersOpen) dateInput.current?.focus(); }, [filterError, filtersOpen]);
+  useEffect(() => { setFields(fieldsFrom(new URLSearchParams(query))); setFilterError(''); }, [query]);
   useEffect(() => {
     const current = { active: true }; revision.current = current;
     setResult({ key: query, loading: true, items: [] });
@@ -70,16 +74,33 @@ function Discovery() {
   const cities = places.locations.map(place => place.city);
   if (city && !cities.includes(city)) cities.unshift(city);
   if (neighborhood && !neighborhoods.includes(neighborhood)) neighborhoods.unshift(neighborhood);
+  const applied = [];
+  if (params.get('q')) applied.push(`Search: ${params.get('q')}`);
+  if (params.get('city')) applied.push(`City: ${params.get('city')}`);
+  if (params.get('neighborhood')) applied.push(`Neighborhood: ${params.get('neighborhood')}`);
+  if (params.get('availability') && params.get('availability') !== 'all') applied.push(`Pickup: ${params.get('availability') === 'date' ? params.get('date') || 'choose a date' : params.get('availability')}`);
+  if (params.get('sort') === 'deadline') applied.push('Sort: earliest pickup deadline');
+  const filterCount = applied.length - (params.get('q') ? 1 : 0);
+  const closeFilters = () => {
+    if (filterRegion.current?.contains(document.activeElement)) filterToggle.current?.focus();
+    setFiltersOpen(false);
+  };
   const submit = event => {
     event.preventDefault();
+    if (fields.availability === 'date' && (!isCalendarDate(fields.date) || fields.date < utcToday())) {
+      setFilterError('Choose today or a later pickup date (UTC).');
+      if (filtersOpen) dateInput.current?.focus();
+      setFiltersOpen(true); return;
+    }
+    setFilterError(''); closeFilters();
     const next = new URLSearchParams();
     for (const [name, value] of Object.entries({ q: normalize(fields.q), city, neighborhood, availability: fields.availability,
       date: fields.availability === 'date' ? fields.date : '', sort: fields.sort })) {
       if (value && !((name === 'availability' && value === 'all') || (name === 'sort' && value === 'newest'))) next.set(name, value);
     }
-    setParams(next); setAttempt(value => value + 1);
+    setParams(next, { replace: next.toString() === query }); setAttempt(value => value + 1); setLocationAttempt(value => value + 1);
   };
-  const clear = () => { setParams({}); setFields(fieldsFrom(new URLSearchParams())); setAttempt(value => value + 1); };
+  const clear = () => { setFilterError(''); closeFilters(); setParams({}); setFields(fieldsFrom(new URLSearchParams())); setAttempt(value => value + 1); setLocationAttempt(value => value + 1); };
   const loadMore = async () => {
     if (visible.loading || visible.moreLoading || !visible.page?.nextCursor) return;
     const current = revision.current;
@@ -97,15 +118,18 @@ function Discovery() {
   };
   const change = event => {
     const { name, value } = event.target;
+    if (['availability', 'date'].includes(name)) setFilterError('');
     setFields(previous => ({ ...previous, [name]: value, ...(name === 'city' ? { neighborhood: '' } : {}), ...(name === 'availability' ? { date: '' } : {}) }));
   };
   return <main className="plans-page discovery-page">
     <JourneyNav journey="find" />
     <h1>Free items near your neighborhood</h1>
-    <p>Browse any city or neighborhood. Location filters help you find items; people from any community may browse.</p>
-    <form className="discovery-filters" onSubmit={submit}>
-      <div className="plan-field discovery-search"><label htmlFor="browse-q">Search items</label>
+    <form className="discovery-filters" onSubmit={submit} noValidate>
+      <div className="plan-field discovery-search"><div className="discovery-search-heading"><label htmlFor="browse-q">Search items</label>
+        <button type="button" ref={filterToggle} className="btn btn-outline-secondary" aria-expanded={filtersOpen} aria-controls="discovery-filter-options"
+          onClick={() => filtersOpen ? closeFilters() : setFiltersOpen(true)}>Filters{filterCount ? ` (${filterCount})` : ''}</button></div>
         <input id="browse-q" name="q" maxLength={100} placeholder="Name, description, or category" value={fields.q} onChange={change} /></div>
+      <div id="discovery-filter-options" ref={filterRegion} className="discovery-options" hidden={!filtersOpen}>
       <div className="plan-field"><label htmlFor="browse-city">City</label>
         <select id="browse-city" name="city" value={city} onChange={change}><option value="">All cities</option>
           {cities.map(value => <option key={key(value)} value={value}>{value}</option>)}</select></div>
@@ -117,19 +141,22 @@ function Discovery() {
           <option value="all">Any pickup window</option><option value="now">Available Now</option><option value="later">Available Later</option><option value="date">On a selected date</option>
         </select></div>
       {fields.availability === 'date' && <div className="plan-field"><label htmlFor="browse-date">Pickup date (UTC)</label>
-        <input id="browse-date" type="date" name="date" required min={utcToday()} value={fields.date} onChange={change} /></div>}
+        <input id="browse-date" ref={dateInput} type="date" name="date" required min={utcToday()} value={fields.date} onChange={change}
+          aria-invalid={Boolean(filterError)} aria-describedby={filterError ? 'browse-date-error' : undefined} />
+        {filterError && <p id="browse-date-error" role="alert" className="plan-field-error">{filterError}</p>}</div>}
       <div className="plan-field"><label htmlFor="browse-sort">Sort items</label>
         <select id="browse-sort" name="sort" value={fields.sort} onChange={change}>
           <option value="newest">Newest publication</option><option value="deadline">Earliest pickup deadline</option>
         </select></div>
-      <div className="plan-actions"><button className="btn btn-primary">Find free items</button>
+      <small>Pickup windows use UTC calendar dates. You can browse any neighborhood.</small>
+      </div>
+      <div className="plan-actions discovery-search-actions"><button className="btn btn-primary">Find free items</button>
         <button type="button" className="btn btn-outline-secondary" onClick={clear}>Clear filters</button></div>
     </form>
+    <p className="discovery-summary" aria-label="Applied filters">{applied.length ? applied.join(' · ') : 'Showing all listings. No account needed to browse.'}</p>
     {places.loading && <p role="status">Loading location options…</p>}
     {places.error && <div role="alert">Location options could not be loaded. <button onClick={() => setLocationAttempt(value => value + 1)}>Retry location options</button></div>}
     {places.truncated && <p>Location suggestions are limited. Shared city/neighborhood filters still work beyond these suggestions.</p>}
-    <p>All items are free. Future pickup windows remain discoverable. Calendar dates use UTC.</p>
-    <button className="btn btn-outline-secondary" onClick={() => { setAttempt(value => value + 1); setLocationAttempt(value => value + 1); }}>Refresh listings</button>
     <section aria-label="Search results" aria-busy={visible.loading || visible.moreLoading || false}>
       {visible.loading && <p role="status">Loading listings…</p>}
       {visible.error && <div role="alert"><p>{visible.error.message}</p>
