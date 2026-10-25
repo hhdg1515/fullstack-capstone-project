@@ -4,10 +4,10 @@ on:
     inputs:
       operation:
         type: choice
-        options: [plan, deploy]
+        options: [plan, inspect, deploy]
         default: plan
         required: true
-        description: 'Plan makes no remote changes; deploy changes only the specified existing staging resources'
+        description: 'Plan: local only; inspect: Vercel GETs only; deploy: approved existing staging resources'
       test_origin:
         type: string
         required: true
@@ -15,7 +15,7 @@ on:
       approved_sha:
         type: string
         required: true
-        description: 'Full reviewed main SHA selected for this run'
+        description: 'Exact reviewed commit SHA; plan/deploy require main, inspect also supports a diagnostic branch'
 permissions:
   contents: read
 concurrency:
@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   staging:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || inputs.operation == 'inspect'
     environment: isolated-e2e
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -42,7 +42,9 @@ jobs:
           cache: npm
           cache-dependency-path: giftlink-frontend/package-lock.json
       - run: npm --prefix giftlink-frontend ci
+        if: inputs.operation != 'inspect'
       - name: Build same-origin React assets without deployment or database credentials
+        if: inputs.operation != 'inspect'
         run: npm --prefix giftlink-frontend run build
         env:
           CI: 'true'

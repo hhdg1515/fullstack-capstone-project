@@ -4,15 +4,16 @@ const { spawnSync } = require('node:child_process');
 const { staging, testOrigin } = require('./staging-target.cjs');
 const { frontendConfig } = require('./frontend-config.cjs');
 const { health } = require('../e2e/https-preflight.cjs');
-class StagingError extends Error {}
+const { StagingError, vercelApi } = require('./vercel-api.cjs');
 
 function settings(env) {
-  if (env.GITHUB_REPOSITORY !== 'hhdg1515/fullstack-capstone-project' || env.GITHUB_EVENT_NAME !== 'workflow_dispatch' || env.GITHUB_REF !== 'refs/heads/main' ||
+  if (env.GITHUB_REPOSITORY !== 'hhdg1515/fullstack-capstone-project' || env.GITHUB_EVENT_NAME !== 'workflow_dispatch' ||
+      !/^refs\/heads\/.+/.test(env.GITHUB_REF || '') || (env.GITHUB_REF !== 'refs/heads/main' && env.STAGING_OPERATION !== 'inspect') ||
       !/^[a-f0-9]{40}$/.test(env.APPROVED_SHA || '') || env.APPROVED_SHA !== env.GITHUB_SHA) throw new StagingError('Use a reviewed manual main run');
   const origin = testOrigin(env.STAGING_FRONTEND_ORIGIN);
   if (!new URL(origin).hostname.endsWith('.vercel.app')) throw new StagingError('Use an approved free Vercel test alias; custom DNS is outside this workflow');
-  if (!['plan', 'deploy'].includes(env.STAGING_OPERATION)) throw new StagingError('Choose plan or deploy');
-  if (env.STAGING_OPERATION === 'deploy' && !env.VERCEL_TOKEN) throw new StagingError('Configure VERCEL_TOKEN in isolated-e2e');
+  if (!['plan', 'inspect', 'deploy'].includes(env.STAGING_OPERATION)) throw new StagingError('Choose plan, inspect or deploy');
+  if (env.STAGING_OPERATION !== 'plan' && !env.VERCEL_TOKEN) throw new StagingError('Configure VERCEL_TOKEN in isolated-e2e');
   return { origin, operation: env.STAGING_OPERATION };
 }
 
@@ -32,15 +33,38 @@ function preparePreview(directory, origin, { assets = path.join(directory, 'buil
   return config;
 }
 
-function vercelApi(token, request = fetch) {
-  return async (method, pathname, body, missing = false) => {
-    const url = new URL(pathname, 'https://api.vercel.com'); url.searchParams.set('teamId', staging.teamId);
-    const response = await request(url, { method, redirect: 'error', signal: AbortSignal.timeout(30000),
-      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-    if (missing && response.status === 404) return null;
-    if (!response.ok) throw new StagingError('Vercel management request failed (HTTP ' + response.status + ')');
-    return response.json();
+async function inspect({ origin, api }) {
+  testOrigin(origin);
+  const probe = async pathname => {
+    try { return { value: await api('GET', pathname) }; }
+    catch (error) { if (!(error instanceof StagingError) || !error.diagnostic) throw error; return { failure: error.diagnostic.operation }; }
   };
+  // Reproduce the original validation reads independently, so one hidden or
+  // missing resource cannot prevent checking access to the second project.
+  const frontend = await probe('/v9/projects/' + staging.frontendProjectId);
+  const backend = await probe('/v9/projects/' + staging.backendProjectId);
+  const production = await probe('/v13/deployments/' + new URL(staging.productionFrontendOrigin).hostname);
+  const previous = await probe('/v13/deployments/' + new URL(staging.apiOrigin).hostname);
+  const team = await probe('/v2/teams/' + staging.teamId);
+  const frontendByName = await probe('/v9/projects/fullstack-capstone-project');
+  const backendByName = await probe('/v9/projects/fullstack-capstone-project-vkwm');
+  const aliases = [];
+  for (const [value, projectId] of [[staging.productionFrontendOrigin, staging.frontendProjectId], [staging.apiOrigin, staging.backendProjectId]]) {
+    const alias = await probe('/v4/aliases/' + new URL(value).hostname);
+    const id = alias.value?.deploymentId;
+    const deployment = typeof id === 'string' && /^dpl_[a-zA-Z0-9]+$/.test(id) ? await probe('/v13/deployments/' + id) : {};
+    aliases.push(alias.value?.projectId === projectId && deployment.value?.projectId === projectId && deployment.value?.target === 'production' && deployment.value?.readyState === 'READY');
+  }
+  const matches = (project, id, name, root, node) => project?.id === id && project.accountId === staging.teamId && project.name === name &&
+    project.rootDirectory === root && (!node || project.nodeVersion === node);
+  return { operation: 'inspect', remoteChanges: false,
+    firstLegacyValidationFailure: [frontend, backend, production, previous].find(result => result.failure)?.failure || null,
+    teamReadAccess: team.value?.id === staging.teamId,
+    frontendProjectAccess: matches(frontend.value, staging.frontendProjectId, 'fullstack-capstone-project', 'giftlink-frontend'),
+    backendProjectAccess: matches(backend.value, staging.backendProjectId, 'fullstack-capstone-project-vkwm', 'giftlink-backend', '22.x'),
+    frontendNameMatchesId: frontendByName.value?.id === staging.frontendProjectId,
+    backendNameMatchesId: backendByName.value?.id === staging.backendProjectId,
+    frontendAliasResolved: aliases[0], backendAliasResolved: aliases[1] };
 }
 
 async function deploy({ origin, api, cli, preflight = health, pause = ms => new Promise(resolve => setTimeout(resolve, ms)), record = () => {} }) {
@@ -104,6 +128,16 @@ async function deploy({ origin, api, cli, preflight = health, pause = ms => new 
 
 async function main(env = process.env) {
   const config = settings(env);
+  const report = value => {
+    console.log(JSON.stringify(value));
+    if (env.GITHUB_ACTIONS === 'true') console.log('::notice title=Sanitized Vercel inspection::' + JSON.stringify(value));
+  };
+  if (config.operation === 'inspect') {
+    const result = await inspect({ origin: config.origin, api: vercelApi(env.VERCEL_TOKEN, fetch, { readOnly: true, report }) });
+    report(result);
+    if (!result.frontendProjectAccess || !result.backendProjectAccess || !result.frontendAliasResolved || !result.backendAliasResolved) process.exitCode = 1;
+    return;
+  }
   const repository = path.resolve(__dirname, '..');
   const frontend = path.join(repository, 'giftlink-frontend');
   // CLI validates project.rootDirectory relative to cwd. Run from the repo
@@ -116,7 +150,7 @@ async function main(env = process.env) {
   if (config.operation === 'plan') { console.log(JSON.stringify({ ...plan, remoteChanges: false })); return; }
   const output = path.resolve(__dirname, 'generated'); fs.mkdirSync(output, { recursive: true });
   const record = receipt => { fs.writeFileSync(path.join(output, 'staging-deployment.json'), JSON.stringify(receipt)); console.log(JSON.stringify({ phase: receipt.phase })); };
-  const result = await deploy({ origin: config.origin, api: vercelApi(env.VERCEL_TOKEN), record,
+  const result = await deploy({ origin: config.origin, api: vercelApi(env.VERCEL_TOKEN, fetch, { report }), record,
     cli: async () => {
       const child = spawnSync(env.VERCEL_CLI_PATH, ['deploy', '--prebuilt', '--environment=preview', '--yes', '--scope', staging.teamId, '--token', env.VERCEL_TOKEN],
         { cwd: repository, encoding: 'utf8', timeout: 600000 });
@@ -130,4 +164,4 @@ if (require.main === module) main().catch(error => {
   console.error(error instanceof StagingError ? error.message : 'Staging preparation/deployment failed. Review the sanitized phase receipt and provider access privately; no protection or network controls were relaxed.');
   process.exitCode = 1;
 });
-module.exports = { settings, preparePreview, vercelApi, deploy };
+module.exports = { settings, preparePreview, vercelApi, inspect, deploy };
