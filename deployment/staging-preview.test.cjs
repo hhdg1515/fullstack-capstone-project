@@ -251,6 +251,11 @@ test('the complete inspection summary remains accessible as one notice after mor
   assert.equal(output.filter(line => line.startsWith('::warning')).length, 1);
   const local = []; diagnosticReporter({}, value => local.push(value))({ operation: 'inspect' });
   assert.deepEqual(local, ['{"operation":"inspect"}']);
+  const https = [];
+  diagnosticReporter({ GITHUB_ACTIONS: 'true' }, value => https.push(value))({ check: 'react_homepage.redirect', status: 302,
+    category: 'deployment_protection_redirect', privateBody: 'must-not-be-logged', cookie: 'private-secret' });
+  assert.equal(https.length, 2); assert.ok(https[1].startsWith('::error title=Sanitized staging HTTPS assertion::'));
+  assert.ok(!/must-not-be-logged|private-secret/.test(https.join('\n')));
 });
 
 test('the diagnostic allowlist preserves documented staging mutation endpoints and rejects other project administration', async () => {
@@ -275,4 +280,64 @@ test('the diagnostic allowlist preserves documented staging mutation endpoints a
     await assert.rejects(api('POST', pathname, {}));
   }
   assert.equal(calls, 0);
+});
+
+test('HTTPS diagnostics need no credentials and preserve exact commit, production origin and main-only mutation guards', () => {
+  const diagnostic = { ...env, STAGING_OPERATION: 'diagnose-https', GITHUB_REF: 'refs/heads/diagnostic', STAGING_FAILED_RUN_ID: '123456' };
+  assert.equal(settings(diagnostic).operation, 'diagnose-https');
+  for (const change of [{ STAGING_OPERATION: 'deploy', VERCEL_TOKEN: 'synthetic' }, { STAGING_OPERATION: 'plan' },
+    { APPROVED_SHA: 'b'.repeat(40) }, { STAGING_FRONTEND_ORIGIN: staging.productionFrontendOrigin },
+    { STAGING_FRONTEND_ORIGIN: staging.apiOrigin }, { STAGING_FAILED_RUN_ID: 'private-invalid-id' }]) assert.throws(() => settings({ ...diagnostic, ...change }));
+});
+
+test('pre-origin HTTPS failures preserve the assigned preview and precise receipt while preventing all backend mutations', async () => {
+  const { HttpsPreflightError } = require('../e2e/https-preflight.cjs');
+  const f = fixture(), receipts = [];
+  f.options.record = value => receipts.push({ ...value });
+  f.options.preflight = async (value, target, request, options) => {
+    assert.equal(options.phase, 'before_origin');
+    throw new HttpsPreflightError([{ check: 'health_wrong_fingerprint', status: 302, category: 'deployment_protection_redirect',
+      failures: [{ check: 'health_wrong_fingerprint.redirect', status: 302, category: 'deployment_protection_redirect' }] }]);
+  };
+  await assert.rejects(deploy(f.options), /health_wrong_fingerprint.redirect/);
+  assert.equal(f.calls.filter(call => call.method === 'POST').length, 1);
+  const receipt = receipts.at(-1);
+  assert.equal(receipt.phase, 'verify_public_preview'); assert.equal(receipt.frontendDeployment, 'dpl_preview');
+  assert.equal(receipt.previousBackendDeployment, 'dpl_previous_api');
+  assert.equal(receipt.httpsFailure.check, 'health_wrong_fingerprint.redirect');
+  assert.equal(receipt.backendDeployment, undefined);
+});
+
+test('configured-Origin checks run only after the dedicated API redeployment and retain its partial state if they fail', async () => {
+  const { HttpsPreflightError } = require('../e2e/https-preflight.cjs');
+  const f = fixture(), phases = [], receipts = [];
+  f.options.record = value => receipts.push({ ...value });
+  f.options.preflight = async (value, target, request, options) => {
+    phases.push(options.phase);
+    if (options.phase === 'after_origin') throw new HttpsPreflightError([{ failures: [{ check: 'anonymous_me.configured_origin', status: 401, category: 'app_origin_mismatch' }] }]);
+  };
+  await assert.rejects(deploy(f.options), /anonymous_me.configured_origin/);
+  assert.deepEqual(phases, ['before_origin', 'after_origin']);
+  assert.equal(receipts.at(-1).phase, 'verify_staging_proxy');
+  assert.equal(receipts.at(-1).backendDeployment, 'dpl_new_api');
+});
+
+test('partial-state receipts preserve only validated target-bound deployment IDs, never provider or private response properties', () => {
+  const { partialState } = require('./staging-https-diagnostics.cjs');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'partial-staging-')), filename = path.join(directory, 'staging-deployment.json');
+  const receipt = { origin, apiOrigin: staging.apiOrigin, fingerprint: staging.fingerprint, phase: 'verify_public_preview',
+    frontendDeployment: 'dpl_preview', previousFrontendAliasDeployment: null, previousBackendDeployment: 'dpl_previousApi',
+    privateResponse: 'private-secret', frontendDeploymentUrl: 'https://private-secret.example.invalid' };
+  try {
+    fs.writeFileSync(filename, JSON.stringify(receipt));
+    const result = partialState(filename, origin, '12345');
+    assert.deepEqual(result, { sourceRunId: '12345', phase: 'verify_public_preview', frontendDeployment: 'dpl_preview',
+      previousFrontendAliasDeployment: null, previousBackendDeployment: 'dpl_previousApi', backendDeployment: null });
+    assert.ok(!JSON.stringify(result).includes('private-secret'));
+    assert.deepEqual(JSON.parse(fs.readFileSync(filename, 'utf8')), receipt);
+    for (const change of [{ origin: staging.productionFrontendOrigin }, { fingerprint: 'b'.repeat(64) }, { apiOrigin: 'https://other.example.invalid' },
+      { phase: 'private-secret' }, { frontendDeployment: 'https://private-secret.example.invalid' }]) {
+      fs.writeFileSync(filename, JSON.stringify({ ...receipt, ...change })); assert.throws(() => partialState(filename, origin, '12345'));
+    }
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 });

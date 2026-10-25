@@ -4,10 +4,10 @@ on:
     inputs:
       operation:
         type: choice
-        options: [plan, inspect, deploy]
+        options: [plan, inspect, diagnose-https, deploy]
         default: plan
         required: true
-        description: 'Plan: local only; inspect: Vercel GETs only; deploy: approved existing staging resources'
+        description: 'Plan: local; inspect: management GETs; diagnose-https: anonymous GETs; deploy: staging changes'
       test_origin:
         type: string
         required: true
@@ -15,7 +15,11 @@ on:
       approved_sha:
         type: string
         required: true
-        description: 'Exact reviewed commit SHA; plan/deploy require main, inspect also supports a diagnostic branch'
+        description: 'Exact reviewed commit SHA; plan/deploy require main, GET-only diagnostics also allow branches'
+      failed_run_id:
+        type: string
+        required: false
+        description: 'Optional failed staging run ID; diagnose-https reads its receipt without changing the alias'
 permissions:
   contents: read
 concurrency:
@@ -23,7 +27,10 @@ concurrency:
   cancel-in-progress: false
 jobs:
   staging:
-    if: github.ref == 'refs/heads/main' || inputs.operation == 'inspect'
+    if: github.ref == 'refs/heads/main' || inputs.operation == 'inspect' || inputs.operation == 'diagnose-https'
+    permissions:
+      contents: read
+      actions: read
     environment: isolated-e2e
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -31,6 +38,7 @@ jobs:
       STAGING_OPERATION: ${{ inputs.operation }}
       STAGING_FRONTEND_ORIGIN: ${{ inputs.test_origin }}
       APPROVED_SHA: ${{ inputs.approved_sha }}
+      STAGING_FAILED_RUN_ID: ${{ inputs.failed_run_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -42,9 +50,9 @@ jobs:
           cache: npm
           cache-dependency-path: giftlink-frontend/package-lock.json
       - run: npm --prefix giftlink-frontend ci
-        if: inputs.operation != 'inspect'
+        if: inputs.operation == 'plan' || inputs.operation == 'deploy'
       - name: Build same-origin React assets without deployment or database credentials
-        if: inputs.operation != 'inspect'
+        if: inputs.operation == 'plan' || inputs.operation == 'deploy'
         run: npm --prefix giftlink-frontend run build
         env:
           CI: 'true'
@@ -53,10 +61,37 @@ jobs:
         if: inputs.operation == 'deploy'
         run: npm install --prefix "$RUNNER_TEMP/vercel-cli" --ignore-scripts --no-save vercel@65.2.0
       - name: Prepare plan or deploy only the scoped staging resources
+        if: inputs.operation != 'diagnose-https'
         run: node deployment/staging-preview.cjs
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_CLI_PATH: ${{ runner.temp }}/vercel-cli/node_modules/.bin/vercel
+      - name: Validate the exact reviewed HTTPS diagnostic target without credentials
+        if: inputs.operation == 'diagnose-https'
+        run: node -e 'require("./deployment/staging-preview.cjs").settings(process.env)'
+      - name: Read the original failed-run receipt without modifying its deployment
+        if: inputs.operation == 'diagnose-https' && inputs.failed_run_id != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          name: staging-deployment-receipt
+          path: ${{ runner.temp }}/failed-staging-receipt
+          run-id: ${{ inputs.failed_run_id }}
+          repository: hhdg1515/fullstack-capstone-project
+          github-token: ${{ github.token }}
+      - name: Inspect each HTTPS assertion without Vercel or database credentials
+        if: inputs.operation == 'diagnose-https'
+        run: node deployment/staging-https-diagnostics.cjs
+        env:
+          STAGING_FAILURE_RECEIPT: ${{ runner.temp }}/failed-staging-receipt/staging-deployment.json
+      - name: Preserve sanitized HTTPS checks and partial deployment state
+        if: always() && inputs.operation == 'diagnose-https'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: staging-https-diagnostics
+          path: deployment/generated/staging-https-diagnostics.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Save the sanitized deployment receipt
         if: always() && inputs.operation == 'deploy'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

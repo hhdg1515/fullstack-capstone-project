@@ -3,17 +3,18 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { staging, testOrigin } = require('./staging-target.cjs');
 const { frontendConfig } = require('./frontend-config.cjs');
-const { health } = require('../e2e/https-preflight.cjs');
+const { health, HttpsPreflightError } = require('../e2e/https-preflight.cjs');
 const { StagingError, vercelApi } = require('./vercel-api.cjs');
 
 function settings(env) {
   if (env.GITHUB_REPOSITORY !== 'hhdg1515/fullstack-capstone-project' || env.GITHUB_EVENT_NAME !== 'workflow_dispatch' ||
-      !/^refs\/heads\/.+/.test(env.GITHUB_REF || '') || (env.GITHUB_REF !== 'refs/heads/main' && env.STAGING_OPERATION !== 'inspect') ||
+      !/^refs\/heads\/.+/.test(env.GITHUB_REF || '') || (env.GITHUB_REF !== 'refs/heads/main' && !['inspect', 'diagnose-https'].includes(env.STAGING_OPERATION)) ||
       !/^[a-f0-9]{40}$/.test(env.APPROVED_SHA || '') || env.APPROVED_SHA !== env.GITHUB_SHA) throw new StagingError('Use a reviewed manual main run');
   const origin = testOrigin(env.STAGING_FRONTEND_ORIGIN);
   if (!new URL(origin).hostname.endsWith('.vercel.app')) throw new StagingError('Use an approved free Vercel test alias; custom DNS is outside this workflow');
-  if (!['plan', 'inspect', 'deploy'].includes(env.STAGING_OPERATION)) throw new StagingError('Choose plan, inspect or deploy');
-  if (env.STAGING_OPERATION !== 'plan' && !env.VERCEL_TOKEN) throw new StagingError('Configure VERCEL_TOKEN in isolated-e2e');
+  if (!['plan', 'inspect', 'diagnose-https', 'deploy'].includes(env.STAGING_OPERATION)) throw new StagingError('Choose plan, inspect, diagnose-https or deploy');
+  if (env.STAGING_OPERATION === 'diagnose-https' && env.STAGING_FAILED_RUN_ID && !/^[1-9][0-9]+$/.test(env.STAGING_FAILED_RUN_ID)) throw new StagingError('Use an exact failed staging run ID');
+  if (['inspect', 'deploy'].includes(env.STAGING_OPERATION) && !env.VERCEL_TOKEN) throw new StagingError('Configure VERCEL_TOKEN in isolated-e2e');
   return { origin, operation: env.STAGING_OPERATION };
 }
 
@@ -73,6 +74,12 @@ async function inspect({ origin, api }) {
 
 function diagnosticReporter(env, write = value => console.log(value)) {
   return value => {
+    if (value.check) {
+      const safe = { check: value.check, status: value.status, category: value.category };
+      write(JSON.stringify(safe));
+      if (env.GITHUB_ACTIONS === 'true') write('::error title=Sanitized staging HTTPS assertion::' + JSON.stringify(safe));
+      return;
+    }
     write(JSON.stringify(value));
     if (env.GITHUB_ACTIONS !== 'true') return;
     // Actions caps notices per step. Keep success events in the log and reserve
@@ -86,6 +93,17 @@ async function deploy({ origin, api, cli, preflight = health, pause = ms => new 
   testOrigin(origin);
   const receipt = { origin, apiOrigin: staging.apiOrigin, fingerprint: staging.fingerprint, phase: 'validate_projects' };
   const stage = phase => { receipt.phase = phase; record({ ...receipt }); };
+  const verify = async phase => {
+    try { return await preflight(origin, staging.fingerprint, undefined, { phase }); }
+    catch (error) {
+      if (error instanceof HttpsPreflightError) {
+        receipt.httpsFailure = error.diagnostic;
+        receipt.httpsResults = error.results;
+        record({ ...receipt });
+      }
+      throw error;
+    }
+  };
   stage('validate_projects');
   const frontend = await api('GET', '/v9/projects/' + staging.frontendProjectId);
   const backend = await api('GET', '/v9/projects/' + staging.backendProjectId);
@@ -115,7 +133,7 @@ async function deploy({ origin, api, cli, preflight = health, pause = ms => new 
   stage('verify_public_preview');
   // Refuse provider login redirects/protection before changing the API origin.
   // These checks use GET only; no account or session is created.
-  await preflight(origin, staging.fingerprint);
+  await verify('before_origin');
   stage('update_staging_api_origin');
   await api('POST', '/v10/projects/' + staging.backendProjectId + '/env?upsert=true',
     [{ key: 'APP_ORIGIN', value: origin, type: 'plain', target: ['production'] }]);
@@ -136,13 +154,14 @@ async function deploy({ origin, api, cli, preflight = health, pause = ms => new 
   }
   if (!ready) throw new StagingError('Staging API deployment did not become ready');
   stage('verify_staging_proxy');
-  receipt.checks = await preflight(origin, staging.fingerprint);
+  receipt.checks = await verify('after_origin');
   stage('ready');
   return receipt;
 }
 
 async function main(env = process.env) {
   const config = settings(env);
+  if (config.operation === 'diagnose-https') throw new StagingError('Use the credential-free staging-https-diagnostics entry point');
   const report = diagnosticReporter(env);
   if (config.operation === 'inspect') {
     const result = await inspect({ origin: config.origin, api: vercelApi(env.VERCEL_TOKEN, fetch, { readOnly: true, report }) });
@@ -162,7 +181,11 @@ async function main(env = process.env) {
     productionFrontendUnchanged: staging.productionFrontendOrigin, expectedFingerprint: staging.fingerprint };
   if (config.operation === 'plan') { console.log(JSON.stringify({ ...plan, remoteChanges: false })); return; }
   const output = path.resolve(__dirname, 'generated'); fs.mkdirSync(output, { recursive: true });
-  const record = receipt => { fs.writeFileSync(path.join(output, 'staging-deployment.json'), JSON.stringify(receipt)); console.log(JSON.stringify({ phase: receipt.phase })); };
+  const record = receipt => {
+    fs.writeFileSync(path.join(output, 'staging-deployment.json'), JSON.stringify(receipt));
+    console.log(JSON.stringify({ phase: receipt.phase }));
+    if (receipt.httpsFailure) report(receipt.httpsFailure);
+  };
   const result = await deploy({ origin: config.origin, api: vercelApi(env.VERCEL_TOKEN, fetch, { report }), record,
     cli: async () => {
       const child = spawnSync(env.VERCEL_CLI_PATH, ['deploy', '--prebuilt', '--environment=preview', '--yes', '--scope', staging.teamId, '--token', env.VERCEL_TOKEN],
@@ -174,7 +197,7 @@ async function main(env = process.env) {
   console.log('Set isolated-e2e variable E2E_APP_ORIGIN to the receipt origin, then run the reviewed HTTPS preview workflow before bounded E2E.');
 }
 if (require.main === module) main().catch(error => {
-  console.error(error instanceof StagingError ? error.message : 'Staging preparation/deployment failed. Review the sanitized phase receipt and provider access privately; no protection or network controls were relaxed.');
+  console.error(error instanceof StagingError || error instanceof HttpsPreflightError ? error.message : 'Staging preparation/deployment failed. Review the sanitized phase receipt and provider access privately; no protection or network controls were relaxed.');
   process.exitCode = 1;
 });
 module.exports = { settings, preparePreview, vercelApi, inspect, diagnosticReporter, deploy };
