@@ -251,6 +251,11 @@ test('the complete inspection summary remains accessible as one notice after mor
   assert.equal(output.filter(line => line.startsWith('::warning')).length, 1);
   const local = []; diagnosticReporter({}, value => local.push(value))({ operation: 'inspect' });
   assert.deepEqual(local, ['{"operation":"inspect"}']);
+  const https = [];
+  diagnosticReporter({ GITHUB_ACTIONS: 'true' }, value => https.push(value))({ check: 'react_homepage.redirect', status: 302,
+    category: 'deployment_protection_redirect', privateBody: 'must-not-be-logged', cookie: 'private-secret' });
+  assert.equal(https.length, 2); assert.ok(https[1].startsWith('::error title=Sanitized staging HTTPS assertion::'));
+  assert.ok(!/must-not-be-logged|private-secret/.test(https.join('\n')));
 });
 
 test('the diagnostic allowlist preserves documented staging mutation endpoints and rejects other project administration', async () => {

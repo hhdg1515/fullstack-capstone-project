@@ -74,6 +74,12 @@ async function inspect({ origin, api }) {
 
 function diagnosticReporter(env, write = value => console.log(value)) {
   return value => {
+    if (value.check) {
+      const safe = { check: value.check, status: value.status, category: value.category };
+      write(JSON.stringify(safe));
+      if (env.GITHUB_ACTIONS === 'true') write('::error title=Sanitized staging HTTPS assertion::' + JSON.stringify(safe));
+      return;
+    }
     write(JSON.stringify(value));
     if (env.GITHUB_ACTIONS !== 'true') return;
     // Actions caps notices per step. Keep success events in the log and reserve
@@ -175,7 +181,11 @@ async function main(env = process.env) {
     productionFrontendUnchanged: staging.productionFrontendOrigin, expectedFingerprint: staging.fingerprint };
   if (config.operation === 'plan') { console.log(JSON.stringify({ ...plan, remoteChanges: false })); return; }
   const output = path.resolve(__dirname, 'generated'); fs.mkdirSync(output, { recursive: true });
-  const record = receipt => { fs.writeFileSync(path.join(output, 'staging-deployment.json'), JSON.stringify(receipt)); console.log(JSON.stringify({ phase: receipt.phase })); };
+  const record = receipt => {
+    fs.writeFileSync(path.join(output, 'staging-deployment.json'), JSON.stringify(receipt));
+    console.log(JSON.stringify({ phase: receipt.phase }));
+    if (receipt.httpsFailure) report(receipt.httpsFailure);
+  };
   const result = await deploy({ origin: config.origin, api: vercelApi(env.VERCEL_TOKEN, fetch, { report }), record,
     cli: async () => {
       const child = spawnSync(env.VERCEL_CLI_PATH, ['deploy', '--prebuilt', '--environment=preview', '--yes', '--scope', staging.teamId, '--token', env.VERCEL_TOKEN],
