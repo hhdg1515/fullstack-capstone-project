@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { isCalendarDate, utcToday } from './dates';
 import { useUnsavedForm } from '../../forms/UnsavedChanges';
+import useFormErrors from '../../forms/useFormErrors';
 
 export const statusLabels = { active: 'Active', completed: 'Completed', cancelled: 'Cancelled' };
 const hasControlCharacters = value => Array.from(value).some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127);
@@ -18,18 +19,18 @@ export default function PlanForm({ initialPlan, onSave, focusPickupTimeZone = fa
     neighborhood: initialPlan.neighborhood, title: initialPlan.title, status: initialPlan.status, pickupTimeZone: initialPlan.pickupTimeZone || '' } :
     { moveOutDeadline: '', city: '', neighborhood: '', title: '', pickupTimeZone: '' });
   const [busy, setBusy] = useState(false);
-  const [errors, setErrors] = useState({});
-  const [error, setError] = useState('');
+  const validation = useFormErrors(busy);
+  const { errors, error } = validation;
   const [conflicts, setConflicts] = useState([]);
   const change = event => {
     const { name, value } = event.target;
     setValues(current => ({ ...current, [name]: value }));
-    setErrors(current => ({ ...current, [name]: '' }));
+    validation.clear(name);
   };
   const submit = async event => {
     event.preventDefault();
     if (busy) return;
-    setError('');
+    validation.reset();
     setConflicts([]);
     const details = { ...values, title: values.title.trim(), city: values.city.trim(), neighborhood: values.neighborhood.trim() };
     details.pickupTimeZone = values.pickupTimeZone.trim() || null;
@@ -44,13 +45,11 @@ export default function PlanForm({ initialPlan, onSave, focusPickupTimeZone = fa
         issues[field] = field === 'title' ? 'Use a single line of at most 120 characters.' : 'Use a single line of 1 to 100 characters.';
       }
     }
-    setErrors(issues);
-    if (Object.keys(issues).length) { setError('Check the highlighted fields.'); return; }
+    if (Object.keys(issues).length) { validation.show(issues); return; }
     setBusy(true);
     try { await onSave(details, guard.markSaved); guard.markSaved(); }
     catch (failure) {
-      setError(failure.message || 'Could not save your plan. Please try again.');
-      setErrors(Object.fromEntries((failure.fields || []).map(field => [field.field, field.message])));
+      validation.failure(failure, ['moveOutDeadline', 'city', 'neighborhood', 'title', 'status', 'pickupTimeZone']);
       setConflicts(failure.conflicts || []);
     } finally { setBusy(false); }
   };
@@ -60,7 +59,7 @@ export default function PlanForm({ initialPlan, onSave, focusPickupTimeZone = fa
     { name: 'neighborhood', label: 'Neighborhood', maximum: 100, required: true },
     { name: 'title', label: 'Plan title (optional)', maximum: 120 },
   ];
-  return <form onSubmit={submit} noValidate className="plan-form" aria-busy={busy}>
+  return <form ref={validation.formRef} onSubmit={submit} noValidate className="plan-form" aria-busy={busy}>
     <p id="plan-privacy">Only you can see this plan. Use city and neighborhood names; keep street addresses private.</p>
     <fieldset disabled={busy} aria-describedby="plan-privacy">
       <legend className="visually-hidden">Plan details</legend>
@@ -83,13 +82,13 @@ export default function PlanForm({ initialPlan, onSave, focusPickupTimeZone = fa
         {errors.status && <p className="plan-field-error" id="plan-status-error">{errors.status}</p>}
       </div>}
       <div className="plan-field"><label htmlFor="plan-timezone">Pickup timezone (needed to receive requests)</label>
-        <input id="plan-timezone" ref={timezoneInput} name="pickupTimeZone" list="pickup-timezones" maxLength={100} value={values.pickupTimeZone} onChange={change} placeholder="America/Los_Angeles" />
+        <input id="plan-timezone" ref={timezoneInput} name="pickupTimeZone" list="pickup-timezones" maxLength={100} value={values.pickupTimeZone} onChange={change} {...validation.fieldProps('pickupTimeZone', 'plan-timezone-help')} placeholder="America/Los_Angeles" />
         <datalist id="pickup-timezones">{['UTC', ...(Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : ['America/Los_Angeles', 'America/New_York', 'Europe/London', 'Asia/Kolkata'])].map(zone => <option value={zone} key={zone} />)}</datalist>
-        <small>Choose the timezone at the pickup location yourself. We do not infer it from your browser or city. Existing listings remain browsable without it. Changing the timezone or general location cancels outstanding requests after confirmation.</small>
-        {errors.pickupTimeZone && <p className="plan-field-error">{errors.pickupTimeZone}</p>}
+        <small id="plan-timezone-help">Choose the timezone at the pickup location yourself. We do not infer it from your browser or city. Existing listings remain browsable without it. Changing the timezone or general location cancels outstanding requests after confirmation.</small>
+        {errors.pickupTimeZone && <p className="plan-field-error" id="pickupTimeZone-error">{errors.pickupTimeZone}</p>}
       </div>
     </fieldset>
-    {error && <p role="alert" className="plan-field-error">{error}</p>}
+    {error && <p ref={validation.summaryRef} tabIndex={-1} role="alert" className="plan-field-error">{error}</p>}
     {conflicts.length > 0 && <section aria-label="Items needing date changes" className="plan-panel">
       <h2>Resolve item dates first</h2>
       <p>Your plan and item dates have not changed. Open the affected items in a new tab, edit or clear their pickup date overrides, then retry this form. Your draft stays here.</p>

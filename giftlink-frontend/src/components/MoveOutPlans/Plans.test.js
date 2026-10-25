@@ -79,6 +79,7 @@ test('creation validates required labels and past deadlines before sending a req
   mount('/app/plans/new'); await screen.findByRole('heading', { name: 'Create move-out plan' });
   submit('Create plan');
   expect(await screen.findByRole('alert')).toHaveTextContent('Check the highlighted fields');
+  expect(screen.getByLabelText('Move-out deadline')).toHaveFocus();
   expect(screen.getByLabelText('City')).toHaveAttribute('aria-invalid', 'true');
   fillForm();
   fireEvent.change(screen.getByLabelText('Move-out deadline'), { target: { value: '2000-01-01' } });
@@ -226,4 +227,14 @@ test('deadline conflicts name affected items, preserve the proposed date, and li
   expect(link).toHaveAttribute('href', `/app/plans/${plan.id}/items?edit=item-one`);
   expect(screen.getByLabelText('Move-out deadline')).toHaveValue(proposed);
   expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled();
+});
+
+test('server timezone errors are associated with and focus the explicit timezone field', async () => {
+  fetch.mockResolvedValueOnce(reply(400, { error: { message: 'Check plan details', fields: [{ field: 'pickupTimeZone', message: 'Choose a valid IANA timezone.' }] } }));
+  mount('/app/plans/new'); await screen.findByRole('heading', { name: 'Create move-out plan' }); fillForm();
+  const timezone = screen.getByLabelText('Pickup timezone (needed to receive requests)');
+  fireEvent.change(timezone, { target: { value: 'Unrecognised/Zone' } }); submit('Create plan');
+  await waitFor(() => expect(timezone).toHaveFocus());
+  expect(timezone).toHaveAttribute('aria-invalid', 'true'); expect(timezone).toHaveAccessibleDescription(/Choose a valid IANA timezone/);
+  expect(timezone).toHaveValue('Unrecognised/Zone');
 });

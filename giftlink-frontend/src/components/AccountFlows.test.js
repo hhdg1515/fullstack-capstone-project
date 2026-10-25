@@ -61,6 +61,9 @@ test('registration displays duplicate-email errors without storing tokens', asyn
 test('registration confirms the new session and returns to public browsing', async () => {
   fetch.mockResolvedValueOnce(reply(401, { error: {} })).mockResolvedValueOnce(reply(201, { user })).mockResolvedValueOnce(reply(200, { user }));
   renderPage('/app/register'); await waitFor(() => expect(screen.getByRole('button', { name: 'Register' })).toBeEnabled());
+  for (const [label, value] of [['First name', 'Gift'], ['Last name', 'Giver'], ['Email', user.email], ['Password', 'test-password-long']]) {
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  }
   fireEvent.submit(screen.getByRole('button', { name: 'Register' }).closest('form'));
   expect(await screen.findByText('Public browsing')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Logout' })).toBeInTheDocument();
@@ -96,7 +99,43 @@ test('background session checks preserve an unsaved account draft', async () => 
   fetch.mockResolvedValue(reply(200, { user }));
   renderPage('/app/profile'); await screen.findByRole('heading', { name: 'Your account' });
   fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Unsaved draft' } });
+  expect(screen.getByLabelText('First name')).toHaveValue('Unsaved draft');
   fireEvent(window, new Event('focus'));
   await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
   expect(screen.getByLabelText('First name')).toHaveValue('Unsaved draft');
+});
+
+test('empty login focuses email without sending credentials; correcting it does not jump focus', async () => {
+  fetch.mockResolvedValue(reply(401, { error: {} })); renderPage('/app/login');
+  const submit = await screen.findByRole('button', { name: 'Login' });
+  await waitFor(() => expect(submit).toBeEnabled()); fireEvent.submit(submit.closest('form'));
+  const email = screen.getByLabelText('Email'); expect(email).toHaveFocus();
+  expect(email).toHaveAccessibleDescription('Enter a valid email address.');
+  expect(fetch.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true);
+  fireEvent.change(email, { target: { value: user.email } });
+  screen.getByLabelText('Password').focus(); fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'old' } });
+  expect(screen.getByLabelText('Password')).toHaveFocus();
+});
+test('registration catches the bcrypt byte limit and focuses the password without clearing other fields', async () => {
+  fetch.mockResolvedValue(reply(401, { error: {} })); renderPage('/app/register');
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Register' })).toBeEnabled());
+  for (const [label, value] of [['First name', 'Gift'], ['Last name', 'Giver'], ['Email', user.email], ['Password', '界'.repeat(25)]]) {
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  }
+  fireEvent.submit(screen.getByRole('button', { name: 'Register' }).closest('form'));
+  expect(screen.getByLabelText('Password')).toHaveFocus();
+  expect(screen.getByLabelText('Password')).toHaveAccessibleDescription(/at most 72 UTF-8 bytes/);
+  expect(screen.getByLabelText('First name')).toHaveValue('Gift'); expect(fetch).toHaveBeenCalledTimes(1);
+});
+test('account field errors focus after saving stops, preserve names and allow a corrected retry', async () => {
+  fetch.mockResolvedValueOnce(reply(200, { user })).mockResolvedValueOnce(reply(400, { error: { message: 'Check your details',
+    fields: [{ field: 'lastName', message: 'Use 1 to 80 characters' }] } })).mockResolvedValueOnce(reply(200, { user: { ...user, lastName: 'Neighbor' } }));
+  renderPage('/app/profile'); fireEvent.change(await screen.findByLabelText('Last name'), { target: { value: 'Edited' } });
+  fireEvent.submit(screen.getByRole('button', { name: 'Save' }).closest('form'));
+  await waitFor(() => expect(screen.getByLabelText('Last name')).toHaveFocus());
+  expect(screen.getByLabelText('Last name')).toHaveValue('Edited');
+  expect(screen.getByLabelText('Last name')).toHaveAccessibleDescription('Use 1 to 80 characters');
+  fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Neighbor' } });
+  fireEvent.submit(screen.getByRole('button', { name: 'Save' }).closest('form'));
+  expect(await screen.findByRole('status')).toHaveTextContent('Account updated.');
 });

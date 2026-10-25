@@ -12,8 +12,8 @@
 .plan-form fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .plan-field { margin: 1rem 0; }
 .plan-field label { display: block; font-weight: 600; margin-bottom: .4rem; }
-.plan-field input, .plan-field select { width: 100%; box-sizing: border-box; min-height: 44px; padding: .65rem; border: 1px solid #707980; border-radius: .25rem; background: white; color: #212529; }
-.plan-field input[aria-invalid="true"], .plan-field select[aria-invalid="true"] { border: 2px solid #a51d2d; }
+.plan-field input, .plan-field select, .plan-field textarea { width: 100%; box-sizing: border-box; min-height: 44px; padding: .65rem; border: 1px solid #707980; border-radius: .25rem; background: white; color: #212529; }
+.plan-field input[aria-invalid="true"], .plan-field select[aria-invalid="true"], .plan-field textarea[aria-invalid="true"] { border: 2px solid #a51d2d; }
 .plan-field small { display: block; margin-top: .4rem; }
 .plan-field-error { color: #a51d2d; margin-top: .4rem; }
 .plan-actions { margin: 1.5rem 0; }
@@ -21,3 +21,5 @@
 .plan-details { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: .5rem 1rem; }
 .plan-details dd { margin: 0; }
 @media (max-width: 420px) { .plans-page { padding: 1rem; } .plan-details { grid-template-columns: 1fr; } .plan-details dd { margin-bottom: .5rem; } }
+
+.plans-page a:not(.btn) { color: #0056b3; }

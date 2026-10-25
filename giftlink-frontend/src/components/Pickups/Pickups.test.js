@@ -90,6 +90,10 @@ test.each(['INVALID_APPOINTMENT', 'OUTSIDE_PICKUP_WINDOW', 'ITEM_RESERVED', 'DUP
   await submit(screen.getByRole('button', { name: 'Send pickup request' }).closest('form'));
   expect(await screen.findByRole('alert')).toHaveTextContent('Review the pickup time or listing.');
   expect(screen.getByLabelText('Pickup date and time')).toHaveValue('2030-07-01T14:30');
+  if (['INVALID_APPOINTMENT', 'OUTSIDE_PICKUP_WINDOW'].includes(code)) {
+    expect(screen.getByLabelText('Pickup date and time')).toHaveFocus();
+    expect(screen.getByLabelText('Pickup date and time')).toHaveAccessibleDescription(/Review the pickup time or listing/);
+  } else expect(screen.getByRole('alert')).toHaveFocus();
 });
 test('private dashboards provide loading, empty/error/retry and role navigation', async () => {
   const pending = deferred(); fetch.mockImplementation(url => url.endsWith('/api/me') ? Promise.resolve(response({ user })) : pending.promise);
