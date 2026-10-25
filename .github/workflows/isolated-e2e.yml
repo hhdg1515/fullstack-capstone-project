@@ -71,6 +71,7 @@ jobs:
     # Repeat on this job: a collaborator must not rerun only a failed verify job
     # from an earlier owner-triggered run and inherit the gate's old success.
     if: >-
+      needs.gate.result == 'success' &&
       github.repository == 'hhdg1515/fullstack-capstone-project' &&
       github.repository_owner == 'hhdg1515' &&
       github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
