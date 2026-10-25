@@ -252,3 +252,27 @@ test('the complete inspection summary remains accessible as one notice after mor
   const local = []; diagnosticReporter({}, value => local.push(value))({ operation: 'inspect' });
   assert.deepEqual(local, ['{"operation":"inspect"}']);
 });
+
+test('the diagnostic allowlist preserves documented staging mutation endpoints and rejects other project administration', async () => {
+  for (const [pathname, body, operation] of [
+    ['/v2/deployments/dpl_preview/aliases', { alias: new URL(origin).hostname }, 'assign_test_alias'],
+    ['/v10/projects/' + staging.backendProjectId + '/env?upsert=true', [{ key: 'APP_ORIGIN', value: origin, type: 'plain', target: ['production'] }], 'update_staging_api_origin'],
+    ['/v13/deployments?forceNew=1', { deploymentId: 'dpl_previousApi', name: 'fullstack-capstone-project-vkwm', target: 'production' }, 'redeploy_staging_api']
+  ]) {
+    const events = [];
+    const api = vercelApi('synthetic-token', async (url, options) => {
+      const expected = new URL(pathname, 'https://api.vercel.com'); expected.searchParams.set('teamId', staging.teamId);
+      assert.equal(url.href, expected.href); assert.equal(options.method, 'POST'); assert.equal(options.redirect, 'error');
+      assert.deepEqual(JSON.parse(options.body), body);
+      return { ok: true, status: 200, json: async () => ({ privateEnvironment: 'must-not-be-logged' }) };
+    }, { report: event => events.push(event) });
+    await api('POST', pathname, body);
+    assert.equal(events[0].operation, operation); assert.ok(!/synthetic-token|must-not-be-logged|APP_ORIGIN/.test(JSON.stringify(events)));
+  }
+  let calls = 0;
+  const api = vercelApi('synthetic-token', async () => { calls++; });
+  for (const pathname of ['/v10/projects/' + staging.frontendProjectId + '/env?upsert=true', '/v10/projects', '/v2/teams/other']) {
+    await assert.rejects(api('POST', pathname, {}));
+  }
+  assert.equal(calls, 0);
+});

@@ -69,6 +69,8 @@ Read-only Actions run [40163988334](https://github.com/hhdg1515/fullstack-capsto
 
 The [Vercel bot's current project links](https://github.com/hhdg1515/fullstack-capstone-project/pull/23#issuecomment-6393697197) contain the same two project IDs and team ID as the repository pins. No identifier was automatically replaced. A 404 on both backend ID/name plus 403 on its deployment supports an authorization/visibility blocker, but cannot conclusively distinguish hidden resources from a moved/deleted project. An owner should verify the backend still belongs to the approved team and ensure the existing secret's token has access to **both** projects. Frontend access does not prove backend access. No deployment was retried during diagnosis.
 
+Complete-summary confirmation run [40164183497](https://github.com/hhdg1515/fullstack-capstone-project/actions/runs/40164183497) reports frontend access, team ownership, configuration, name/ID match and alias resolution all true; backend access remains false. Ownership/configuration booleans are also false for an unreadable project, so they are not evidence of a wrong stored configuration when access itself failed. Inspect exits nonzero for missing access or required validation; this run's failure correctly records the remaining provider access blocker. A forbidden team metadata read alone does not disprove team ownership: the frontend's returned `accountId` was verified against the pinned team.
+
 ## Minimal owner actions for missing permissions
 
 1. Review/merge the focused PR; agents do not merge. If using Actions for management, securely add **VERCEL_TOKEN** to `isolated-e2e`. An owner with existing Vercel access can instead perform the same scoped settings/deployment steps.
