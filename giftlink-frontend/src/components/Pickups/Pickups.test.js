@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from '../../context/AuthContext';
 import RequireAuth from '../RequireAuth';
@@ -164,4 +164,45 @@ test('consequential inventory saves retry only after explicit cancellation confi
   fetch.mockReset().mockResolvedValue(error('Cancellation required.', 'PICKUP_CONFIRMATION_REQUIRED')); window.confirm.mockReturnValue(false);
   await expect(confirmPickupChanges('/api/plan', { method: 'PATCH', body: { status: 'completed' } })).rejects.toHaveProperty('code', 'PICKUP_CONFIRMATION_REQUIRED');
   expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+
+test('multiple requests for one item retain applicant, proposed time, status and the exact review target', async () => {
+  const requests = [{ ...base, role: 'giver', counterpart: { firstName: 'Alex' }, note: 'Library entrance' },
+    { ...base, id: '64a000000000000000000003', role: 'giver', counterpart: { firstName: 'Sam' }, proposedAt: '2030-07-01T10:00:00.000Z', status: 'declined', note: 'Near the cafe' }];
+  fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { requests, nextCursor: null }));
+  mount('/app/pickups/incoming'); await screen.findByText('Applicant: Alex');
+  for (const request of requests) {
+    const card = screen.getByText('Applicant: ' + request.counterpart.firstName).closest('li');
+    expect(within(card).getByRole('link', { name: 'Kitchen box' })).toHaveAttribute('href', '/app/items/' + item.id);
+    expect(within(card).getByRole('link', { name: 'Review request from ' + request.counterpart.firstName + ' for Kitchen box' })).toHaveAttribute('href', '/app/pickups/' + request.id);
+    expect(card.querySelector('time')).toHaveAttribute('datetime', request.proposedAt);
+    expect(within(card).getByText(request.status === 'pending' ? 'Awaiting giver decision' : 'Declined')).toBeInTheDocument();
+    expect(within(card).getByText(request.note)).toBeInTheDocument(); expect(within(card).getByText(request.id)).toBeInTheDocument();
+    expect(card.textContent).not.toContain(user.email);
+  }
+});
+test('identically named applicants have separate exact references and review targets without inventing identities', async () => {
+  const requests = [base, { ...base, id: '64a000000000000000000003' }];
+  fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { requests, nextCursor: null }));
+  mount('/app/pickups/incoming'); await screen.findAllByText('Applicant: Giver');
+  const links = screen.getAllByRole('link', { name: 'Review request from Giver for Kitchen box' });
+  expect(links.map(link => link.getAttribute('href'))).toEqual(requests.map(request => '/app/pickups/' + request.id));
+  for (const request of requests) expect(screen.getByText(request.id)).toBeInTheDocument();
+});
+test('filtered emptiness differs from no history and clearing it resets pagination', async () => {
+  mount('/app/pickups'); await screen.findByText('No pickup requests here yet.');
+  fireEvent.change(screen.getByLabelText('Request status'), { target: { value: 'accepted' } });
+  expect(await screen.findByText('No requests match this status.')).toBeInTheDocument();
+  expect(screen.queryByText('No pickup requests here yet.')).not.toBeInTheDocument();
+  await click(screen.getByRole('button', { name: 'Clear status filter' }));
+  expect(await screen.findByText('No pickup requests here yet.')).toBeInTheDocument();
+  expect(fetch.mock.calls.at(-1)[0]).toMatch(/sent\?$/);
+});
+test('sent cards identify the current user as applicant and keep the giver and missing-listing recovery explicit', async () => {
+  fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { requests: [{ ...base, item: null }], nextCursor: null }));
+  mount('/app/pickups'); expect(await screen.findByText('Applicant: You')).toBeInTheDocument();
+  expect(screen.getByText('Giver: Giver')).toBeInTheDocument();
+  expect(screen.getByText('The listing is no longer available. You can still review the request.')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Review request to Giver for former listing' })).toHaveAttribute('href', '/app/pickups/' + base.id);
 });
