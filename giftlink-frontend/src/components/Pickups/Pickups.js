@@ -5,6 +5,7 @@ import usePlansData from '../MoveOutPlans/usePlansData';
 import '../MoveOutPlans/Plans.css';
 import './Pickups.css';
 import JourneyNav from '../Journeys/JourneyNav';
+import { useUnsavedForm } from '../../forms/UnsavedChanges';
 
 export const pickupLabels = { pending: 'Awaiting giver decision', accepted: 'Accepted appointment', declined: 'Declined', cancelled: 'Cancelled', completed: 'Handed over', no_show: 'Receiver did not arrive' };
 const actionLabels = { accept: 'Accept pickup', decline: 'Decline request', cancel: 'Cancel request', complete: 'Confirm handoff', no_show: 'Record no-show' };
@@ -23,11 +24,13 @@ export function RequestPickup() {
   const data = usePlansData(`/api/items/${encodeURIComponent(itemId)}`);
   const item = data.data?.item;
   const [localDateTime, setTime] = useState(''); const [note, setNote] = useState('');
+  const guard = useUnsavedForm({ localDateTime, note }, { localDateTime: '', note: '' });
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   const submit = async event => {
     event.preventDefault(); if (busy) return; setBusy(true); setError('');
     try {
       const result = await apiRequest('/api/pickup-requests', { method: 'POST', body: { itemId, localDateTime, timeZone: item.pickupTimeZone, note: note.trim() } });
+      guard.markSaved();
       navigate(`/app/pickups/${result.request.id}`, { replace: true, state: { journey: 'find' } });
     } catch (failure) { setError(failure.fields?.map(field => `${field.field}: ${field.message}`).join('. ') || failure.message); }
     finally { setBusy(false); }

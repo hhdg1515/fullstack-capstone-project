@@ -4,6 +4,7 @@ import { useAppContext } from '../../context/AuthContext';
 import './LoginPage.css';
 import { authDestination } from '../authDestination';
 import AccountServiceNotice from '../AccountServiceNotice';
+import { useUnsavedForm } from '../../forms/UnsavedChanges';
 
 export default function LoginPage() {
   const { login, isLoggedIn, sessionMessage, status } = useAppContext();
@@ -11,6 +12,7 @@ export default function LoginPage() {
   const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  useUnsavedForm({ email, password }, { email: '', password: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const requested = location.state?.from;

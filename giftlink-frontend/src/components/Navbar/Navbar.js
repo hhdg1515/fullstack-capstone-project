@@ -2,9 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAppContext } from '../../context/AuthContext';
 import './Navbar.css';
+import { useDiscardChanges } from '../../forms/UnsavedChanges';
 
 export default function Navbar() {
   const { isLoggedIn, userName, logout, status } = useAppContext();
+  const drafts = useDiscardChanges();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -15,8 +17,9 @@ export default function Navbar() {
   const find = location.pathname.startsWith('/app/items') || location.pathname === '/app/pickups' || location.state?.journey === 'find';
   const account = ['/app/profile', '/app/login', '/app/register'].includes(location.pathname);
   const handleLogout = async () => {
+    if (drafts && !drafts.confirmDiscard({ release: false })) return;
     setBusy(true); setError('');
-    try { await logout(); setOpen(false); navigate('/'); }
+    try { await logout(); drafts?.discard(); setOpen(false); navigate('/'); }
     catch { setError('Logout could not be confirmed. Please try again.'); }
     finally { setBusy(false); }
   };
