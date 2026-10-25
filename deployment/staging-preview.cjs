@@ -60,11 +60,26 @@ async function inspect({ origin, api }) {
   return { operation: 'inspect', remoteChanges: false,
     firstLegacyValidationFailure: [frontend, backend, production, previous].find(result => result.failure)?.failure || null,
     teamReadAccess: team.value?.id === staging.teamId,
-    frontendProjectAccess: matches(frontend.value, staging.frontendProjectId, 'fullstack-capstone-project', 'giftlink-frontend'),
-    backendProjectAccess: matches(backend.value, staging.backendProjectId, 'fullstack-capstone-project-vkwm', 'giftlink-backend', '22.x'),
+    frontendProjectAccess: frontend.value?.id === staging.frontendProjectId,
+    backendProjectAccess: backend.value?.id === staging.backendProjectId,
+    frontendTeamMatches: frontend.value?.accountId === staging.teamId,
+    backendTeamMatches: backend.value?.accountId === staging.teamId,
+    frontendConfigurationMatches: matches(frontend.value, staging.frontendProjectId, 'fullstack-capstone-project', 'giftlink-frontend'),
+    backendConfigurationMatches: matches(backend.value, staging.backendProjectId, 'fullstack-capstone-project-vkwm', 'giftlink-backend', '22.x'),
     frontendNameMatchesId: frontendByName.value?.id === staging.frontendProjectId,
     backendNameMatchesId: backendByName.value?.id === staging.backendProjectId,
     frontendAliasResolved: aliases[0], backendAliasResolved: aliases[1] };
+}
+
+function diagnosticReporter(env, write = value => console.log(value)) {
+  return value => {
+    write(JSON.stringify(value));
+    if (env.GITHUB_ACTIONS !== 'true') return;
+    // Actions caps notices per step. Keep success events in the log and reserve
+    // a single notice for the complete summary, even after many probes.
+    if (value.operation === 'inspect') write('::notice title=Sanitized Vercel inspection::' + JSON.stringify(value));
+    else if (value.result === 'failed') write('::warning title=Sanitized Vercel request::' + JSON.stringify(value));
+  };
 }
 
 async function deploy({ origin, api, cli, preflight = health, pause = ms => new Promise(resolve => setTimeout(resolve, ms)), record = () => {} }) {
@@ -74,8 +89,8 @@ async function deploy({ origin, api, cli, preflight = health, pause = ms => new 
   stage('validate_projects');
   const frontend = await api('GET', '/v9/projects/' + staging.frontendProjectId);
   const backend = await api('GET', '/v9/projects/' + staging.backendProjectId);
-  if (frontend.id !== staging.frontendProjectId || frontend.name !== 'fullstack-capstone-project' || frontend.rootDirectory !== 'giftlink-frontend' ||
-      backend.id !== staging.backendProjectId || backend.name !== 'fullstack-capstone-project-vkwm' || backend.rootDirectory !== 'giftlink-backend' || backend.nodeVersion !== '22.x') throw new StagingError('Existing project configuration does not match the approved resources');
+  if (frontend.id !== staging.frontendProjectId || frontend.accountId !== staging.teamId || frontend.name !== 'fullstack-capstone-project' || frontend.rootDirectory !== 'giftlink-frontend' ||
+      backend.id !== staging.backendProjectId || backend.accountId !== staging.teamId || backend.name !== 'fullstack-capstone-project-vkwm' || backend.rootDirectory !== 'giftlink-backend' || backend.nodeVersion !== '22.x') throw new StagingError('Existing project configuration does not match the approved resources');
   const production = await api('GET', '/v13/deployments/' + new URL(staging.productionFrontendOrigin).hostname);
   const previous = await api('GET', '/v13/deployments/' + new URL(staging.apiOrigin).hostname);
   if (production.projectId !== staging.frontendProjectId || production.target !== 'production' || previous.projectId !== staging.backendProjectId || previous.target !== 'production' || previous.readyState !== 'READY') throw new StagingError('Unexpected production alias or staging API deployment');
@@ -128,14 +143,12 @@ async function deploy({ origin, api, cli, preflight = health, pause = ms => new 
 
 async function main(env = process.env) {
   const config = settings(env);
-  const report = value => {
-    console.log(JSON.stringify(value));
-    if (env.GITHUB_ACTIONS === 'true') console.log('::notice title=Sanitized Vercel inspection::' + JSON.stringify(value));
-  };
+  const report = diagnosticReporter(env);
   if (config.operation === 'inspect') {
     const result = await inspect({ origin: config.origin, api: vercelApi(env.VERCEL_TOKEN, fetch, { readOnly: true, report }) });
     report(result);
-    if (!result.frontendProjectAccess || !result.backendProjectAccess || !result.frontendAliasResolved || !result.backendAliasResolved) process.exitCode = 1;
+    if (!result.frontendProjectAccess || !result.backendProjectAccess || !result.frontendConfigurationMatches || !result.backendConfigurationMatches ||
+        !result.frontendNameMatchesId || !result.backendNameMatchesId || !result.frontendAliasResolved || !result.backendAliasResolved) process.exitCode = 1;
     return;
   }
   const repository = path.resolve(__dirname, '..');
@@ -164,4 +177,4 @@ if (require.main === module) main().catch(error => {
   console.error(error instanceof StagingError ? error.message : 'Staging preparation/deployment failed. Review the sanitized phase receipt and provider access privately; no protection or network controls were relaxed.');
   process.exitCode = 1;
 });
-module.exports = { settings, preparePreview, vercelApi, inspect, deploy };
+module.exports = { settings, preparePreview, vercelApi, inspect, diagnosticReporter, deploy };

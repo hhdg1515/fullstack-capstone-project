@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
 const { staging } = require('./staging-target.cjs');
-const { settings, preparePreview, vercelApi, inspect, deploy } = require('./staging-preview.cjs');
+const { settings, preparePreview, vercelApi, inspect, diagnosticReporter, deploy } = require('./staging-preview.cjs');
 const origin = 'https://moveout-e2e-example.vercel.app';
 const env = { GITHUB_REPOSITORY: 'hhdg1515/fullstack-capstone-project', GITHUB_EVENT_NAME: 'workflow_dispatch',
   GITHUB_REF: 'refs/heads/main', GITHUB_SHA: 'a'.repeat(40), APPROVED_SHA: 'a'.repeat(40), STAGING_OPERATION: 'plan', STAGING_FRONTEND_ORIGIN: origin };
@@ -37,8 +37,8 @@ function fixture(override = () => undefined) {
   const api = async (method, url, body) => {
     calls.push({ method, url, body }); const changed = override(method, url, body);
     if (changed !== undefined) return changed;
-    if (url === '/v9/projects/' + staging.frontendProjectId) return { id: staging.frontendProjectId, name: 'fullstack-capstone-project', rootDirectory: 'giftlink-frontend' };
-    if (url === '/v9/projects/' + staging.backendProjectId) return { id: staging.backendProjectId, name: 'fullstack-capstone-project-vkwm', rootDirectory: 'giftlink-backend', nodeVersion: '22.x' };
+    if (url === '/v9/projects/' + staging.frontendProjectId) return { id: staging.frontendProjectId, accountId: staging.teamId, name: 'fullstack-capstone-project', rootDirectory: 'giftlink-frontend' };
+    if (url === '/v9/projects/' + staging.backendProjectId) return { id: staging.backendProjectId, accountId: staging.teamId, name: 'fullstack-capstone-project-vkwm', rootDirectory: 'giftlink-backend', nodeVersion: '22.x' };
     if (url.endsWith(new URL(staging.productionFrontendOrigin).hostname)) return { projectId: staging.frontendProjectId, target: 'production', alias: [new URL(staging.productionFrontendOrigin).hostname] };
     if (url.endsWith(new URL(staging.apiOrigin).hostname)) return { id: redeployed ? 'dpl_new_api' : 'dpl_previous_api', projectId: staging.backendProjectId, target: 'production', readyState: 'READY' };
     if (url.startsWith('/v4/aliases/')) return null;
@@ -80,6 +80,7 @@ test('deployment mutates only the test alias and dedicated staging API, after va
 test('wrong project configuration or aliases owned by another project/production refuse all remote mutations', async () => {
   for (const override of [
     (method, url) => url === '/v9/projects/' + staging.backendProjectId ? { id: 'unrelated' } : undefined,
+    (method, url) => url === '/v9/projects/' + staging.frontendProjectId ? { id: staging.frontendProjectId, accountId: 'other-team', name: 'fullstack-capstone-project', rootDirectory: 'giftlink-frontend' } : undefined,
     (method, url) => url.startsWith('/v4/aliases/') ? { projectId: 'unrelated', deploymentId: 'dpl_other' } : undefined,
     (method, url) => url.startsWith('/v4/aliases/') ? { projectId: staging.frontendProjectId, deploymentId: 'dpl_other' } : url.endsWith('/dpl_other') ? { projectId: staging.frontendProjectId, target: 'production' } : undefined,
     (method, url) => url.endsWith(new URL(staging.productionFrontendOrigin).hostname) ? { projectId: staging.frontendProjectId, target: 'production', alias: [new URL(origin).hostname] } : undefined
@@ -206,6 +207,7 @@ test('inspection locates the first legacy 404 and independently verifies both pr
   const f = inspectionFixture(); const result = await inspect({ origin, api: f.api });
   assert.deepEqual(result, { operation: 'inspect', remoteChanges: false, firstLegacyValidationFailure: 'get_frontend_production_deployment_by_hostname',
     teamReadAccess: true, frontendProjectAccess: true, backendProjectAccess: true, frontendNameMatchesId: true, backendNameMatchesId: true,
+    frontendTeamMatches: true, backendTeamMatches: true, frontendConfigurationMatches: true, backendConfigurationMatches: true,
     frontendAliasResolved: true, backendAliasResolved: true });
   assert.ok(f.calls.every(call => call.method === 'GET' && call.teamId === staging.teamId));
   assert.ok(!/synthetic-token|Authorization|accountId/.test(JSON.stringify(f.events)));
@@ -219,5 +221,34 @@ test('one inaccessible project never hides the second project check; wrong IDs a
   const wrong = inspectionFixture({ ['/v9/projects/' + staging.backendProjectId]: { id: staging.backendProjectId, accountId: 'other-team' },
     '/v9/projects/fullstack-capstone-project-vkwm': { id: 'other-project' } });
   const mismatch = await inspect({ origin, api: wrong.api });
-  assert.equal(mismatch.backendProjectAccess, false); assert.equal(mismatch.backendNameMatchesId, false);
+  assert.equal(mismatch.backendProjectAccess, true); assert.equal(mismatch.backendTeamMatches, false);
+  assert.equal(mismatch.backendConfigurationMatches, false); assert.equal(mismatch.backendNameMatchesId, false);
+});
+
+test('observed frontend success/backend 404 and team/API 403 report the backend lookup as the first failure without weakening deploy guards', async () => {
+  const f = inspectionFixture({ ['/v9/projects/' + staging.backendProjectId]: 404,
+    '/v9/projects/fullstack-capstone-project-vkwm': 404, ['/v2/teams/' + staging.teamId]: 403,
+    ['/v13/deployments/' + new URL(staging.productionFrontendOrigin).hostname]: { projectId: staging.frontendProjectId, target: 'production' },
+    ['/v13/deployments/' + new URL(staging.apiOrigin).hostname]: 403,
+    ['/v4/aliases/' + new URL(staging.apiOrigin).hostname]: 404 });
+  const result = await inspect({ origin, api: f.api });
+  assert.equal(result.firstLegacyValidationFailure, 'get_backend_project_by_id');
+  assert.equal(result.frontendProjectAccess, true); assert.equal(result.frontendTeamMatches, true); assert.equal(result.frontendConfigurationMatches, true);
+  assert.equal(result.backendProjectAccess, false); assert.equal(result.backendNameMatchesId, false);
+  assert.equal(result.backendAliasResolved, false); assert.equal(result.teamReadAccess, false);
+  let cliCalls = 0;
+  await assert.rejects(deploy({ origin, api: f.api, cli: () => { cliCalls++; } }), error => error.diagnostic.operation === 'get_backend_project_by_id');
+  assert.equal(cliCalls, 0); assert.ok(f.calls.every(call => call.method === 'GET'));
+});
+
+test('the complete inspection summary remains accessible as one notice after more than ten successful probes', () => {
+  const output = [], report = diagnosticReporter({ GITHUB_ACTIONS: 'true' }, value => output.push(value));
+  for (let i = 0; i < 12; i++) report({ operation: 'get_deployment', result: 'ok', status: 200 });
+  report({ operation: 'get_backend_project_by_id', result: 'failed', status: 404 });
+  report({ operation: 'inspect', remoteChanges: false, backendProjectAccess: false });
+  const notices = output.filter(line => line.startsWith('::notice'));
+  assert.equal(notices.length, 1); assert.ok(notices[0].includes('"operation":"inspect"'));
+  assert.equal(output.filter(line => line.startsWith('::warning')).length, 1);
+  const local = []; diagnosticReporter({}, value => local.push(value))({ operation: 'inspect' });
+  assert.deepEqual(local, ['{"operation":"inspect"}']);
 });
