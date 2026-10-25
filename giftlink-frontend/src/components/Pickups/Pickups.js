@@ -6,6 +6,7 @@ import '../MoveOutPlans/Plans.css';
 import './Pickups.css';
 import JourneyNav from '../Journeys/JourneyNav';
 import { useUnsavedForm } from '../../forms/UnsavedChanges';
+import useFormErrors from '../../forms/useFormErrors';
 
 export const pickupLabels = { pending: 'Awaiting giver decision', accepted: 'Accepted appointment', declined: 'Declined', cancelled: 'Cancelled', completed: 'Handed over', no_show: 'Receiver did not arrive' };
 const actionLabels = { accept: 'Accept pickup', decline: 'Decline request', cancel: 'Cancel request', complete: 'Confirm handoff', no_show: 'Record no-show' };
@@ -25,33 +26,42 @@ export function RequestPickup() {
   const item = data.data?.item;
   const [localDateTime, setTime] = useState(''); const [note, setNote] = useState('');
   const guard = useUnsavedForm({ localDateTime, note }, { localDateTime: '', note: '' });
-  const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const validation = useFormErrors(busy); const { errors, error } = validation;
   const submit = async event => {
-    event.preventDefault(); if (busy) return; setBusy(true); setError('');
+    event.preventDefault(); if (busy) return; validation.reset();
+    const issues = {};
+    if (!localDateTime) issues.localDateTime = 'Choose a pickup date and time in the giver’s timezone.';
+    if (Array.from(note.trim()).length > 500) issues.note = 'Use at most 500 characters.';
+    if (Object.keys(issues).length) { validation.show(issues); return; }
+    setBusy(true);
     try {
       const result = await apiRequest('/api/pickup-requests', { method: 'POST', body: { itemId, localDateTime, timeZone: item.pickupTimeZone, note: note.trim() } });
       guard.markSaved();
       navigate(`/app/pickups/${result.request.id}`, { replace: true, state: { journey: 'find' } });
-    } catch (failure) { setError(failure.fields?.map(field => `${field.field}: ${field.message}`).join('. ') || failure.message); }
+    } catch (failure) { if (['INVALID_APPOINTMENT', 'APPOINTMENT_PAST', 'OUTSIDE_PICKUP_WINDOW'].includes(failure.code)) validation.show({ localDateTime: failure.message }, failure.message);
+      else validation.failure(failure, ['localDateTime', 'note'], { proposedAt: 'localDateTime' }); }
     finally { setBusy(false); }
   };
   return <main className="plans-page pickup-page"><JourneyNav journey="find" discoverySearch={discoverySearch} /><Link to={`/app/items/${itemId}`} state={{ discoverySearch }}>Back to listing</Link><h1>Request pickup</h1><LoadState data={data} />
     {item && <><h2>{item.name}</h2><p>{item.neighborhood}, {item.city}</p>
       {item.isReserved === true ? <div role="status"><p>This item has an accepted pickup. Check back if it becomes available.</p>
-        <button className="btn btn-outline-secondary" onClick={data.retry}>Check availability</button></div> : !item.pickupTimeZone ? <p role="alert">The giver must set a pickup timezone before requests can be submitted.</p> : <form className="plan-form" onSubmit={submit} aria-busy={busy}>
+        <button className="btn btn-outline-secondary" onClick={data.retry}>Check availability</button></div> : !item.pickupTimeZone ? <p role="alert">The giver must set a pickup timezone before requests can be submitted.</p> : <form ref={validation.formRef} noValidate className="plan-form" onSubmit={submit} aria-busy={busy}>
         <p>A request does not reserve the item. Wait for the giver to accept. Each listing is one pickup unit, including groups of items.</p>
         {typeof item.isReserved !== 'boolean' && <p>Current pickup availability will be checked when you send a request.</p>}
         <p>Choose a local date from {item.availableFrom || 'today'} through {item.effectiveAvailableUntil}. Listings still expire at the end of that UTC date; late local appointments beyond that cutoff cannot be booked.</p>
         <fieldset disabled={busy}><legend className="visually-hidden">Appointment details</legend>
           <div className="plan-field"><label htmlFor="pickup-time">Pickup date and time</label>
-            <input id="pickup-time" type="datetime-local" step="60" required value={localDateTime} onChange={event => setTime(event.target.value)} aria-describedby="pickup-zone-help" />
+            <input id="pickup-time" name="localDateTime" type="datetime-local" step="60" required value={localDateTime} onChange={event => { setTime(event.target.value); validation.clear('localDateTime'); }} {...validation.fieldProps('localDateTime', 'pickup-zone-help')} />
+            {errors.localDateTime && <p id="localDateTime-error" className="plan-field-error">{errors.localDateTime}</p>}
             <small id="pickup-zone-help">Local time in <strong>{item.pickupTimeZone}</strong>, selected by the giver. Your browser timezone is not used. Times skipped or repeated by daylight saving must be avoided.</small></div>
-          <div className="plan-field"><label htmlFor="pickup-note">Coordination note (optional, private)</label><textarea id="pickup-note" maxLength={500} value={note} onChange={event => setNote(event.target.value)} /></div>
+          <div className="plan-field"><label htmlFor="pickup-note">Coordination note (optional, private)</label><textarea id="pickup-note" name="note" {...validation.fieldProps('note')} maxLength={500} value={note} onChange={event => { setNote(event.target.value); validation.clear('note'); }} />
+            {errors.note && <p id="note-error" className="plan-field-error">{errors.note}</p>}</div>
           <p>Only you and the giver see this note. Suggest a general public meeting point or brief handoff instructions. Keep phone numbers, email and residential addresses out of it. Messaging is not available yet.</p>
           <button className="btn btn-primary">{busy ? 'Sending…' : 'Send pickup request'}</button>
         </fieldset>
       </form>}
-      {error && <div role="alert"><p>{error}</p><button onClick={data.retry}>Reload listing</button></div>}
+      {error && <div ref={validation.summaryRef} tabIndex={-1} role="alert"><p>{error}</p><button onClick={data.retry}>Reload listing</button></div>}
     </>}
   </main>;
 }

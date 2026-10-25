@@ -104,11 +104,15 @@ test('publish entry sends explicit publication intent and does not confuse it wi
 });
 test('client rejects invalid availability ranges and empty names without sending writes', async () => {
   mount(); await formReady(); submitDraft();
-  expect(await screen.findByRole('alert')).toHaveTextContent('Give this item or group a name');
+  expect(await screen.findByRole('alert')).toHaveTextContent('Check the highlighted fields');
+  expect(screen.getByText('Give this item or group a name of 1–160 characters.')).toBeInTheDocument();
+  expect(screen.getByLabelText('Item name')).toHaveFocus();
   name('Chairs');
   fireEvent.change(screen.getByLabelText('Available from (optional)'), { target: { value: date(10) } });
   fireEvent.change(screen.getByLabelText('Available until (optional)'), { target: { value: date(5) } });
-  submitDraft(); expect(screen.getByRole('alert')).toHaveTextContent('Pickup dates must be in order');
+  submitDraft(); expect(screen.getByLabelText('Available from (optional)')).toHaveFocus();
+  expect(screen.getByText('Choose a start date on or before the end date.')).toBeInTheDocument();
+  expect(screen.getByLabelText('Available from (optional)')).toHaveAccessibleDescription('Choose a start date on or before the end date.');
   expect(fetch.mock.calls.some(([, options]) => options.method !== 'GET')).toBe(false);
 });
 test.each(['available', 'expired'])('reservation metadata stays distinct from %s publication state and clearance progress', async status => {
@@ -230,4 +234,14 @@ test('date validation keeps calendar boundaries and does not treat publication t
   expect(availabilityError({ availableFrom: '', availableUntil: date(-1) }, plan, true)).toMatch(/today or later/);
   expect(availabilityError({ availableFrom: '', availableUntil: date(-1) }, plan, false)).toBe('');
   expect(availabilityError({ availableFrom: '2027-02-29', availableUntil: '' }, plan)).toMatch(/real calendar/);
+});
+
+test('server validation opens optional item details and focuses the affected control after the failed save', async () => {
+  handler = async () => reply(400, { error: { message: 'Check item details', fields: [{ field: 'category', message: 'Use a shorter category.' }] } });
+  mount(); await formReady(); name('Desk'); submitDraft();
+  await waitFor(() => expect(screen.getByLabelText('Category or tag (optional)')).toHaveFocus());
+  expect(screen.getByLabelText('Category or tag (optional)').closest('details')).toHaveAttribute('open');
+  expect(screen.getByLabelText('Category or tag (optional)')).toHaveAccessibleDescription('Use a shorter category.');
+  expect(screen.getByLabelText('Item name')).toHaveValue('Desk');
+  expect(screen.getByRole('alert')).not.toHaveTextContent('category:');
 });

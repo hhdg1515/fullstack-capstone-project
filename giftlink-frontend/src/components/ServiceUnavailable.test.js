@@ -37,6 +37,9 @@ test('protected pages show recoverable service failure instead of treating it as
 test.each(['/app/login', '/app/register'])('%s never pretends that HTML responses created an account or session', async path => {
   mount(path); await screen.findByRole('alert', { name: 'Account service unavailable' });
   const label = path.endsWith('register') ? 'Register' : 'Login';
+  for (const [field, value] of [['Email', user.email], ['Password', 'long-test-password'], ...(label === 'Register' ? [['First name', 'Local'], ['Last name', 'Test']] : [])]) {
+    fireEvent.change(screen.getByLabelText(field), { target: { value } });
+  }
   await act(async () => { fireEvent.submit(screen.getByRole('button', { name: label, exact: true }).closest('form')); });
   await waitFor(() => expect(fetch.mock.calls.some(([, options]) => options.method === 'POST')).toBe(true));
   expect(screen.queryByText(/Signed in as/)).not.toBeInTheDocument();

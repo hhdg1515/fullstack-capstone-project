@@ -12,7 +12,7 @@ html {
 /* Secondary color for hover states and highlights */
 .btn-primary:hover,
 .btn-primary:focus {
-  background-color: #009688; /* Teal */
+  background-color: #004085;
 }
 
 /* General background color */
