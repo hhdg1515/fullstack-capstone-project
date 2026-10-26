@@ -32,6 +32,14 @@ const submit = async () => { await act(async () => { fireEvent.submit(screen.get
 const click = async name => { await act(async () => { fireEvent.click(screen.getByRole('button', { name })); }); };
 const apiCalls = () => fetch.mock.calls.filter(([url]) => !url.endsWith('/locations'));
 
+test('uses the server owner flag to replace the public request action without hiding the listing', async () => {
+  handler = async () => reply(200, { item: { ...a, pickupTimeZone: 'UTC', isOwner: true } });
+  mount('/app/items/' + a.id);
+  expect(await screen.findByText('Your listing. Manage this item from My plans.')).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: a.name })).toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Request pickup' })).not.toBeInTheDocument();
+});
+
 test.each(['/app/items', '/app/items/' + a.id])('reserved items never promise immediate availability at %s', async path => {
   const reserved = { ...a, isReserved: true, pickupTimeZone: 'UTC' };
   handler = async url => url.includes('/api/items?') ? feed([reserved]) : reply(200, { item: reserved });

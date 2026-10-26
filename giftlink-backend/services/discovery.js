@@ -131,13 +131,13 @@ function createDiscoveryService({ connectToDatabase, now = () => new Date() }) {
         return { items: selected.map(row => publicItem(row, today)), today,
             page: { limit: query.limit, hasMore, nextCursor } };
     }
-    async function detail(id) {
+    async function detail(id, viewerId) {
         if (!/^[a-fA-F0-9]{24}$/.test(id)) throw new InventoryError(404, 'ITEM_NOT_FOUND', 'Listing unavailable');
         const current = now(); const today = todayUTC(current);
         const rows = await aggregate(visibilityPipeline(Object.assign(initialMatch(current.getTime()), { _id: new ObjectId(id) }), today)
-            .concat(pickupReservationStages(), [{ $project: projection }]));
+            .concat(pickupReservationStages(), [{ $project: Object.assign({}, projection, { ownerId: 1 }) }]));
         if (!rows.length) throw new InventoryError(404, 'ITEM_NOT_FOUND', 'Listing unavailable');
-        return { item: publicItem(rows[0], today), today };
+        return { item: Object.assign(publicItem(rows[0], today), { isOwner: Boolean(viewerId && rows[0].ownerId.equals(viewerId)) }), today };
     }
     async function locations(raw) {
         if (Object.keys(raw).length) throw invalid('Location options do not accept query parameters.');
