@@ -1,6 +1,6 @@
 const { ObjectId } = require('mongodb');
 const { InventoryError, planTransaction } = require('./inventory');
-const { eligible, fitsWindow } = require('./pickup-policy');
+const { eligible, fitsWindow, originalParticipants } = require('./pickup-policy');
 
 const isId = value => typeof value === 'string' && /^[a-fA-F0-9]{24}$/.test(value);
 const unavailable = () => new InventoryError(404, 'CONVERSATION_UNAVAILABLE', 'Pickup conversation unavailable');
@@ -32,12 +32,7 @@ function createPickupCommunicationService({ connectToDatabase, now = () => new D
         const open = row && ['pending', 'accepted'].includes(row.status);
         const closed = row && ['declined', 'cancelled', 'completed', 'no_show'].includes(row.status);
         if (!row || !open && !closed || row.active !== open || sending && !open ||
-            !['giverId', 'receiverId', 'itemId', 'planId'].every(field => row[field] instanceof ObjectId) || row.giverId.equals(row.receiverId)) throw unavailable();
-        // Participants are immutable in the existing lifecycle. Fail closed if
-        // the requester reference disagrees with the original creation event.
-        const created = Array.isArray(row.history) && row.history[0];
-        if (!created || created.action !== 'pending' || created.actorRole !== 'receiver' ||
-            !(created.actorId instanceof ObjectId) || !created.actorId.equals(row.receiverId)) throw unavailable();
+            !originalParticipants(row)) throw unavailable();
         const plan = await db.collection('moveOutPlans').findOne({ _id: row.planId, ownerId: row.giverId }, { session });
         const item = await db.collection('items').findOne({ _id: row.itemId, planId: row.planId, ownerId: row.giverId }, { session });
         if (!plan || !item) throw unavailable();

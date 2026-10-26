@@ -27,6 +27,19 @@ function createPickupRoutes({ connectToDatabase, auth, now, messageLimit }) {
     router.get('/:requestId', async (req, res, next) => {
         try { res.json(await service.detail(req.user._id, req.params.requestId)); } catch (error) { next(error); }
     });
+    router.post('/:requestId/reschedule-proposals', validate(['version', 'localDateTime', 'timeZone'], [
+        body('version').isInt({ min: 1 }).custom(value => typeof value === 'number'),
+        body('localDateTime').isString().bail().isLength({ min: 16, max: 16 }).withMessage('Choose a local pickup date and time.'),
+        body('timeZone').isString().bail().isLength({ min: 1, max: 100 }).withMessage('Use the existing pickup timezone.')
+    ]), async (req, res, next) => {
+        try { res.status(201).json(await service.schedule(req.user._id, req.params.requestId, req.body)); } catch (error) { next(error); }
+    });
+    router.post('/:requestId/reschedule-proposals/:proposalId/actions', validate(['version', 'action'], [
+        body('version').isInt({ min: 1 }).custom(value => typeof value === 'number'),
+        body('action').isString().bail().isIn(['accept', 'decline'])
+    ]), async (req, res, next) => {
+        try { res.json(await service.schedule(req.user._id, req.params.requestId, req.body, req.params.proposalId)); } catch (error) { next(error); }
+    });
     router.post('/:requestId/actions', validate(['action', 'version'], [
         body('action').isString().bail().isIn(['accept', 'decline', 'cancel', 'complete', 'no_show']),
         body('version').isInt({ min: 1 }).custom(value => typeof value === 'number')

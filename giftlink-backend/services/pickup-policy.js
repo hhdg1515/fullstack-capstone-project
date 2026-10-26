@@ -1,4 +1,5 @@
 const { Temporal } = require('@js-temporal/polyfill');
+const { ObjectId } = require('mongodb');
 const { InventoryError } = require('./inventory-error');
 const { todayUTC } = require('./calendar');
 
@@ -34,6 +35,48 @@ function eligible(item, plan, now = new Date()) {
         plan.status === 'active' && item.ownerId.equals(plan.ownerId) && end >= todayUTC(now) &&
         end <= plan.moveOutDeadline && (!item.availableFrom || item.availableFrom <= end);
 }
+function originalParticipants(row) {
+    const created = row && Array.isArray(row.history) && row.history[0];
+    return Boolean(row && ['giverId', 'receiverId', 'itemId', 'planId'].every(field => row[field] instanceof ObjectId) &&
+        !row.giverId.equals(row.receiverId) && created && created.action === 'pending' && created.actorRole === 'receiver' &&
+        created.actorId instanceof ObjectId && created.actorId.equals(row.receiverId));
+}
+function validProposal(row) {
+    if (!originalParticipants(row)) return false;
+    const proposal = row.rescheduleProposal;
+    return Boolean(proposal && proposal._id instanceof ObjectId && proposal.proposedById instanceof ObjectId &&
+        [row.giverId, row.receiverId].some(id => id.equals(proposal.proposedById)) &&
+        proposal.proposedAt instanceof Date && Number.isFinite(proposal.proposedAt.getTime()) &&
+        proposal.createdAt instanceof Date && Number.isFinite(proposal.createdAt.getTime()) &&
+        typeof proposal.localDateTime === 'string' && validTimeZone(proposal.timeZone));
+}
+const appointmentState = value => ({ proposedAt: value.proposedAt, localDateTime: value.localDateTime, timeZone: value.timeZone });
+const appointmentResponse = value => Object.assign({}, appointmentState(value), { proposedAt: value.proposedAt.toISOString() });
+function rescheduleEvent(row, action, actorId, actorRole, at, reason = null) {
+    const event = { action, actorId, actorRole, at, reason };
+    if (validProposal(row)) Object.assign(event, { proposal: Object.assign({}, row.rescheduleProposal), previousAppointment: appointmentState(row) });
+    return event;
+}
+function proposalResponse(row, proposal) {
+    return Object.assign(appointmentResponse(proposal), { id: proposal._id.toString(),
+        proposedBy: proposal.proposedById.equals(row.giverId) ? 'giver' : 'receiver', createdAt: proposal.createdAt.toISOString() });
+}
+function rescheduleProblem(row, item, plan, now) {
+    if (row.status !== 'accepted' || row.active !== true) return 'request_not_accepted';
+    if (!(row.proposedAt instanceof Date) || !Number.isFinite(row.proposedAt.getTime())) return 'unavailable';
+    if (row.proposedAt <= now) return 'appointment_passed';
+    if (!eligible(item, plan, now) || !fitsWindow(row, item, plan)) return 'listing_unavailable';
+    return null;
+}
+function proposalProblem(row, item, plan, now) {
+    if (!validProposal(row)) return 'proposal_unavailable';
+    try {
+        const proposal = row.rescheduleProposal;
+        if (proposal.timeZone !== plan.pickupTimeZone || appointment(proposal.localDateTime, plan.pickupTimeZone, now).getTime() !== proposal.proposedAt.getTime() ||
+            !fitsWindow(proposal, item, plan)) return 'proposal_unavailable';
+        return null;
+    } catch (error) { return 'proposal_unavailable'; }
+}
 // Read alongside items in the caller's snapshot. Only a boolean leaves the
 // aggregation: participant IDs, appointment details and notes remain private.
 function pickupReservationStages() {
@@ -53,12 +96,25 @@ async function invalidateRequests(db, session, item, plan, actorId, confirmed, f
     const rows = await db.collection('pickupRequests').find({ itemId: item._id, planId: plan._id, giverId: plan.ownerId, active: true }, { session }).toArray();
     const affected = rows.filter(row => forceReason || !fitsWindow(row, item, plan));
     if (preview) return affected.length;
-    if (!affected.length) return;
-    if (confirmed !== true) throw confirmationRequired(affected.length);
+    if (affected.length && confirmed !== true) throw confirmationRequired(affected.length);
     const at = new Date();
-    await db.collection('pickupRequests').updateMany({ _id: { $in: affected.map(row => row._id) }, active: true }, {
-        $set: { status: 'cancelled', active: false, cancelledAt: at, updatedAt: at, cancellationReason: forceReason || 'availability_changed' },
-        $inc: { version: 1 }, $push: { history: { action: 'cancelled', actorId, actorRole: 'giver', at, reason: forceReason || 'availability_changed' } }
-    }, { session });
+    const operations = [];
+    for (const row of rows) {
+        const cancelling = affected.some(value => value._id.equals(row._id));
+        const invalidProposal = row.rescheduleProposal && (!validProposal(row) || !fitsWindow(row.rescheduleProposal, item, plan));
+        if (!cancelling && !invalidProposal) continue;
+        const reason = cancelling ? forceReason || 'availability_changed' : 'proposal_window_changed';
+        const history = row.rescheduleProposal ? [rescheduleEvent(row, 'reschedule_invalidated', actorId, 'giver', at, reason)] : [];
+        const changes = { updatedAt: at };
+        if (cancelling) {
+            Object.assign(changes, { status: 'cancelled', active: false, cancelledAt: at, cancellationReason: reason });
+            history.push({ action: 'cancelled', actorId, actorRole: 'giver', at, reason });
+        }
+        operations.push({ updateOne: { filter: { _id: row._id, active: true }, update: {
+            $set: changes, $unset: { rescheduleProposal: '' }, $inc: { version: 1 }, $push: { history: { $each: history } }
+        } } });
+    }
+    if (operations.length) await db.collection('pickupRequests').bulkWrite(operations, { session });
 }
-module.exports = { validTimeZone, appointment, fitsWindow, eligible, invalidateRequests, confirmationRequired, pickupReservationStages };
+module.exports = { validTimeZone, appointment, fitsWindow, eligible, invalidateRequests, confirmationRequired, pickupReservationStages,
+    originalParticipants, validProposal, appointmentState, appointmentResponse, rescheduleEvent, proposalResponse, rescheduleProblem, proposalProblem };
