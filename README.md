@@ -549,3 +549,30 @@ The manual remote workflow uses the existing `isolated-e2e` Environment without 
 Database setup has its own [manual staging preparation workflow](docs/deployment-test-environment.md#prepare-staging-indexes-through-github-actions). It uses only the `isolated-e2e` environment secret `E2E_MONGO_URL` and variable `E2E_DB_NAME=moveout_e2e_staging`; no frontend origin is required. Start with its default **dry-run**, review the live target/fingerprint and create/keep operations, then obtain explicit approval before a separate **apply** run. Existing CI and the HTTPS E2E workflow remain separate.
 
 For Milestone 5.7, follow [hosted staging integration](docs/hosted-staging-integration.md): a stable Preview alias on the existing frontend project, host-conditional proxy, dedicated staging API origin update, approved-fingerprint HTTPS preflight, bounded desktop/mobile E2E and owned cleanup. The optional deployment workflow defaults to **plan**; its management token stays in GitHub. The existing frontend Production hostname is forbidden as a staging/E2E target. API readiness and successful index preparation do not establish hosted frontend or live E2E success.
+
+## Private pickup communication foundation (Milestone 6.2 Phase 1)
+
+The backend associates one private context with each existing pickup request;
+there is no chat UI yet. Authenticated participants can retrieve
+`GET /api/pickup-requests/:requestId/conversation`, read paginated
+`GET .../conversation/messages?limit=20&before=<cursor>`, and send
+`POST .../conversation/messages` with `{ "text": "..." }` using the existing
+session and Origin/CSRF headers. Messages are 1–2000 plain-text characters;
+history defaults to 20, at most 50, messages per page. Each page is chronological,
+and `nextCursor` retrieves the older page to prepend.
+
+Eligible pending/accepted requests allow messaging. After completion, cancellation,
+decline or no-show, both original participants retain read-only history access;
+no new messages or lifecycle changes are permitted. Deleted requests, missing or
+compromised references, changed ownership and nonparticipants expose no history.
+Messages stay with their original request and never transfer to a later request
+for the same item. See the
+[eligibility, closure policy, data model and limitations](docs/milestone-6.2-communication.md).
+
+The new required `pickup_messages_request_time` index uses the existing guarded
+`db:prepare` dry-run and explicit target/environment/fingerprint confirmation.
+Prepare it on a separately approved target before any future deployment of this
+revision; startup checks indexes and will fail readiness until it exists.
+No remote index creation, migration, seeding or deployment is part of this change.
+The existing recursive backend CI tests and `npm run test:integration` cover the
+new endpoints on isolated local replica sets. This does not verify hosted messaging.
