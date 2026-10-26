@@ -23,6 +23,21 @@ describe('private pickup communication on verified isolated MongoDB', function (
             }
         }
     };
+    const readOnly = async (messages, id = pickup.id) => {
+        const before = await db.collection('pickupRequests').findOne({ _id: new ObjectId(id) });
+        const planBefore = await db.collection('moveOutPlans').findOne({ _id: before.planId });
+        for (const user of [giver, receiver]) {
+            const context = (await get('', user, id).expect(200)).body.conversation;
+            assert.equal(context.id, id); assert.equal(context.status, before.status);
+            const history = await get('/messages', user, id).expect(200);
+            assert.equal(history.headers['cache-control'], 'no-store'); assert.deepEqual(history.body.messages, messages);
+            assert.equal((await send(undefined, user, id).expect(404)).body.error.code, 'CONVERSATION_UNAVAILABLE');
+        }
+        await get('', stranger, id).expect(404); await get('/messages', stranger, id).expect(404); await send(undefined, stranger, id).expect(404);
+        assert.deepEqual(await db.collection('pickupRequests').findOne({ _id: before._id }), before);
+        assert.deepEqual(await db.collection('moveOutPlans').findOne({ _id: before.planId }), planBefore);
+        assert.equal(await db.collection('pickupMessages').countDocuments({ requestId: before._id }), messages.length);
+    };
     const build = (options = {}) => createApp(Object.assign({ connectToDatabase: async () => db, pickupNow: () => new Date(clock), logger: pino({ level: 'silent' }) }, options));
     before(async function () {
         isolated = await createIsolatedMongo(); db = isolated.db; await prepareDatabaseIndexes(db);
@@ -163,23 +178,77 @@ describe('private pickup communication on verified isolated MongoDB', function (
         const row = await db.collection('pickupRequests').findOne({ _id: new ObjectId(pickup.id) });
         assert.equal(row.status, 'accepted'); assert.equal(row.version, accepted.version);
     });
-    ['decline', 'cancel', 'complete', 'no_show'].forEach(action => it('locks history and sending after ' + action + ', retaining stored history privately', async function () {
-        await send().expect(201); let row = pickup;
+    ['decline', 'cancel', 'complete', 'no_show'].forEach(action => it('preserves both participants’ read-only history after ' + action, async function () {
+        const message = (await send().expect(201)).body.message; let row = pickup;
         if (['complete', 'no_show'].includes(action)) { row = (await act('accept').expect(200)).body.request; clock = new Date(new Date(row.proposedAt).getTime() + 1); }
-        await act(action, row).expect(200); await unavailable();
+        await act(action, row).expect(200); await readOnly([message]);
         assert.equal(await db.collection('pickupMessages').countDocuments(), 1);
     }));
-    it('locks confirmed withdrawal, keeps its history isolated from a later request for the same item', async function () {
-        await send().expect(201);
+    it('keeps withdrawn history read-only and isolated from a later request for the same item', async function () {
+        const message = (await send().expect(201)).body.message;
         await write(request(app).post('/api/move-out-plans/' + plan.id + '/items/' + item.id + '/actions')).set('Cookie', giver.cookie)
             .send({ action: 'unlist', version: item.version, confirmCancelRequests: true }).expect(200);
-        await unavailable();
+        await readOnly([message]);
         await write(request(app).post('/api/move-out-plans/' + plan.id + '/items/' + item.id + '/actions')).set('Cookie', giver.cookie)
             .send({ action: 'publish', version: item.version + 1 }).expect(200);
         const next = (await write(request(app).post('/api/pickup-requests')).set('Cookie', receiver.cookie)
             .send({ itemId: item.id, localDateTime: day(1) + 'T12:00', timeZone: 'UTC' }).expect(result => assert.equal(result.status, 201, result.body.error && result.body.error.code))).body.request;
         assert.notEqual(next.id, pickup.id); assert.deepEqual((await get('/messages', receiver, next.id).expect(200)).body.messages, []);
-        await unavailable();
+        await readOnly([message]);
+    });
+    it('keeps an empty closed history read-only without creating messages or reopening the request', async function () {
+        await act('cancel', pickup, receiver).expect(200); await readOnly([]);
+    });
+    it('retains closed history after legitimate plan closure, timezone changes and expiration', async function () {
+        const message = (await send().expect(201)).body.message;
+        await write(request(app).patch('/api/move-out-plans/' + plan.id)).set('Cookie', giver.cookie)
+            .send({ status: 'completed', pickupTimeZone: 'Asia/Kolkata', confirmCancelRequests: true }).expect(200);
+        clock = new Date(clock.getTime() + 40 * 86400000);
+        await readOnly([message]);
+        const context = (await get().expect(200)).body.conversation; assert.equal(context.status, 'cancelled');
+    });
+    it('keeps closed history paginated and accepts an earlier cursor without granting send permission', async function () {
+        const sent = [];
+        for (let i = 0; i < 5; i++) sent.push((await send({ text: 'History ' + i }, i % 2 ? giver : receiver).expect(201)).body.message);
+        const beforeClosure = (await get('/messages?limit=2').expect(200)).body;
+        await act('decline').expect(200);
+        for (const user of [giver, receiver]) {
+            const latest = (await get('/messages?limit=2', user).expect(200)).body; assert.deepEqual(latest, beforeClosure);
+            const older = (await get('/messages?limit=2&before=' + latest.nextCursor, user).expect(200)).body;
+            const oldest = (await get('/messages?limit=2&before=' + older.nextCursor, user).expect(200)).body;
+            assert.deepEqual(oldest.messages.concat(older.messages, latest.messages), sent); assert.equal(oldest.nextCursor, null);
+        }
+        await readOnly(sent);
+    });
+    it('refuses closed history when canonical participant or request references are compromised', async function () {
+        await send().expect(201); await act('cancel').expect(200);
+        const original = await db.collection('pickupRequests').findOne({ _id: new ObjectId(pickup.id) });
+        for (const change of [{ receiverId: new ObjectId(stranger.id) }, { giverId: new ObjectId(stranger.id) },
+            { itemId: new ObjectId() }, { planId: new ObjectId() }, { history: [] }, { active: true }, { status: 'unknown' }]) {
+            const compromised = Object.assign({}, original, change);
+            await db.collection('pickupRequests').replaceOne({ _id: original._id }, compromised);
+            await unavailable(); await get('', stranger).expect(404); await get('/messages', stranger).expect(404); await send(undefined, stranger).expect(404);
+            assert.deepEqual(await db.collection('pickupRequests').findOne({ _id: original._id }), compromised);
+        }
+        assert.equal(await db.collection('pickupMessages').countDocuments(), 1);
+    });
+    it('refuses closed history after deleted references, account deletion or ownership changes', async function () {
+        await send().expect(201); await act('cancel').expect(200);
+        const itemBefore = await db.collection('items').findOne({ _id: new ObjectId(item.id) });
+        const planBefore = await db.collection('moveOutPlans').findOne({ _id: new ObjectId(plan.id) });
+        await db.collection('items').updateOne({ _id: itemBefore._id }, { $set: { ownerId: new ObjectId(stranger.id) } });
+        await unavailable(); await db.collection('items').replaceOne({ _id: itemBefore._id }, itemBefore);
+        await db.collection('moveOutPlans').updateOne({ _id: planBefore._id }, { $set: { ownerId: new ObjectId(stranger.id) } });
+        await unavailable(); await db.collection('moveOutPlans').replaceOne({ _id: planBefore._id }, planBefore);
+        await db.collection('items').deleteOne({ _id: itemBefore._id }); await unavailable(); await db.collection('items').insertOne(itemBefore);
+        await db.collection('moveOutPlans').deleteOne({ _id: planBefore._id }); await unavailable(); await db.collection('moveOutPlans').insertOne(planBefore);
+        const person = await db.collection('users').findOne({ _id: new ObjectId(receiver.id) });
+        try {
+            await db.collection('users').deleteOne({ _id: person._id });
+            await get().expect(404); await get('/messages').expect(404); await send(undefined, giver).expect(404);
+        } finally { await db.collection('users').insertOne(person); }
+        await db.collection('pickupRequests').deleteOne({ _id: new ObjectId(pickup.id) }); await unavailable();
+        assert.equal(await db.collection('pickupMessages').countDocuments(), 1);
     });
     it('fails closed on unknown/invalid request state and malformed participant references without repairing them', async function () {
         await send().expect(201); const original = await db.collection('pickupRequests').findOne({ _id: new ObjectId(pickup.id) });
@@ -219,17 +288,19 @@ describe('private pickup communication on verified isolated MongoDB', function (
         const [message, cancelled] = await Promise.all([send(), act('cancel', pickup, receiver)]);
         assert.equal(cancelled.status, 200); assert.ok([201, 404].includes(message.status));
         assert.equal(await db.collection('pickupMessages').countDocuments(), message.status === 201 ? 1 : 0);
-        await unavailable(); assert.equal(await db.collection('pickupMessages').countDocuments(), message.status === 201 ? 1 : 0);
+        await readOnly(message.status === 201 ? [message.body.message] : []); assert.equal(await db.collection('pickupMessages').countDocuments(), message.status === 201 ? 1 : 0);
     });
     it('preserves handoff, item clearance and competing request cancellation when messaging races completion', async function () {
         const competitor = (await write(request(app).post('/api/pickup-requests')).set('Cookie', stranger.cookie)
             .send({ itemId: item.id, localDateTime: day(1) + 'T13:00', timeZone: 'UTC' }).expect(201)).body.request;
         const accepted = (await act('accept').expect(200)).body.request; clock = new Date(new Date(accepted.proposedAt).getTime() + 1);
         const [message, completed] = await Promise.all([send(), act('complete', accepted)]);
-        assert.equal(completed.status, 200); assert.ok([201, 404].includes(message.status)); await unavailable();
+        assert.equal(completed.status, 200); assert.ok([201, 404].includes(message.status)); await readOnly(message.status === 201 ? [message.body.message] : []);
         const owned = (await request(app).get('/api/move-out-plans/' + plan.id + '/items').set('Cookie', giver.cookie).expect(200)).body;
         assert.equal(owned.progress.cleared, 1); assert.equal(owned.items[0].status, 'cleared'); assert.equal(owned.items[0].isReserved, false);
         assert.equal((await request(app).get('/api/pickup-requests/' + competitor.id).set('Cookie', stranger.cookie).expect(200)).body.request.status, 'cancelled');
-        await get('', stranger, competitor.id).expect(404);
+        await get('', stranger, competitor.id).expect(200);
+        assert.deepEqual((await get('/messages', stranger, competitor.id).expect(200)).body.messages, []);
+        await send(undefined, stranger, competitor.id).expect(404);
     });
 });

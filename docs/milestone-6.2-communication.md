@@ -25,28 +25,43 @@ are server-derived UTC instants; `_id` breaks equal-time ties deterministically.
 
 ## Eligibility and closure policy
 
-Both original participants may retrieve context/history and send while the
-request is `pending` or `accepted` and `active: true`. Every operation verifies:
+Both original participants may read existing context and paginated history after
+completion, cancellation, decline or no-show. These terminal requests are
+**read-only**: neither participant can send another message or reopen the request.
+The API recognizes the existing canonical states (`pending`, `accepted`,
+`declined`, `cancelled`, `completed`, `no_show`); unknown states or inconsistent
+`active` flags fail closed rather than being treated as archived conversations.
 
-- The canonical request participant IDs are distinct existing users.
-- The requested item and plan exist and still belong to the request's giver.
-- The plan is active and item is published/unexpired under the existing pickup
-  eligibility/window/timezone rules; pending appointment time is still future.
+Every read and send verifies, in one consistent snapshot:
+
 - The caller is the canonical giver or receiver, derived from the session.
+- Participant IDs are distinct existing users. The receiver reference must agree
+  with the original request-creation event, preventing a substituted participant
+  from inheriting another requester's history.
+- The request, item and plan exist and the item/plan still belong to the original
+  giver. Missing/deleted documents, broken references and changed ownership deny
+  access even for a closed request. Reads never repair these records.
 
-Invalid IDs, foreign participants, missing/deleted references, changed ownership,
-ineligible listings and all terminal states (`declined`, `cancelled`, `completed`,
-`no_show`, or any unknown state) return the same **404 CONVERSATION_UNAVAILABLE**.
-Anonymous/expired sessions remain 401. No response reveals whether another
-member's request has messages. No read normalizes or repairs data.
+Open requests retain the existing eligibility rules for both reads and sends:
+`active: true`, an active plan, a published/unexpired item and the existing pickup
+window/timezone checks; pending appointment times must still be future. Sending
+additionally requires a pending or accepted request and is always forbidden after
+closure. Closed history does not require the item to remain published, the plan
+to remain active, or the old pickup window/timezone to remain current. This keeps
+history readable after a legitimate withdrawal, handoff or plan change without
+bypassing ownership or participant verification.
 
-For Phase 1, **all closed requests lock both reads and sends**, including completed
-handoffs; historical messages remain stored but inaccessible through this API.
-They do not become accessible through a later request for the same item. Reopening
-an item cannot revive the old request's conversation. There is no deletion,
-moderation, retention TTL or export policy yet; the owner must decide these before
-launching a communication UI. This deliberately conservative policy is not a
-claim that inaccessible history has been erased.
+Invalid IDs, foreign participants and invalid/deleted/compromised references return
+**404 CONVERSATION_UNAVAILABLE**. Sending to closed requests also returns that 404;
+anonymous/expired sessions remain 401. Nonparticipants receive no conversation
+metadata or message content. Successful closed-history reads use the existing context/message DTOs
+and `Cache-Control: no-store`; they create no documents or lifecycle changes.
+
+Messages remain associated only with their original request. A later request for
+the same item has a separate, initially empty history; republishing an item does
+not restore sending on an older closed request. There is no deletion, moderation,
+retention TTL or export policy yet. Retention/deletion still needs an owner
+policy before a communication UI/public launch; read-only access is not erasure.
 
 Sends reuse the existing plan transaction, rechecking canonical references and
 state inside it. They serialize with cancellation, withdrawal, handoff and other
@@ -101,12 +116,13 @@ The merged 6.1 baseline passed 195 backend tests, 180 frontend tests, strict
 production build and 16 local HTTPS browser scenarios; no new critical regression
 was found. See the [closure audit and deferred usability backlog](milestone-6.1-progress.md).
 The Phase 1 branch additionally tests message isolation, sender impersonation,
-closed/deleted references, deterministic cursor history, input/rate bounds,
+read-only closed history, deleted/compromised references, deterministic cursor history, input/rate bounds,
 read-only context retrieval, guarded index preparation and send/closure races.
 CI evidence and final counts are recorded in the PR.
 
-Before a communication UI/public rollout, decide history retention/deletion,
-closed-request history access, moderation/reporting and support/abuse handling.
+Closed-request history access now follows the owner-approved read-only policy
+above. Before a communication UI/public rollout, decide history retention/deletion,
+moderation/reporting and support/abuse handling.
 Measure shared-plan write contention and choose a sustainable rate/storage policy;
 the current limiter is per warm process. Future hosted message tests need a
 separately reviewed extension of synthetic-message cleanup; existing hosted E2E

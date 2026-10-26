@@ -561,10 +561,12 @@ session and Origin/CSRF headers. Messages are 1–2000 plain-text characters;
 history defaults to 20, at most 50, messages per page. Each page is chronological,
 and `nextCursor` retrieves the older page to prepend.
 
-Only currently eligible pending/accepted requests allow access. Closed,
-withdrawn, declined, completed, deleted or mismatched requests expose no history
-through this API. History is retained privately in the database; it is not
-silently deleted or transferred to later requests for the same item. See the
+Eligible pending/accepted requests allow messaging. After completion, cancellation,
+decline or no-show, both original participants retain read-only history access;
+no new messages or lifecycle changes are permitted. Deleted requests, missing or
+compromised references, changed ownership and nonparticipants expose no history.
+Messages stay with their original request and never transfer to a later request
+for the same item. See the
 [eligibility, closure policy, data model and limitations](docs/milestone-6.2-communication.md).
 
 The new required `pickup_messages_request_time` index uses the existing guarded

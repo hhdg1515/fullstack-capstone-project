@@ -27,15 +27,25 @@ function messageQuery(query, requestId) {
 }
 
 function createPickupCommunicationService({ connectToDatabase, now = () => new Date() }) {
-    async function authorize(db, userId, id, session) {
+    async function authorize(db, userId, id, session, sending = false) {
         const row = await db.collection('pickupRequests').findOne(scoped(id, userId), { session });
-        if (!row || !['pending', 'accepted'].includes(row.status) || row.active !== true ||
+        const open = row && ['pending', 'accepted'].includes(row.status);
+        const closed = row && ['declined', 'cancelled', 'completed', 'no_show'].includes(row.status);
+        if (!row || !open && !closed || row.active !== open || sending && !open ||
             !['giverId', 'receiverId', 'itemId', 'planId'].every(field => row[field] instanceof ObjectId) || row.giverId.equals(row.receiverId)) throw unavailable();
+        // Participants are immutable in the existing lifecycle. Fail closed if
+        // the requester reference disagrees with the original creation event.
+        const created = Array.isArray(row.history) && row.history[0];
+        if (!created || created.action !== 'pending' || created.actorRole !== 'receiver' ||
+            !(created.actorId instanceof ObjectId) || !created.actorId.equals(row.receiverId)) throw unavailable();
         const plan = await db.collection('moveOutPlans').findOne({ _id: row.planId, ownerId: row.giverId }, { session });
         const item = await db.collection('items').findOne({ _id: row.itemId, planId: row.planId, ownerId: row.giverId }, { session });
+        if (!plan || !item) throw unavailable();
+        // Closed history survives legitimate listing/plan/time changes; ownership
+        // and participant checks still apply. Open requests retain their policy.
         const at = now();
-        if (!plan || !item || !eligible(item, plan, at) || !(row.proposedAt instanceof Date) ||
-            !fitsWindow(row, item, plan) || row.status === 'pending' && row.proposedAt <= at) throw unavailable();
+        if (open && (!eligible(item, plan, at) || !(row.proposedAt instanceof Date) ||
+            !fitsWindow(row, item, plan) || row.status === 'pending' && row.proposedAt <= at)) throw unavailable();
         const people = await db.collection('users').find({ _id: { $in: [row.giverId, row.receiverId] } }, { session, projection: { firstName: 1 } }).toArray();
         if (people.length !== 2) throw unavailable();
         return { row, people };
@@ -79,7 +89,7 @@ function createPickupCommunicationService({ connectToDatabase, now = () => new D
         if (!original || !(original.giverId instanceof ObjectId) || !(original.planId instanceof ObjectId)) throw unavailable();
         try {
             return await planTransaction(db, original.giverId, original.planId.toString(), async (plan, session) => {
-                const context = await authorize(db, userId, id, session);
+                const context = await authorize(db, userId, id, session, true);
                 if (!context.row.planId.equals(plan._id) || !context.row.giverId.equals(plan.ownerId)) throw unavailable();
                 const message = { _id: new ObjectId(), requestId: context.row._id, senderId: userId, text, createdAt: now() };
                 await db.collection('pickupMessages').insertOne(message, { session });
