@@ -660,5 +660,6 @@ The [UI/UX audit and tool assessment](docs/milestone-6.4-design-audit.md),
 [6.4B–6.4E proposal](docs/milestone-6.4-roadmap.md) define a gradual interface
 refinement using existing React/CSS. Initial screen adoption is limited to Login
 and My Plans in a dependent PR; remaining screens and business rules are preserved.
-Before/after evidence uses disposable local data. No hosted verification,
+[Before/after evidence and verification](docs/milestone-6.4a-verification.md) use
+disposable local data. No hosted verification,
 deployment or provider/database preparation is authorized by these changes.

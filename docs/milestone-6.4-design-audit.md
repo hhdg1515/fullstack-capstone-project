@@ -81,7 +81,7 @@ data; no typed credentials, headers, cookies or provider data are captured.
 
 ## Chosen 6.4A proof
 
-1. Login: useful 448px form surface inside a 480px page, left-aligned task heading,
+1. Login: useful 432px form surface inside a 480px page, left-aligned task heading,
    short introduction, consistent green primary action, 44px controls, shared
    feedback. Keep requested destination, cookie/CSRF client, password clearing,
    form error associations/focus and draft guard.
@@ -116,3 +116,5 @@ build had one region-selector wait timeout (260 passed); its focused five-test
 rerun and the complete 264-test run passed without modifying the existing test
 or application logic. This is recorded as a transient baseline observation, not
 silently omitted or fixed by extending timeouts. PR CI is recorded separately.
+
+The dependent screen-adoption PR adds [after evidence and verification](milestone-6.4a-verification.md).
