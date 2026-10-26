@@ -9,6 +9,8 @@ import { useAppContext } from '../../context/AuthContext';
 import usePublicCatalog from '../../api/usePublicCatalog';
 import RegionFields from '../MoveOutPlans/RegionFields';
 import ItemLabels from './ItemLabels';
+import { PageHeader, Surface } from '../../design-system/primitives';
+import './Discovery.css';
 
 const normalize = value => value.trim().replace(/\s+/g, ' ');
 const key = value => normalize(value).toLowerCase();
@@ -60,6 +62,8 @@ function Discovery() {
   const directory = usePublicCatalog('/api/regions'), catalog = usePublicCatalog('/api/item-taxonomy');
   const stateId = params.get('stateId') || '', metroId = params.get('metroId') || '';
   const selected = selectedMetro(directory.data, stateId, metroId);
+  const invalidRegion = directory.data && ((stateId && !directory.data.states.some(row => row.id === stateId)) || (metroId && !selected));
+  const regionCodes = selected ? selected.stateIds.map(id => directory.data.states.find(row => row.id === id)?.code).filter(Boolean).join('–') : '';
   const feedMatchesRegion = data => validFeed(data) && data.items.every(item => item.metroId === metroId && selected.stateIds.includes(item.stateId));
   const scope = `${viewer}:${query}`;
   const [fields, setFields] = useState(() => fieldsFrom(params));
@@ -126,7 +130,7 @@ function Discovery() {
   if (params.get('sort') === 'deadline') applied.push('Sort: earliest pickup deadline');
   const filterCount = applied.length - (params.get('q') ? 1 : 0);
   const closeFilters = () => {
-    if (filterRegion.current?.contains(document.activeElement)) filterToggle.current?.focus();
+    if (filterRegion.current?.contains(document.activeElement) || document.activeElement?.closest('.discovery-extra-option')) filterToggle.current?.focus();
     setFiltersOpen(false);
   };
   const changeRegion = changes => {
@@ -179,53 +183,65 @@ function Discovery() {
     setFields(previous => ({ ...previous, [name]: value, ...(name === 'city' ? { neighborhood: '' } : {}),
       ...(name === 'availability' ? { date: '' } : {}), ...(name === 'categoryId' ? { itemTypeId: '' } : {}) }));
   };
-  return <main className="plans-page discovery-page">
-    <JourneyNav journey="find" /><h1>{selected ? `Free items in ${selected.label}` : 'Find free items'}{selected && Number.isSafeInteger(visible.total) ? ` — ${visible.total} available` : ''}</h1>
-    {!selected && <h2>Where would you like to find free items?</h2>}
-    {selected && <p><button ref={regionButton} type="button" className="btn btn-outline-secondary" onClick={() => setRegionEditing(value => !value)}>Change region</button></p>}
-    <div ref={regionPanel} hidden={Boolean(selected) && !regionEditing}>
-      <RegionFields directory={directory} values={{ stateId, metroId }} onChange={changeRegion} prefix="browse-region" browsing />
-    </div>
-    {!selected && directory.data && <p>Choose a listed metro to load items. Coverage is limited; selecting a state alone does not search every city.</p>}
+  return <main className="ui-page discovery-page discovery-feed">
+    <JourneyNav journey="find" />
+    <PageHeader title="Find free items" />
+    <Surface aria-label="Browsing area" className="discovery-area">
+      {selected && <div className="discovery-area-heading">
+        <p className="discovery-area-name">{selected.shortLabel || selected.label.split(', ')[0]}{regionCodes ? ` · ${regionCodes}` : ''}</p>
+        <button ref={regionButton} type="button" className="ui-button ui-button--secondary" aria-expanded={regionEditing} aria-controls="discovery-region-options"
+          onClick={() => setRegionEditing(value => !value)}>Change region</button>
+      </div>}
+      <div id="discovery-region-options" ref={regionPanel} hidden={Boolean(selected) && !regionEditing}>
+        {!selected && <h2>Where would you like to find free items?</h2>}
+        {invalidRegion && <p role="status">This area selection is not supported. Choose a listed state and metro.</p>}
+        <div className="discovery-region-fields"><RegionFields directory={directory} values={{ stateId, metroId }} onChange={changeRegion}
+          prefix="browse-region" browsing fieldClassName="ui-field" showHelp={false} /></div>
+        <p className="discovery-help">Choose a metro to browse. Coverage uses {directory.data?.vintage?.metros || 'dated'} Census definitions; not every area is listed. No GPS or address needed.</p>
+      </div>
+    </Surface>
     {selected && <>
-    <small>Curated metro coverage ({directory.data.vintage?.metros || 'dated'} Census definitions).</small>
-    <form className="discovery-filters" onSubmit={submit} noValidate>
-      <div className="plan-field discovery-search"><div className="discovery-search-heading"><label htmlFor="browse-q">Search items</label>
-        <button type="button" ref={filterToggle} className="btn btn-outline-secondary" aria-expanded={filtersOpen} aria-controls="discovery-filter-options"
+    <Surface as="form" aria-label="Search and filters" className={`discovery-filters${filtersOpen ? ' discovery-filters--expanded' : ''}`} onSubmit={submit} noValidate
+      onKeyDown={event => { if (event.key === 'Escape' && filtersOpen) { event.preventDefault(); closeFilters(); filterToggle.current?.focus(); } }}>
+      <div className="ui-field discovery-search"><div className="discovery-search-heading"><label htmlFor="browse-q">Search items</label>
+        <button type="button" ref={filterToggle} className="ui-button ui-button--secondary" aria-expanded={filtersOpen} aria-controls="discovery-common-options discovery-filter-options"
           onClick={() => filtersOpen ? closeFilters() : setFiltersOpen(true)}>Filters{filterCount ? ` (${filterCount})` : ''}</button></div>
         <input id="browse-q" name="q" maxLength={100} placeholder="Name, description or item type" value={fields.q} onChange={change} /></div>
-      <div id="discovery-filter-options" ref={filterRegion} className="discovery-options" hidden={!filtersOpen}>
-        <div className="plan-field"><label htmlFor="browse-category">Category</label><select id="browse-category" name="categoryId" value={fields.categoryId} onChange={change} disabled={catalog.loading || Boolean(catalog.error)}>
+      <div id="discovery-common-options" className="discovery-common-options">
+        <div className="ui-field"><label htmlFor="browse-category">Category</label><select id="browse-category" name="categoryId" value={fields.categoryId} onChange={change} disabled={catalog.loading || Boolean(catalog.error)}>
           <option value="">All categories</option>{catalog.data?.categories.map(entry => <option value={entry.id} key={entry.id}>{entry.label}</option>)}
         </select></div>
-        <div className="plan-field"><label htmlFor="browse-type">Item type</label><select id="browse-type" name="itemTypeId" value={fields.itemTypeId} onChange={change} disabled={!category || catalog.loading || Boolean(catalog.error)}>
-          <option value="">All item types</option>{category?.itemTypes.map(entry => <option value={entry.id} key={entry.id}>{entry.label}</option>)}
+        <div className="ui-field"><label htmlFor="browse-type">Item type</label><select id="browse-type" name="itemTypeId" value={fields.itemTypeId} onChange={change} disabled={!category || catalog.loading || Boolean(catalog.error)}>
+          <option value="">{category ? 'All item types' : 'Choose a category first'}</option>{category?.itemTypes.map(entry => <option value={entry.id} key={entry.id}>{entry.label}</option>)}
         </select></div>
-        <div className="plan-field"><label htmlFor="browse-condition">Condition</label><select id="browse-condition" name="condition" value={fields.condition} onChange={change} disabled={catalog.loading || Boolean(catalog.error)}>
-          <option value="">Any condition</option>{catalog.data?.conditions.map(entry => <option value={entry.id} key={entry.id}>{entry.label}</option>)}
-        </select></div>
-        <div className="plan-field"><label htmlFor="browse-city">City</label><select id="browse-city" name="city" value={city} onChange={change}><option value="">All cities</option>
-          {cities.map(value => <option key={key(value)} value={value}>{value}</option>)}</select></div>
-        <div className="plan-field"><label htmlFor="browse-neighborhood">Neighborhood</label><select id="browse-neighborhood" name="neighborhood" value={neighborhood} onChange={change}><option value="">All neighborhoods</option>
-          {neighborhoods.map(value => <option key={key(value)} value={value}>{value}</option>)}</select></div>
-        <div className="plan-field"><label htmlFor="browse-availability">Pickup availability</label><select id="browse-availability" name="availability" value={fields.availability} onChange={change}>
+        <div className="ui-field discovery-extra-option"><label htmlFor="browse-availability">Pickup availability</label><select id="browse-availability" name="availability" value={fields.availability} onChange={change}>
           <option value="all">Any pickup window</option><option value="now">Available Now</option><option value="later">Available Later</option><option value="date">On a selected date</option></select></div>
-        {fields.availability === 'date' && <div className="plan-field"><label htmlFor="browse-date">Pickup date (UTC)</label>
+        {fields.availability === 'date' && <div className="ui-field discovery-extra-option"><label htmlFor="browse-date">Pickup date (UTC)</label>
           <input id="browse-date" ref={dateInput} type="date" name="date" required min={utcToday()} value={fields.date} onChange={change}
             aria-invalid={Boolean(filterError)} aria-describedby={filterError ? 'browse-date-error' : undefined} />
-          {filterError && <p id="browse-date-error" role="alert" className="plan-field-error">{filterError}</p>}</div>}
-        <div className="plan-field"><label htmlFor="browse-sort">Sort items</label><select id="browse-sort" name="sort" value={fields.sort} onChange={change}>
+          {filterError && <p id="browse-date-error" role="alert" className="ui-field-error">{filterError}</p>}</div>}
+        <div className="ui-field discovery-extra-option"><label htmlFor="browse-sort">Sort items</label><select id="browse-sort" name="sort" value={fields.sort} onChange={change}>
           <option value="newest">Newest publication</option><option value="deadline">Earliest pickup deadline</option></select></div>
-        <small>Pickup windows use UTC calendar dates. City/neighborhood options belong to this metro.</small>
       </div>
-      <div className="plan-actions discovery-search-actions"><button className="btn btn-primary">Find free items</button><button type="button" className="btn btn-outline-secondary" onClick={clear}>Clear filters</button></div>
-    </form>
+      <div id="discovery-filter-options" ref={filterRegion} className="discovery-options" hidden={!filtersOpen}>
+        <div className="ui-field"><label htmlFor="browse-condition">Condition</label><select id="browse-condition" name="condition" value={fields.condition} onChange={change} disabled={catalog.loading || Boolean(catalog.error)}>
+          <option value="">Any condition</option>{catalog.data?.conditions.map(entry => <option value={entry.id} key={entry.id}>{entry.label}</option>)}
+        </select></div>
+        <div className="ui-field"><label htmlFor="browse-city">City</label><select id="browse-city" name="city" value={city} onChange={change}><option value="">All cities</option>
+          {cities.map(value => <option key={key(value)} value={value}>{value}</option>)}</select></div>
+        <div className="ui-field"><label htmlFor="browse-neighborhood">Neighborhood</label><select id="browse-neighborhood" name="neighborhood" value={neighborhood} onChange={change}><option value="">All neighborhoods</option>
+          {neighborhoods.map(value => <option key={key(value)} value={value}>{value}</option>)}</select></div>
+      </div>
+      <p className="discovery-help">Pickup windows use UTC calendar dates. City/neighborhood options belong to this metro.</p>
+      <div className="discovery-search-actions"><button className="ui-button">Find free items</button><button type="button" className="ui-button ui-button--secondary" onClick={clear}>Clear filters</button></div>
+    </Surface>
     <p className="discovery-summary" aria-label="Applied filters">{applied.length ? applied.join(' · ') : 'All eligible items in this metro. No account needed to browse.'}</p>
     {catalog.error && <p role="alert">Item filter options are unavailable. <button onClick={catalog.retry}>Retry item filters</button></p>}
     {places.loading && <p role="status">Loading location options…</p>}
     {places.error && <div role="alert">Location options could not be loaded. <button onClick={() => setLocationAttempt(value => value + 1)}>Retry location options</button></div>}
     {places.truncated && <p>Location suggestions are limited. Shared city/neighborhood filters still work beyond these suggestions.</p>}
     <section aria-label="Search results" aria-busy={visible.loading || visible.moreLoading || false}>
+      {!visible.loading && !visible.error && Number.isSafeInteger(visible.total) && <h2 className="discovery-results-heading">{visible.total} available {visible.total === 1 ? 'item' : 'items'}</h2>}
       {visible.loading && <p role="status">Loading listings…</p>}
       {visible.error && <div role="alert"><p>{visible.error.message}</p><button className="btn btn-outline-secondary" onClick={() => visible.moreError && !['STALE_CURSOR', 'INVALID_CURSOR'].includes(visible.error.code) ? loadMore() : restart()}>
         {['STALE_CURSOR', 'INVALID_CURSOR'].includes(visible.error.code) ? 'Start again' : 'Retry results'}</button></div>}

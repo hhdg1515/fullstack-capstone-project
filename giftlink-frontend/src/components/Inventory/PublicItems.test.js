@@ -265,7 +265,7 @@ test('shared URL conditions remain visible while controls are collapsed and reop
   expect(screen.getByLabelText('City')).toHaveValue('Oakland');
   expect(screen.getByLabelText('Pickup availability')).toHaveValue('later');
 });
-test('an incomplete date filter reopens with an actionable error and safe focus, then applies without hiding focus', async () => {
+test('an incomplete common date filter has an actionable error and retains visible focus after applying', async () => {
   mount(); await ready(); await click('Filters');
   fireEvent.change(screen.getByLabelText('Pickup availability'), { target: { value: 'date' } });
   await click('Filters'); const reads = apiCalls().length;
@@ -277,7 +277,7 @@ test('an incomplete date filter reopens with an actionable error and safe focus,
   fireEvent.change(screen.getByLabelText('Pickup date (UTC)'), { target: { value: day(2) } });
   await submit(); await ready();
   expect(screen.getByRole('button', { name: 'Filters (1)' })).toHaveFocus();
-  expect(screen.getByLabelText('Pickup date (UTC)')).not.toBeVisible();
+  expect(screen.getByLabelText('Pickup date (UTC)')).toBeVisible();
   expect(screen.getByLabelText('Applied filters')).toHaveTextContent(day(2));
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
@@ -370,4 +370,41 @@ test('missing counts are a service error instead of a fabricated empty or page-s
 test('owner cards remain visible with compact authoritative type and condition labels', async () => {
   handler = async () => feed([{ ...a, isOwner: true, classification: { itemType: { id: 'sofa', label: 'Sofa' }, condition: { id: 'good', label: 'Good' } } }]);
   mount(); await ready(); expect(screen.getByText('Your listing')).toBeInTheDocument(); expect(screen.getByText('Sofa · Good')).toBeInTheDocument();
+});
+
+test('location-first hierarchy keeps the page title short, common controls visible and secondary controls collapsed', async () => {
+  mount(); await ready();
+  expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/^Find free items$/);
+  expect(screen.getByRole('region', { name: 'Browsing area' })).toHaveTextContent('San Francisco-Oakland-Berkeley · CA');
+  for (const name of ['Category', 'Item type', 'Pickup availability', 'Sort items']) expect(screen.getByLabelText(name)).toBeVisible();
+  expect(screen.getByLabelText('Item type')).toBeDisabled();
+  expect(screen.getByLabelText('Item type')).toHaveTextContent('Choose a category first');
+  for (const name of ['Condition', 'City', 'Neighborhood']) expect(screen.getByLabelText(name)).not.toBeVisible();
+  const reads = apiCalls().length;
+  await click('Change region'); expect(screen.getByLabelText('State')).toHaveFocus();
+  expect(screen.getByRole('button', { name: 'Change region' })).toHaveAttribute('aria-expanded', 'true');
+  await click('Change region'); expect(screen.getByLabelText('State')).not.toBeVisible(); expect(apiCalls()).toHaveLength(reads);
+});
+test('an invalid explicit URL never restores a different saved area or triggers a global query', () => {
+  localStorage.setItem('moveout.browse-region.v1', JSON.stringify({ stateId: '06', metroId: '41860' }));
+  mount('/app/items?stateId=06&metroId=unknown', true);
+  expect(screen.getByText('This area selection is not supported. Choose a listed state and metro.')).toBeVisible();
+  expect(apiCalls()).toHaveLength(0); expect(screen.queryByRole('heading', { name: /available/ })).not.toBeInTheDocument();
+});
+test('changing region removes the old cursor and local labels but retains shared classification and sort choices', async () => {
+  mount('/app/items?stateId=06&metroId=41860&cursor=old&city=Oakland&neighborhood=Temescal&categoryId=living-room&itemTypeId=sofa&sort=deadline'); await ready();
+  await click('Change region');
+  handler = async () => feed([{ ...a, metroId: '31080' }]);
+  await act(async () => fireEvent.change(screen.getByLabelText('Metro area'), { target: { value: '31080' } })); await ready();
+  const query = new URL(screen.getByLabelText('Current URL').textContent, 'http://localhost').searchParams;
+  for (const name of ['cursor', 'city', 'neighborhood']) expect(query.has(name)).toBe(false);
+  expect(query.get('sort')).toBe('deadline'); expect(query.get('itemTypeId')).toBe('sofa'); expect(query.get('categoryId')).toBe('living-room');
+  expect(screen.getByRole('button', { name: 'Change region' })).toHaveFocus();
+});
+test('closing optional filters from their contents returns focus and preserves unsubmitted selections', async () => {
+  mount(); await ready(); await click('Filters');
+  fireEvent.change(screen.getByLabelText('Condition'), { target: { value: 'fair' } }); screen.getByLabelText('Condition').focus();
+  fireEvent.keyDown(screen.getByLabelText('Condition'), { key: 'Escape' }); expect(screen.getByRole('button', { name: 'Filters' })).toHaveFocus();
+  expect(screen.getByLabelText('Condition')).not.toBeVisible();
+  await click('Filters'); expect(screen.getByLabelText('Condition')).toHaveValue('fair');
 });
