@@ -15,7 +15,12 @@ function Example() {
   return <><label>Draft name<input value={name} onChange={event => setName(event.target.value)} /></label>
     <button onClick={() => { guard.markSaved(); setSaved(name); }}>Save locally</button>
     <Link to="/away">Leave</Link><button onClick={() => navigate('/away', { replace: true })}>Replace route</button>
-    <button onClick={() => navigate(-1)}>Back</button></>;
+    <button onClick={() => navigate(-1)}>Back</button><OtherDraft /></>;
+}
+function OtherDraft() {
+  const [text, setText] = useState(''); const guard = useUnsavedForm({ text }, { text: '' });
+  return <><label>Other draft<input value={text} onChange={event => setText(event.target.value)} /></label>
+    <button onClick={() => { if (guard.confirmDiscard()) setText(''); }}>Discard other draft</button></>;
 }
 function mount(entries = ['/edit']) {
   const router = createMemoryRouter([{ path: '*', element: <AuthProvider><UnsavedChangesProvider><Navbar /><Routes>
@@ -71,4 +76,14 @@ test('cancelled logout makes no write; failed logout retains protection', async 
   window.confirm.mockReturnValue(false); fireEvent.click(screen.getByRole('link', { name: 'Leave' }));
   await waitFor(() => expect(window.confirm).toHaveBeenCalledTimes(3));
   expect(screen.getByLabelText('Draft name')).toHaveValue('Private draft');
+});
+
+test('discarding one local form leaves another form’s meaningful edits protected', async () => {
+  const router = mount(); fireEvent.change(await screen.findByLabelText('Draft name'), { target: { value: 'Keep this conversation draft' } });
+  fireEvent.change(screen.getByLabelText('Other draft'), { target: { value: 'Discard this time draft' } });
+  window.confirm.mockReturnValue(true); fireEvent.click(screen.getByRole('button', { name: 'Discard other draft' }));
+  expect(screen.getByLabelText('Other draft')).toHaveValue(''); expect(window.confirm).toHaveBeenCalledTimes(1);
+  window.confirm.mockReturnValue(false); fireEvent.click(screen.getByRole('link', { name: 'Leave' }));
+  await waitFor(() => expect(window.confirm).toHaveBeenCalledTimes(2)); expect(router.state.location.pathname).toBe('/edit');
+  expect(screen.getByLabelText('Draft name')).toHaveValue('Keep this conversation draft');
 });

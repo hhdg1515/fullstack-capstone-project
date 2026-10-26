@@ -77,3 +77,34 @@ Normal CI is unchanged; manually dispatch its existing workflow for the stacked
 branch because its pull-request trigger targets main. No hosted/remote E2E or
 remote database preparation is part of this work. The Phase 1 message index still
 needs separately approved guarded preparation before any future deployment.
+
+## Phase 3B — Participant controls
+
+The existing detail labels the accepted appointment **Confirmed pickup**. A
+collapsed single-field Propose new time form uses the request's explicit pickup
+zone; it never converts the browser timezone into pickup state. Pending proposals
+are labeled **Proposed time — waiting for approval**, attribute the proposer by
+server role, and show response actions only to the other participant according to
+server availability flags. Acceptance has one explicit confirmation; decline
+keeps the confirmed appointment unchanged. Structured events appear once in the
+existing request history, not as ordinary chat messages.
+
+Every POST uses the observed request version and exact proposal ID; duplicate
+submissions are synchronously blocked. Success requests a canonical reload and
+keeps controls blocked until a fresh snapshot arrives. Conflict/uncertain writes
+preserve the time draft and require explicit revalidation before a manual retry;
+no POST is automatically retried. Server date/DST/window errors are associated
+with and focus the date-time field. Late results from another request/session are
+ignored; current 401s use the existing session invalidation flow.
+
+Chat remains mounted through request reloads, with its history/draft intact. Time
+and chat drafts register independently: cancelling/discarding one form releases
+only its own unsaved-edit guard. Terminal or competing-proposal updates retain an
+unsent time as read-only until it can be reviewed or discarded. These are memory
+only drafts, with the same browser termination/session-loss limits as chat.
+
+The backend PR is #38 (`codex/m62-rescheduling-backend`). The frontend PR is based
+on that branch; review/merge backend first, then retarget the frontend to main.
+Local/normal CI checks use disposable data only. No remote E2E, provider setting,
+Atlas data/index, deployment or merge is performed. Real iOS/Safari/virtual
+keyboards and screen-reader behavior remain manual verification gaps.

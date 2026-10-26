@@ -592,4 +592,6 @@ Current confirmed appointments must still be future to propose or accept a chang
 Cancellation/handoff/no-show and confirmed withdrawal/plan closure invalidate any
 pending proposal. Window edits that invalidate only the proposal clear it while
 retaining a valid confirmed appointment. Terminal requests cannot reschedule.
+The request detail distinguishes confirmed and proposed times, offers role-safe
+responses, and keeps the existing chat intact through canonical reloads.
 See the [state machine, API and rollout boundaries](docs/milestone-6.2-rescheduling.md).
