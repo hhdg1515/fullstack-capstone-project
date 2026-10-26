@@ -1,0 +1,36 @@
+/* Definitions only: existing screens opt in through .ui-page. */
+:root {
+  --ui-canvas: #f4f4f4;
+  --ui-surface: #ffffff;
+  --ui-text: #1c3029;
+  --ui-muted: #50645b;
+  --ui-primary: #245746;
+  --ui-primary-hover: #183e32;
+  --ui-on-primary: #ffffff;
+  --ui-border: #ced9d3;
+  --ui-control-border: #6c7e74;
+  --ui-subtle: #edf3ef;
+  --ui-error: #a51d2d;
+  --ui-error-surface: #fff5f5;
+  --ui-focus: #8b4100;
+  --ui-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ui-text-small: .875rem;
+  --ui-text-body: 1rem;
+  --ui-text-section: 1.25rem;
+  --ui-text-title: clamp(1.75rem, 4vw, 2rem);
+  --ui-leading: 1.5;
+  --ui-space-1: .25rem;
+  --ui-space-2: .5rem;
+  --ui-space-3: .75rem;
+  --ui-space-4: 1rem;
+  --ui-space-6: 1.5rem;
+  --ui-space-8: 2rem;
+  --ui-space-12: 3rem;
+  --ui-width-page: 64rem;
+  --ui-width-form: 30rem;
+  --ui-radius-control: .375rem;
+  --ui-radius-surface: .5rem;
+  --ui-border-width: 1px;
+  --ui-shadow: 0 2px 6px rgb(28 48 41 / 6%);
+  --ui-control-height: 2.75rem;
+}
