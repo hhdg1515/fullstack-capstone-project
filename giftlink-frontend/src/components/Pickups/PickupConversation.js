@@ -4,16 +4,26 @@ import { useAppContext } from '../../context/AuthContext';
 import { useUnsavedForm } from '../../forms/UnsavedChanges';
 import useFormErrors from '../../forms/useFormErrors';
 import { closedStates, mergeMessages, mergeRanges, openStates, roles, validMessage, validPage } from './conversationHistory';
+import { Surface, Feedback } from '../../design-system/primitives';
 import './PickupConversation.css';
 
 const roleLabel = role => role === 'giver' ? 'giver' : 'requester';
+const suggestedWait = failure => {
+  const seconds = failure.retryAfterSeconds; if (!Number.isSafeInteger(seconds) || seconds < 1 || seconds > 3600) return '';
+  const unit = seconds === 3600 ? 'hour' : seconds >= 60 ? 'minute' : 'second';
+  const amount = Math.ceil(seconds / (unit === 'hour' ? 3600 : unit === 'minute' ? 60 : 1));
+  return ` Suggested wait: ${amount} ${unit}${amount === 1 ? '' : 's'}.`;
+};
+const messageTime = value => new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric',
+  ...(new Date(value).getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}), hour: 'numeric', minute: '2-digit' }).format(new Date(value));
+const fullMessageTime = value => new Intl.DateTimeFormat('en', { dateStyle: 'full', timeStyle: 'long' }).format(new Date(value));
 const failureText = (failure, sending) => {
   if (failure.status === 401) return 'Your session ended. Sign in again to read this conversation.';
   if (failure.status === 403) return 'Access could not be verified. Refresh the conversation; if this continues, sign in again.';
   if (failure.status === 404) return 'This conversation is unavailable. Refresh to check whether the request or your access changed.';
   if (failure.status === 409) return 'The conversation changed. Refresh before sending again.';
   if (failure.status === 429) return failure.code === 'MESSAGE_QUOTA_EXCEEDED' ?
-    'Message limit reached. Your text is kept. Try again later.' : 'Too many requests. Wait a minute, then try again.';
+    'Message limit reached. Your text is kept. Try again later.' + suggestedWait(failure) : 'Too many requests. Wait a minute, then try again.';
   return sending ? 'Sending could not be confirmed. Your text is kept. Refresh and check recent messages before sending it again.' :
     'Could not load messages. Your loaded history and unsent text are kept. Please retry.';
 };
@@ -123,40 +133,40 @@ function Conversation({ requestId, requestStatus }) {
     }
   };
   const messages = view.ranges.flatMap(range => range.messages);
-  return <section id="conversation" className="pickup-conversation" aria-labelledby="conversation-heading">
-    <div className="plan-page-header"><h3 id="conversation-heading" tabIndex={-1}>Pickup conversation</h3>
-      <button type="button" className="btn btn-outline-secondary" disabled={Boolean(busy)} onClick={() => { validation.reset(); load(); }}>{context ? 'Refresh conversation' : 'Retry conversation'}</button></div>
-    {context && <p>With {context.counterpart.firstName} ({roleLabel(context.role === 'giver' ? 'receiver' : 'giver')}). Only you and this participant can read these messages.</p>}
-    <p role="status" className="chat-feedback">{busy === 'send' ? 'Sending message…' : busy ? (busy === 'earlier' ? 'Loading earlier messages…' : 'Loading conversation…') : notice}</p>
-    {error && <p role="alert" className="plan-field-error">{error}</p>}
+  return <Surface id="conversation" className="pickup-conversation" aria-labelledby="conversation-heading">
+    <div className="chat-header"><h2 id="conversation-heading" tabIndex={-1}>Pickup conversation</h2>
+      <button type="button" className="ui-button ui-button--secondary" disabled={Boolean(busy)} onClick={() => { validation.reset(); load(); }}>{context ? 'Refresh conversation' : 'Retry conversation'}</button></div>
+    {context && <p className="chat-participant">With {context.counterpart.firstName} ({roleLabel(context.role === 'giver' ? 'receiver' : 'giver')}). Private to this request.</p>}
+    {(busy || notice) && <Feedback>{busy === 'send' ? 'Sending message…' : busy ? (busy === 'earlier' ? 'Loading earlier messages…' : 'Loading conversation…') : notice}</Feedback>}
+    {error && <Feedback error>{error}</Feedback>}
     {context && <>
-      {closed && <p className="chat-read-only">This request is closed. You can read its messages, but cannot send new ones.</p>}
-      <button type="button" className="btn btn-outline-secondary" disabled={Boolean(busy)} hidden={!view.ranges.some(range => range.nextCursor)} onClick={() => load('earlier')}>Load earlier messages</button>
+      {closed && <Feedback>This request is closed. You can read its messages, but cannot send new ones.</Feedback>}
+      <button type="button" className="ui-button ui-button--secondary" disabled={Boolean(busy)} hidden={!view.ranges.some(range => range.nextCursor)} onClick={() => load('earlier')}>Load earlier messages</button>
       <div ref={history} className="chat-history" role="region" aria-label="Message history" tabIndex={0}>
         {!messages.length ? <p>No messages yet.</p> : <ol>{view.ranges.slice().reverse().flatMap((range, index) => [
           ...range.messages.map(message => <li key={message.id} className={`chat-message${message.sender === context.role ? ' chat-mine' : ''}`}>
-            <p className="chat-message-heading"><strong>{message.sender === context.role ? 'You' : context.counterpart.firstName} ({roleLabel(message.sender)})</strong>
-              {' · '}<time dateTime={message.createdAt}>{new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(message.createdAt))}</time></p>
+            <div className="chat-message-heading"><strong>{message.sender === context.role ? 'You' : context.counterpart.firstName} ({roleLabel(message.sender)})</strong>
+              <time dateTime={message.createdAt} title={fullMessageTime(message.createdAt)} aria-label={fullMessageTime(message.createdAt)}>{messageTime(message.createdAt)}</time></div>
             <p className="chat-text">{message.text}</p></li>),
           ...(index < view.ranges.length - 1 ? [<li key={`gap-${index}`} className="chat-gap">Some messages between these pages are not loaded yet. Use Load earlier messages to fill the gap.</li>] : [])
         ])}</ol>}
       </div>
-      <small>Message times use your device timezone. Refresh to check for new messages.</small>
+      <p className="chat-help">Message times use your device timezone ({Intl.DateTimeFormat().resolvedOptions().timeZone || 'device setting'}). Pickup times use the giver’s timezone. Use Refresh conversation to check for new messages.</p>
     </>}
-    {((!closed && context) || draft.length > 0) && <form ref={validation.formRef} className="plan-form chat-composer" noValidate onSubmit={send} aria-busy={busy === 'send'}>
-      <div className="plan-field"><label htmlFor="chat-text">{canSend ? 'Message' : 'Unsent message'}</label>
+    {((!closed && context) || draft.length > 0) && <form ref={validation.formRef} className="chat-composer" noValidate onSubmit={send} aria-busy={busy === 'send'}>
+      <div className="ui-field"><label htmlFor="chat-text">{canSend ? 'Message' : 'Unsent message'}</label>
         <textarea ref={composer} id="chat-text" name="text" rows={3} value={draft} readOnly={!canSend || busy === 'send'}
           {...validation.fieldProps('text', 'chat-help chat-count')} onChange={event => { setDraft(event.target.value); validation.clear('text'); }} />
-        <small id="chat-count">{Array.from(draft.trim()).length.toLocaleString('en')} / 2,000 characters</small>
-        {validation.errors.text && <p id="text-error" className="plan-field-error">{validation.errors.text}</p>}
-        <small id="chat-help">Plain text only. Keep residential addresses and sensitive account details out of messages.</small></div>
+        <small id="chat-count" className="chat-count">{Array.from(draft.trim()).length.toLocaleString('en')} / 2,000 characters</small>
+        {validation.errors.text && <p id="text-error" className="ui-field-error">{validation.errors.text}</p>}
+        <small id="chat-help">Plain text. Keep residential addresses and sensitive account details out of messages. Enter adds a new line.</small></div>
       {uncertain && !closed && <p>Check recent messages after refreshing before deciding whether to send this draft again.</p>}
       {!canSend && draft && <p>Your unsent text is kept here. Refresh to check access, or discard the draft.</p>}
-      <div className="plan-actions"><button type="submit" className="btn btn-primary" disabled={!canSend || Boolean(busy)}>Send message</button>
-        {!canSend && draft && <button type="button" className="btn btn-outline-secondary" disabled={Boolean(busy)} onClick={() => {
+      <div className="chat-actions"><button type="submit" className="ui-button" disabled={!canSend || Boolean(busy)}>Send message</button>
+        {!canSend && draft && <button type="button" className="ui-button ui-button--secondary" disabled={Boolean(busy)} onClick={() => {
           if (guard.confirmDiscard()) { setDraft(''); setUncertain(false); validation.reset(); }
         }}>Discard draft</button>}</div>
     </form>}
-    {validation.error && <p ref={validation.summaryRef} role="alert" tabIndex={-1} className="plan-field-error">{validation.error}</p>}
-  </section>;
+    {validation.error && <Feedback error ref={validation.summaryRef} tabIndex={-1}>{validation.error}</Feedback>}
+  </Surface>;
 }

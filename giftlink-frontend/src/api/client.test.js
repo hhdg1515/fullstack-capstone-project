@@ -77,3 +77,13 @@ test('accepts JSON media types and validates successful payloads including unexp
   fetch.mockResolvedValue({ status: 204, ok: true });
   await expect(apiRequest('/api/me', { validate: data => Boolean(data?.user) })).rejects.toHaveProperty('code', 'SERVICE_UNAVAILABLE');
 });
+
+test.each([1, 61, 3600])('retains bounded server quota delay %s without retrying the request', async retryAfterSeconds => {
+  fetch.mockResolvedValue(reply(429, { error: { code: 'MESSAGE_QUOTA_EXCEEDED', message: 'Try later.', retryAfterSeconds } }));
+  await expect(apiRequest('/api/pickup-requests/example/conversation/messages', { method: 'POST', body: { text: 'Unsent' } })).rejects.toMatchObject({ status: 429, retryAfterSeconds });
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+test.each([0, -1, 3601, '60', {}, null])('does not trust invalid quota delay %s', async retryAfterSeconds => {
+  fetch.mockResolvedValue(reply(429, { error: { code: 'MESSAGE_QUOTA_EXCEEDED', message: 'Try later.', retryAfterSeconds } }));
+  await expect(apiRequest('/api/me')).rejects.toMatchObject({ status: 429, retryAfterSeconds: undefined });
+});
