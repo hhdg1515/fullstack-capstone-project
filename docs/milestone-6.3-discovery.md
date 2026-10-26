@@ -103,3 +103,43 @@ clear or replace an incompatible type. Public/private item DTOs add a
 `classification` with ID/label pairs, never private account or pickup details.
 Titles/descriptions, save-draft/publish, item versions and all date rules remain
 separate and unchanged. No collection, migration, dependency or index is added.
+
+## Regional query and counts
+
+Regional browsing starts at `moveOutPlans` using the `plan_metro_discovery`
+index (`metroId`, `status`, `stateId`, `_id`), then joins items through the
+existing plan/owner index. Validate the selected state/metro pair first; query
+the metro across all its member states, never guess from city text. Native plan
+region IDs and configured timezone must be scalar strings. Existing publication,
+plan/item ownership, active status and UTC-date eligibility rules apply. A regional
+feed excludes accepted reservations and plans without pickup timezone setup;
+public individual links remain readable with existing reservation/setup notices.
+
+One snapshot aggregation uses a facet for the page and **total filtered eligible
+count before the cursor boundary**. All filters precede that facet, including
+availability, inherited dates, exact normalized city/neighborhood, category/type,
+condition and text. Newest/deadline sorting keeps ObjectId tie-breakers and
+publication cutoffs; cursor fingerprints bind every filter and page size.
+Counts/pages are coherent per response, not a permanent snapshot across separate
+HTTP calls. Availability can change; refresh remains necessary. Query execution
+is limited to five seconds with disk spill disabled; busy/errors are not emptiness.
+
+Text remains literal/escaped and bounded. An explicit catalog mapping supports
+sofa/couch, bookshelf/bookcase, nightstand/bedside table, kitchenware/cookware and
+clothes rack/clothing rack; exact type labels/terms also match standardized IDs
+when a custom title does not repeat the type. Existing name, full-description and
+legacy-category text matching remains. There is no external search or tag service.
+
+Public DTOs include only canonical region ID/label pairs and a session-validated
+owner boolean, never an owner/account ID. Scoped city/neighborhood options reuse
+the existing normalization and bounded metadata endpoint. The backend query PR
+temporarily retains the old unscoped feed for its unchanged frontend; the dependent
+region-first UI PR removes that compatibility path and requires region selection.
+Older application cursors must refresh because the filter fingerprint expanded.
+
+The new index is an application definition only. Readiness fails without it;
+startup performs no DDL. A future deployment requires a separately approved
+remote dry-run and exact target/fingerprint-confirmed apply, covering this index
+and any missing Phase 1 message index. Local preparation tests preserve every
+record and never assign regions, seed gifts or rewrite accounts. No remote
+preview/apply is part of this milestone.

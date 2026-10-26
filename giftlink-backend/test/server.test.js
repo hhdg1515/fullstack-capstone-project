@@ -15,7 +15,7 @@ describe('server bootstrap and configuration', function () {
     const indexedDb = { command: async () => ({ ok: 1, setName: 'isolated-test' }), collection: name => ({ indexes: async () => name === 'users' ?
         [{ key: { email: 1 }, unique: true }] : name === 'sessions' ? [{ key: { expiresAt: 1 }, expireAfterSeconds: 0 }] :
         name === 'pickupRequests' ? [{ key: { giverId: 1, _id: -1 } }, { key: { receiverId: 1, _id: -1 } }, { key: { itemId: 1 }, unique: true, partialFilterExpression: { status: 'accepted' } }, { key: { itemId: 1, receiverId: 1 }, unique: true, partialFilterExpression: { active: true } }] :
-        name === 'moveOutPlans' ? [{ key: { ownerId: 1, moveOutDeadline: 1, _id: 1 } }] :
+        name === 'moveOutPlans' ? [{ key: { ownerId: 1, moveOutDeadline: 1, _id: 1 } }, { key: { metroId: 1, status: 1, stateId: 1, _id: 1 } }] :
         name === 'pickupMessages' ? [{ key: { requestId: 1, createdAt: -1, _id: -1 } }] :
         [{ key: { planId: 1, ownerId: 1, createdAt: 1, _id: 1 } }, { key: { status: 1, publishedAt: -1, _id: -1 } }, { key: { status: 1, availableFrom: 1, publishedAt: -1, _id: -1 } }] }) };
 

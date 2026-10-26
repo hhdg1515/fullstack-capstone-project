@@ -3,7 +3,8 @@ const { ObjectId } = require('mongodb');
 const { InventoryError } = require('./inventory');
 const { todayUTC, isCalendarDate } = require('./calendar');
 const { pickupReservationStages } = require('./pickup-policy');
-const { classificationResponse } = require('./item-taxonomy');
+const { classificationResponse, taxonomy, category, type, condition } = require('./item-taxonomy');
+const { validateRegion, metro, regionResponse } = require('./regions');
 
 const normalizeLabel = value => value.trim().replace(/\s+/g, ' ');
 const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -13,12 +14,20 @@ const invalidCursor = () => new InventoryError(400, 'INVALID_CURSOR', 'This pagi
 const staleCursor = () => new InventoryError(409, 'STALE_CURSOR', 'These results have changed or the pagination link expired. Refresh results to start again.');
 const cursorLifetime = 15 * 60 * 1000;
 function parseQuery(raw, today) {
-    const allowed = ['q', 'city', 'neighborhood', 'availability', 'date', 'sort', 'limit', 'cursor'];
+    const allowed = ['q', 'city', 'neighborhood', 'stateId', 'metroId', 'categoryId', 'itemTypeId', 'condition', 'availability', 'date', 'sort', 'limit', 'cursor'];
     if (Object.keys(raw).some(key => !allowed.includes(key) || typeof raw[key] !== 'string')) {
         throw invalid('Use only supported, single-value discovery parameters.');
     }
     const query = { q: '', city: '', neighborhood: '', availability: raw.availability || 'all',
-        date: raw.date || '', sort: raw.sort || 'newest', limit: raw.limit === undefined ? 12 : Number(raw.limit) };
+        date: raw.date || '', sort: raw.sort || 'newest', limit: raw.limit === undefined ? 12 : Number(raw.limit),
+        stateId: raw.stateId || '', metroId: raw.metroId || '', categoryId: raw.categoryId || '', itemTypeId: raw.itemTypeId || '', condition: raw.condition || '' };
+    if (query.stateId || query.metroId) {
+        validateRegion(query.stateId, query.metroId);
+        if (!query.stateId || !query.metroId) throw new InventoryError(400, 'REGION_REQUIRED', 'Choose a listed state and metro before browsing.');
+    }
+    if (query.categoryId && !category(query.categoryId) || query.itemTypeId && !type(query.categoryId, query.itemTypeId) || query.condition && !condition(query.condition)) {
+        throw invalid('Choose a listed category, a matching item type and a supported condition.');
+    }
     for (const key of ['q', 'city', 'neighborhood']) {
         if ((raw[key] || '').length > 100) throw invalid('Search and location labels must be at most 100 characters.');
         query[key] = normalizeLabel(raw[key] || '');
@@ -59,20 +68,18 @@ function readCursor(token, query, now) {
     return value;
 }
 const projection = { name: 1, description: 1, category: 1, categoryId: 1, itemTypeId: 1, condition: 1, status: 1, availableFrom: 1, availableUntil: 1,
-    publishedAt: 1, effectiveAvailableUntil: 1, isReserved: 1, 'plan.city': 1, 'plan.neighborhood': 1, 'plan.moveOutDeadline': 1, 'plan.pickupTimeZone': 1 };
-function publicItem(row, today) {
-    return { id: row._id.toString(), name: row.name, description: row.description, category: row.category, classification: classificationResponse(row),
+    publishedAt: 1, effectiveAvailableUntil: 1, isReserved: 1, ownerId: 1, 'plan.stateId': 1, 'plan.metroId': 1, 'plan.city': 1, 'plan.neighborhood': 1, 'plan.moveOutDeadline': 1, 'plan.pickupTimeZone': 1 };
+function publicItem(row, today, viewerId) {
+    return Object.assign({ id: row._id.toString(), name: row.name, description: row.description, category: row.category, classification: classificationResponse(row),
         status: 'available', isReserved: row.isReserved, availability: row.availableFrom && row.availableFrom > today ? 'later' : 'now',
         availableFrom: row.availableFrom || null, availableUntil: row.availableUntil || null,
         effectiveAvailableUntil: row.effectiveAvailableUntil, city: normalizeLabel(row.plan.city),
         neighborhood: normalizeLabel(row.plan.neighborhood), moveOutDeadline: row.plan.moveOutDeadline,
-        publishedAt: row.publishedAt.toISOString(), pickupTimeZone: row.plan.pickupTimeZone || null };
+        publishedAt: row.publishedAt.toISOString(), pickupTimeZone: row.plan.pickupTimeZone || null,
+        isOwner: Boolean(viewerId && row.ownerId.equals(viewerId)) }, regionResponse(row.plan));
 }
-function visibilityPipeline(match, today) {
-    return [{ $match: match },
-        { $lookup: { from: 'moveOutPlans', localField: 'planId', foreignField: '_id', as: 'plan' } },
-        { $unwind: '$plan' },
-        { $addFields: { effectiveAvailableUntil: { $ifNull: ['$availableUntil', '$plan.moveOutDeadline'] } } },
+function eligibilityStages(today) {
+    return [{ $addFields: { effectiveAvailableUntil: { $ifNull: ['$availableUntil', '$plan.moveOutDeadline'] } } },
         { $match: { 'plan.status': 'active', $expr: { $and: [
             { $regexMatch: { input: { $convert: { input: '$status', to: 'string', onError: '', onNull: '' } }, regex: '^available$' } },
             { $regexMatch: { input: { $convert: { input: '$plan.status', to: 'string', onError: '', onNull: '' } }, regex: '^active$' } },
@@ -83,6 +90,30 @@ function visibilityPipeline(match, today) {
             { $lte: [{ $ifNull: ['$availableFrom', '0000-01-01'] }, '$effectiveAvailableUntil'] }
         ] } } }];
 }
+function visibilityPipeline(match, today) {
+    return [{ $match: match }, { $lookup: { from: 'moveOutPlans', localField: 'planId', foreignField: '_id', as: 'plan' } },
+        { $unwind: '$plan' }].concat(eligibilityStages(today));
+}
+function regionalPipeline(query, terms, today) {
+    return [{ $match: { metroId: query.metroId, stateId: { $in: metro(query.metroId).stateIds }, status: 'active', pickupTimeZone: { $type: 'string', $ne: '' },
+        $expr: { $and: ['stateId', 'metroId', 'pickupTimeZone'].map(field => ({ $eq: [{ $type: '$' + field }, 'string'] })) } } },
+        { $lookup: { from: 'items', let: { plan: '$_id', owner: '$ownerId' }, pipeline: [
+            { $match: { $and: terms.concat([{ $expr: { $and: [{ $eq: ['$planId', '$$plan'] }, { $eq: ['$ownerId', '$$owner'] }] } }]) } }
+        ], as: 'items' } }, { $unwind: '$items' },
+        { $replaceRoot: { newRoot: { $mergeObjects: ['$items', { plan: { stateId: '$stateId', metroId: '$metroId', ownerId: '$ownerId', status: '$status',
+            city: '$city', neighborhood: '$neighborhood', moveOutDeadline: '$moveOutDeadline', pickupTimeZone: '$pickupTimeZone' } }] } } }
+    ].concat(eligibilityStages(today));
+}
+function textMatch(q) {
+    const term = normalizeLabel(q).toLowerCase();
+    const matched = taxonomy.categories.flatMap(category => category.itemTypes).filter(type => type.searchTerms.includes(term) || type.label.toLowerCase() === term);
+    const alternatives = Array.from(new Set([q].concat(...matched.map(type => type.searchTerms))));
+    const clauses = ['name', 'description', 'category'].map(field => ({ [field]: { $regex: '(*UCP)(?:' + alternatives.map(phrase).join('|') + ')', $options: 'i' } }));
+    if (matched.length) clauses.push({ itemTypeId: { $in: matched.map(type => type.id) } });
+    const groups = taxonomy.categories.filter(category => category.label.toLowerCase() === term);
+    if (groups.length) clauses.push({ categoryId: { $in: groups.map(category => category.id) } });
+    return { $or: clauses };
+}
 const initialMatch = at => ({ status: 'available', publishedAt: { $type: 'date', $lte: new Date(at) } });
 // Normalize existing labels at read time; no database normalization/migration.
 const normalizedField = input => ({ $reduce: {
@@ -91,45 +122,50 @@ const normalizedField = input => ({ $reduce: {
 } });
 
 function createDiscoveryService({ connectToDatabase, now = () => new Date() }) {
-    async function aggregate(pipeline, options = {}) {
+    async function aggregate(pipeline, options = {}, collection = 'items') {
         try {
             const db = await connectToDatabase();
-            return await db.collection('items').aggregate(pipeline, Object.assign({ readConcern: { level: 'snapshot' },
+            return await db.collection(collection).aggregate(pipeline, Object.assign({ readConcern: { level: 'snapshot' },
                 collation: { locale: 'simple' }, maxTimeMS: 5000, allowDiskUse: false }, options)).toArray();
         } catch (error) {
             if ([50, 292].includes(error.code)) throw new InventoryError(503, 'DISCOVERY_BUSY', 'This search is too broad or busy. Narrow the filters and retry.');
             throw error;
         }
     }
-    async function browse(raw) {
+    async function browse(raw, viewerId) {
         const current = now(); const today = todayUTC(current);
         const query = parseQuery(raw, today); const cursor = readCursor(raw.cursor, query, current);
         const at = cursor ? cursor.at : current.getTime();
         const terms = [initialMatch(at)];
-        if (query.q) terms.push({ $or: ['name', 'description', 'category'].map(field => ({ [field]: { $regex: '(*UCP)' + phrase(query.q), $options: 'i' } })) });
+        if (query.q) terms.push(textMatch(query.q));
+        for (const field of ['categoryId', 'itemTypeId', 'condition']) if (query[field]) terms.push({ [field]: query[field] });
         const start = query.availability === 'date' ? query.date : today;
         if (['now', 'date'].includes(query.availability)) terms.push({ $or: [{ availableFrom: null }, { availableFrom: { $lte: start } }] });
         if (query.availability === 'later') terms.push({ availableFrom: { $gt: today } });
-        if (cursor && query.sort === 'newest') terms.push({ $or: [
-            { publishedAt: { $lt: new Date(cursor.value) } }, { publishedAt: new Date(cursor.value), _id: { $lt: new ObjectId(cursor.id) } }
-        ] });
-        const pipeline = visibilityPipeline({ $and: terms }, today);
+        const regional = Boolean(query.metroId);
+        const pipeline = regional ? regionalPipeline(query, terms, today) : visibilityPipeline({ $and: terms }, today);
         for (const key of ['city', 'neighborhood']) {
             if (query[key]) pipeline.push({ $match: { ['plan.' + key]: { $regex: '(*UCP)^\\s*' + phrase(query[key]) + '\\s*$', $options: 'i' } } });
         }
         if (query.availability === 'date') pipeline.push({ $match: { effectiveAvailableUntil: { $gte: query.date } } });
-        if (cursor && query.sort === 'deadline') pipeline.push({ $match: { $or: [
-            { effectiveAvailableUntil: { $gt: cursor.value } }, { effectiveAvailableUntil: cursor.value, _id: { $gt: new ObjectId(cursor.id) } }
-        ] } });
-        pipeline.push({ $sort: query.sort === 'newest' ? { publishedAt: -1, _id: -1 } : { effectiveAvailableUntil: 1, _id: 1 } },
-            { $limit: query.limit + 1 });
-        pipeline.push(...pickupReservationStages(), { $project: projection });
-        const rows = await aggregate(pipeline);
+        pipeline.push(...pickupReservationStages());
+        if (regional) pipeline.push({ $match: { isReserved: false } });
+        const page = [];
+        if (cursor) {
+            const newest = query.sort === 'newest', field = newest ? 'publishedAt' : 'effectiveAvailableUntil';
+            const value = newest ? new Date(cursor.value) : cursor.value, comparison = newest ? '$lt' : '$gt';
+            page.push({ $match: { $or: [{ [field]: { [comparison]: value } }, { [field]: value, _id: { [comparison]: new ObjectId(cursor.id) } }] } });
+        }
+        page.push({ $sort: query.sort === 'newest' ? { publishedAt: -1, _id: -1 } : { effectiveAvailableUntil: 1, _id: 1 } },
+            { $limit: query.limit + 1 }, { $project: projection });
+        pipeline.push({ $facet: { rows: page, total: [{ $count: 'value' }] } });
+        const [result] = await aggregate(pipeline, {}, regional ? 'moveOutPlans' : 'items');
+        const rows = result.rows;
         const hasMore = rows.length > query.limit; const selected = rows.slice(0, query.limit);
         const last = selected[selected.length - 1];
         const nextCursor = hasMore ? Buffer.from(JSON.stringify({ v: 1, at, filter: fingerprint(query), sort: query.sort,
             id: last._id.toString(), value: query.sort === 'newest' ? last.publishedAt.toISOString() : last.effectiveAvailableUntil })).toString('base64url') : null;
-        return { items: selected.map(row => publicItem(row, today)), today,
+        return { items: selected.map(row => publicItem(row, today, viewerId)), total: result.total.length ? result.total[0].value : 0, today,
             page: { limit: query.limit, hasMore, nextCursor } };
     }
     async function detail(id, viewerId) {
@@ -138,18 +174,21 @@ function createDiscoveryService({ connectToDatabase, now = () => new Date() }) {
         const rows = await aggregate(visibilityPipeline(Object.assign(initialMatch(current.getTime()), { _id: new ObjectId(id) }), today)
             .concat(pickupReservationStages(), [{ $project: Object.assign({}, projection, { ownerId: 1 }) }]));
         if (!rows.length) throw new InventoryError(404, 'ITEM_NOT_FOUND', 'Listing unavailable');
-        return { item: Object.assign(publicItem(rows[0], today), { isOwner: Boolean(viewerId && rows[0].ownerId.equals(viewerId)) }), today };
+        return { item: publicItem(rows[0], today, viewerId), today };
     }
     async function locations(raw) {
-        if (Object.keys(raw).length) throw invalid('Location options do not accept query parameters.');
-        const current = now(); const pipeline = visibilityPipeline(initialMatch(current.getTime()), todayUTC(current));
+        if (Object.keys(raw).some(key => !['stateId', 'metroId'].includes(key))) throw invalid('Location options accept only state and metro IDs.');
+        const current = now(), today = todayUTC(current), query = parseQuery(raw, today);
+        const regional = Boolean(query.metroId);
+        const pipeline = regional ? regionalPipeline(query, [initialMatch(current.getTime())], today) : visibilityPipeline(initialMatch(current.getTime()), today);
+        if (regional) pipeline.push(...pickupReservationStages(), { $match: { isReserved: false } });
         pipeline.push({ $project: { city: normalizedField('$plan.city'), neighborhood: normalizedField('$plan.neighborhood') } },
             { $sort: { city: 1, neighborhood: 1, _id: 1 } }, { $group: { _id: { city: '$city', neighborhood: '$neighborhood' } } },
             { $sort: { '_id.city': 1, '_id.neighborhood': 1 } }, { $limit: 501 },
             { $facet: { locations: [{ $limit: 500 }, { $group: { _id: '$_id.city', neighborhoods: { $push: '$_id.neighborhood' } } },
                 { $sort: { _id: 1 } }], overflow: [{ $skip: 500 }, { $count: 'pairs' }] } });
         // ICU case-insensitive grouping also deduplicates non-ASCII case variants.
-        const rows = await aggregate(pipeline, { collation: { locale: 'en', strength: 2 } });
+        const rows = await aggregate(pipeline, { collation: { locale: 'en', strength: 2 } }, regional ? 'moveOutPlans' : 'items');
         return { locations: rows[0].locations.map(row => ({ city: row._id, neighborhoods: row.neighborhoods })),
             truncated: rows[0].overflow.length > 0 };
     }
