@@ -23,3 +23,9 @@
   .discovery-feed .discovery-extra-option { display: none; }
   .discovery-feed .discovery-filters--expanded .discovery-extra-option { display: block; }
 }
+@media (max-width: 600px) {
+  .discovery-feed .discovery-area--selected { background: transparent; border: 0; padding: 0; margin-bottom: var(--ui-space-6); }
+  .discovery-feed .discovery-type-option { display: none; }
+  .discovery-feed .discovery-filters--has-category .discovery-type-option,
+  .discovery-feed .discovery-filters--expanded .discovery-type-option { display: block; }
+}

@@ -408,3 +408,11 @@ test('closing optional filters from their contents returns focus and preserves u
   expect(screen.getByLabelText('Condition')).not.toBeVisible();
   await click('Filters'); expect(screen.getByLabelText('Condition')).toHaveValue('fair');
 });
+
+test('reset is offered only when useful and clears unsubmitted filters without losing the area', async () => {
+  mount(); await ready(); expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'living-room' } });
+  await click('Clear filters'); await ready();
+  expect(screen.getByLabelText('Category')).toHaveValue(''); expect(screen.getByLabelText('Current URL')).toHaveTextContent('metroId=41860');
+  expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument();
+});
