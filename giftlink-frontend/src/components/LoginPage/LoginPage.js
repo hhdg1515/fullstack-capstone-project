@@ -6,6 +6,7 @@ import { authDestination } from '../authDestination';
 import AccountServiceNotice from '../AccountServiceNotice';
 import { useUnsavedForm } from '../../forms/UnsavedChanges';
 import useFormErrors, { emailError } from '../../forms/useFormErrors';
+import { Feedback, PageHeader, Surface } from '../../design-system/primitives';
 
 export default function LoginPage() {
   const { login, isLoggedIn, sessionMessage, status } = useAppContext();
@@ -34,22 +35,24 @@ export default function LoginPage() {
     catch (failure) { validation.failure(failure, ['email', 'password']); }
     finally { setBusy(false); setPassword(''); }
   };
-  return <main className="container mt-5"><div className="row justify-content-center"><div className="col-md-6 col-lg-4">
-    <form ref={validation.formRef} noValidate aria-busy={busy} className="login-card p-4 border rounded" onSubmit={submit}>
-      <h1 className="h2 text-center mb-4">Login</h1>
-      <p>One account to give away items and request pickups. Browsing is always open to everyone.</p>
+  return <main className="ui-page ui-page--form">
+    <Surface as="form" ref={validation.formRef} noValidate aria-busy={busy} className="login-card" onSubmit={submit}>
+      <PageHeader title="Login" description="One account to give and find." />
       <AccountServiceNotice />
-      {sessionMessage && <p role="status">{sessionMessage}</p>}
-      {status === 'loading' && <p role="status">Checking your session…</p>}
+      {sessionMessage && <Feedback>{sessionMessage}</Feedback>}
+      {status === 'loading' && <Feedback>Checking your session…</Feedback>}
+      <div className="ui-field">
       <label htmlFor="email" className="form-label">Email</label>
-      <input name="email" disabled={busy} {...validation.fieldProps('email')} id="email" type="email" autoComplete="username" required maxLength={254} className="form-control mb-3" value={email} onChange={event => { setEmail(event.target.value); validation.clear('email'); }} />
-      {errors.email && <p id="email-error" className="text-danger">{errors.email}</p>}
+      <input name="email" disabled={busy} {...validation.fieldProps('email')} id="email" type="email" autoComplete="username" required maxLength={254} value={email} onChange={event => { setEmail(event.target.value); validation.clear('email'); }} />
+      {errors.email && <p id="email-error" className="ui-field-error">{errors.email}</p>}
+      </div><div className="ui-field">
       <label htmlFor="password" className="form-label">Password</label>
-      <input name="password" disabled={busy} {...validation.fieldProps('password')} id="password" type="password" autoComplete="current-password" required className="form-control mb-3" value={password} onChange={event => { setPassword(event.target.value); validation.clear('password'); }} />
-      {errors.password && <p id="password-error" className="text-danger">{errors.password}</p>}
-      {error && <p ref={validation.summaryRef} tabIndex={-1} className="text-danger" role="alert">{error}</p>}
-      <button className="btn btn-primary w-100" disabled={busy || status === 'loading'}>{busy ? 'Logging in…' : 'Login'}</button>
-      <p className="mt-4">New here? <Link to="/app/register" state={{ from: requested }}>Register Here</Link></p>
-    </form>
-  </div></div></main>;
+      <input name="password" disabled={busy} {...validation.fieldProps('password')} id="password" type="password" autoComplete="current-password" required value={password} onChange={event => { setPassword(event.target.value); validation.clear('password'); }} />
+      {errors.password && <p id="password-error" className="ui-field-error">{errors.password}</p>}
+      </div>
+      {error && <Feedback ref={validation.summaryRef} tabIndex={-1} error>{error}</Feedback>}
+      <button className="ui-button ui-button--block" disabled={busy || status === 'loading'}>{busy ? 'Logging in…' : 'Login'}</button>
+      <p className="login-register">New here? <Link to="/app/register" state={{ from: requested }}>Register Here</Link></p>
+    </Surface>
+  </main>;
 }

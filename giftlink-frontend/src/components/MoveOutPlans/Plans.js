@@ -8,6 +8,8 @@ import usePlansData from './usePlansData';
 import { formatDeadline } from './dates';
 import './Plans.css';
 import JourneyNav from '../Journeys/JourneyNav';
+import { Feedback, PageHeader, Surface } from '../../design-system/primitives';
+import './MyPlans.css';
 
 const base = '/api/move-out-plans';
 const heading = plan => plan.title || `Move-out in ${plan.neighborhood}`;
@@ -22,23 +24,24 @@ function LoadState({ request }) {
 
 export function MyPlans() {
   const request = usePlansData(base);
-  return <main className="plans-page">
+  return <main className="ui-page my-plans-page">
     <JourneyNav journey="give" />
-    <div className="plan-page-header"><h1>My move-out plans</h1><Link className="btn btn-primary" to="/app/plans/new">Create a plan</Link></div>
-    <p>Set your move-out deadline, add items, arrange pickups, and follow your clearance progress. Choose a plan to manage its inventory.</p>
-    <LoadState request={request} />
-    {request.data?.plans.length === 0 && <section className="plan-panel">
-      <h2>Your next move starts here</h2><p>You have no move-out plans yet. Create a plan now; you can start before adding any items.</p>
-      <Link to="/app/plans/new">Create your first plan</Link>
-    </section>}
-    {request.data?.plans.length > 0 && <ul className="plans-grid">
-      {request.data.plans.map(plan => <li className="plan-panel" key={plan.id}>
-        <h2><Link to={`/app/plans/${plan.id}`}>{heading(plan)}</Link></h2>
-        <p>{plan.neighborhood}, {plan.city}</p>
-        <p>Move out by <time dateTime={plan.moveOutDeadline}>{formatDeadline(plan.moveOutDeadline)}</time></p>
-        <span className="plan-status">{statusLabels[plan.status]}</span>
-        <p><Link to={`/app/plans/${plan.id}/items`}>Manage items &amp; clearance progress</Link></p>
-      </li>)}
+    <PageHeader title="My move-out plans" description="Choose a plan to manage items and pickups."
+      action={request.data?.plans.length > 0 && <Link className="ui-button" to="/app/plans/new">Create a plan</Link>} />
+    {request.loading && <Feedback>Loading your plans…</Feedback>}
+    {request.error && <Feedback error><p>{request.error.message}</p><button className="ui-button ui-button--secondary" onClick={request.retry}>Retry</button></Feedback>}
+    {request.data?.plans.length === 0 && <Surface className="ui-empty" aria-labelledby="plans-empty-title">
+      <h2 id="plans-empty-title">No plans yet</h2><p>You have no move-out plans yet. Set a deadline and location. Add items when you’re ready.</p>
+      <Link className="ui-button" to="/app/plans/new">Create your first plan</Link>
+    </Surface>}
+    {request.data?.plans.length > 0 && <ul className="ui-plan-list" aria-label="Move-out plans">
+      {request.data.plans.map(plan => <Surface as="li" className="ui-plan-card" key={plan.id}>
+        <div className="ui-plan-card-header"><h2><Link to={`/app/plans/${plan.id}`}>{heading(plan)}</Link></h2>
+          <span className="ui-status">{statusLabels[plan.status]}</span></div>
+        <p className="ui-plan-location">{plan.neighborhood}, {plan.city}</p>
+        <p className="ui-plan-deadline">Move out by <time dateTime={plan.moveOutDeadline}>{formatDeadline(plan.moveOutDeadline)}</time></p>
+        <Link className="ui-button ui-button--secondary" to={`/app/plans/${plan.id}/items`}>Manage items &amp; clearance progress</Link>
+      </Surface>)}
     </ul>}
   </main>;
 }

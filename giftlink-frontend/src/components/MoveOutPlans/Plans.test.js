@@ -55,6 +55,7 @@ test('dashboard shows loading and an empty state linking directly to creation', 
   expect(await screen.findByText('Loading your plans…')).toBeInTheDocument();
   await act(async () => pending.resolve(reply(200, { plans: [] })));
   expect(await screen.findByText(/You have no move-out plans yet/)).toBeInTheDocument();
+  expect(screen.getAllByRole('link').filter(link => link.getAttribute('href') === '/app/plans/new')).toHaveLength(1);
   fireEvent.click(screen.getByRole('link', { name: 'Create your first plan' }));
   expect(await screen.findByRole('heading', { name: 'Create move-out plan' })).toBeInTheDocument();
   expect(screen.getAllByRole('textbox')).toHaveLength(3);
@@ -73,6 +74,8 @@ test('dashboard request failures offer a working retry', async () => {
   fetch.mockResolvedValueOnce(reply(500, { error: { message: 'Could not load plans' } })).mockResolvedValueOnce(reply(200, { plans: [] }));
   mount();
   expect(await screen.findByRole('alert')).toHaveTextContent('Could not load plans');
+  expect(screen.queryByRole('heading', { name: 'No plans yet' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Create your first plan' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(await screen.findByText(/You have no move-out plans yet/)).toBeInTheDocument();
 });
