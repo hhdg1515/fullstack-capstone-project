@@ -699,5 +699,5 @@ No client-side download-all filtering, GPS, paid geography or image upload exist
 
 [Audit, before/after evidence, dependency order and verification limits](docs/milestone-6.4c-discovery.md)
 distinguish isolated local/CI checks from hosted or production readiness. Review
-order is **#49 → #50 → #51 → #52 (coverage) → #53 (layout) → cards/states PR**.
+order is **#49 → #50 → #51 → #52 (coverage) → #53 (layout) → #54 (cards/states)**.
 Nothing is merged or deployed automatically.

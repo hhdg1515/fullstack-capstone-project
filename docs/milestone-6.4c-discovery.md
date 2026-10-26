@@ -8,7 +8,7 @@ Verified before implementation: PR #51 is open at
 `902bfcd79804d90f58c6ce3ae7bd1a9c399e8616`. No prerequisite was merged
 or changed. Start here, not on main.
 
-Dependency/merge order: **#49 → #50 → #51 → #52 (coverage) → #53 (layout) → cards/states/browser evidence**. Each new branch targets its direct
+Dependency/merge order: **#49 → #50 → #51 → #52 (coverage) → #53 (layout) → #54 (cards/states/browser evidence)**. Each new branch targets its direct
 predecessor. Retarget dependents to main only after prerequisites merge; never
 merge or deploy automatically.
 
@@ -90,8 +90,8 @@ Region changes drop city/neighborhood/cursor and retain compatible filters/sort.
 Clear filters retains region. Exact counts are separate from the page heading and
 are omitted during loading/failure rather than invented.
 
-Layout-stage verification: 283 frontend tests (final focused discovery rerun:
-46), strict build, four local discovery/accessibility browser scenarios, and
+Layout-stage verification: 284 frontend tests (final focused discovery rerun:
+47), strict build, four local discovery/accessibility browser scenarios, and
 12 final local screenshot/axe samples passed. All samples had no A/AA findings,
 overflow or server errors. Visual review prompted narrower-screen progressive
 filters rather than showing all controls at once. The six retained layout images
@@ -148,8 +148,11 @@ Additional samples: [768px tablet](assets/milestone-6.4c/after-reflow-tablet.png
 
 ## Verification and remaining limits
 
-Final local backend **303 tests**, frontend **291 tests / 17 suites**, and strict
-production build pass. Geographic source verification checks the pinned full-file
+Final local backend **303 tests**, frontend **291 tests / 17 suites**, **56 policy
+tests**, **28 isolated HTTPS browser scenarios**, backend lint, strict production
+build, actionlint and whitespace checks pass. All original 26 browser scenarios
+remain. Fifteen final screenshot/axe samples had zero A/AA violations, overflow
+or server errors (12 before samples also had zero findings). Geographic source verification checks the pinned full-file
 hash and all 50 extracted properties. Existing integration coverage still checks
 exact counts, both sorts/cursors, reservations, owner privacy, legacy records,
 time windows, classifications and synonyms. The added strictly local browser
@@ -173,3 +176,19 @@ running deployment, inventory plan references and browser preferences: plans
 assigned new IDs must not be silently reassigned. Coordinate frontend/backend
 versions and preserve published records/owner correction paths. A merge does not
 authorize deployment or remote preparation.
+
+
+## Reviewable stack
+
+| PR | Branch | Base | Scope |
+| --- | --- | --- | --- |
+| [#49](https://github.com/hhdg1515/fullstack-capstone-project/pull/49) | `codex/m64b-publication-form` | `main` | 6.4B publication |
+| [#50](https://github.com/hhdg1515/fullstack-capstone-project/pull/50) | `codex/m64b-plan-timezone` | #49 branch | 6.4B timezone |
+| [#51](https://github.com/hhdg1515/fullstack-capstone-project/pull/51) | `codex/m64b-inventory-status` | #50 branch | 6.4B inventory |
+| [#52](https://github.com/hhdg1515/fullstack-capstone-project/pull/52) | `codex/m64c-geographic-coverage` | #51 branch | Verified 50-metro catalog |
+| [#53](https://github.com/hhdg1515/fullstack-capstone-project/pull/53) | `codex/m64c-discovery-layout` | #52 branch | Region/search/filter layout |
+| [#54](https://github.com/hhdg1515/fullstack-capstone-project/pull/54) | `codex/m64c-discovery-cards` | #53 branch | Cards/states/final regression evidence |
+
+Normal CI was manually dispatched on each new branch because its PR trigger
+only targets main. This runs isolated tests, not the hosted E2E or deployment
+workflows. Exact heads/results are linked in each PR. No PR is merged here.
