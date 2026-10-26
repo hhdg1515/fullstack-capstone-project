@@ -308,6 +308,49 @@ describe('two-party pickup lifecycle on verified isolated MongoDB', function () 
         await request(app).get('/api/items/' + item.id).expect(404);
         assert.equal((await get(a)).body.request.item.description, 'Whole box, one pickup.');
     });
+    it('verifies owner-only handoff provenance and clears it when inventory is reopened or manually cleared', async function () {
+        const pending = (await submit().expect(201)).body.request;
+        const accepted = (await act(pending, 'accept').expect(200)).body.request;
+        const list = () => request(app).get('/api/move-out-plans/' + plan.id + '/items').set('Cookie', giver.cookie).expect(200);
+        assert.equal((await list()).body.items[0].isPickedUp, false);
+        assert.equal((await list()).body.items[0].isReserved, true);
+        const service = createPickupService({ connectToDatabase: async () => db, now: () => new Date(Date.parse(accepted.proposedAt) + 1000) });
+        await service.act(new ObjectId(giver.id), accepted.id, { action: 'complete', version: accepted.version });
+        item = (await list()).body.items[0]; assert.equal(item.isPickedUp, true); assert.equal(item.isReserved, false);
+        assert.equal(item.clearedByPickupRequestId, undefined); assert.equal(item.completedHandoffs, undefined);
+        await write(request(app).patch(itemPath())).set('Cookie', giver.cookie).send({ version: item.version, isPickedUp: true }).expect(400);
+        await request(app).get('/api/move-out-plans/' + plan.id + '/items').set('Cookie', receiver.cookie).expect(404);
+        item = (await inventory('reopen').expect(200)).body.item;
+        assert.equal((await list()).body.items[0].isPickedUp, false);
+        item = (await inventory('clear').expect(200)).body.item;
+        assert.equal((await list()).body.items[0].isPickedUp, false);
+        const stored = await db.collection('items').findOne({ _id: new ObjectId(item.id) });
+        assert.equal(stored.clearedByPickupRequestId, undefined);
+        assert.equal((await get(accepted).expect(200)).body.request.status, 'completed');
+    });
+    it('does not claim a pickup for deleted, compromised, unrelated or unmarked historical completion references', async function () {
+        const pending = (await submit().expect(201)).body.request;
+        const accepted = (await act(pending, 'accept').expect(200)).body.request;
+        const service = createPickupService({ connectToDatabase: async () => db, now: () => new Date(Date.parse(accepted.proposedAt) + 1000) });
+        await service.act(new ObjectId(giver.id), accepted.id, { action: 'complete', version: accepted.version });
+        const list = () => request(app).get('/api/move-out-plans/' + plan.id + '/items').set('Cookie', giver.cookie).expect(200);
+        const original = await db.collection('pickupRequests').findOne({ _id: new ObjectId(accepted.id) });
+        assert.equal((await list()).body.items[0].isPickedUp, true);
+        for (const changes of [{ giverId: new ObjectId(other.id) }, { receiverId: new ObjectId(giver.id) }, { planId: new ObjectId() },
+            { itemId: new ObjectId() }, { active: true }, { status: 'cancelled' }, { history: 'corrupt' }]) {
+            await db.collection('pickupRequests').replaceOne({ _id: original._id }, Object.assign({}, original, changes));
+            const response = await list(); assert.equal(response.body.items[0].isPickedUp, false);
+            assert.ok(!JSON.stringify(response.body).includes(receiver.id));
+        }
+        await db.collection('pickupRequests').replaceOne({ _id: original._id }, original);
+        await db.collection('items').updateOne({ _id: new ObjectId(item.id) }, { $unset: { clearedByPickupRequestId: '' } });
+        const before = await db.collection('items').findOne({ _id: new ObjectId(item.id) });
+        assert.equal((await list()).body.items[0].isPickedUp, false);
+        assert.deepEqual(await db.collection('items').findOne({ _id: before._id }), before);
+        await db.collection('items').updateOne({ _id: before._id }, { $set: { clearedByPickupRequestId: original._id } });
+        await db.collection('pickupRequests').deleteOne({ _id: original._id });
+        assert.equal((await list()).body.items[0].isPickedUp, false);
+    });
     it('records a no-show only after the appointment, releasing the reservation without clearing or transferring it', async function () {
         const a = (await submit()).body.request; const b = (await submit({}, other)).body.request;
         await act(a, 'accept').expect(200);

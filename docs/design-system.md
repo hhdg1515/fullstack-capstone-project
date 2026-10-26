@@ -103,6 +103,11 @@ pixel-perfect snapshot tests with dates, IDs or dynamic font rendering.
 
 ## Adoption and rollback
 
+Milestone 6.4B extends this vocabulary to plan create/edit, item forms and owner
+inventory; see its [scope, status meanings and evidence](milestone-6.4b-listing-inventory.md).
+Posted/Reserved/Picked Up/Hidden/Cleared are presentation labels derived from
+backend publication/reservation/completion data, never CSS-only business states.
+
 First foundation PR adds definitions/primitives/docs only. Second dependent PR
 adopts Login and My Plans, with before/after evidence and regression coverage.
 Other pages keep their existing local/Bootstrap CSS until a focused phase adopts

@@ -1,7 +1,7 @@
 const { ObjectId } = require('mongodb');
 const { todayUTC } = require('./calendar');
 const { InventoryError } = require('./inventory-error');
-const { invalidateRequests, pickupReservationStages } = require('./pickup-policy');
+const { invalidateRequests, pickupReservationStages, originalParticipants } = require('./pickup-policy');
 const { regionResponse } = require('./regions');
 const { classificationResponse, classificationChanges } = require('./item-taxonomy');
 const notFound = () => new InventoryError(404, 'ITEM_NOT_FOUND', 'Item or plan not found');
@@ -52,7 +52,17 @@ async function planTransaction(db, ownerId, planId, operation) {
         throw error;
     } finally { await session.endSession(); }
 }
-function itemResponse(item, plan, privateResponse = true, isReserved = null) {
+function completedHandoff(item, plan) {
+    const row = item.completedHandoffs && item.completedHandoffs[0];
+    return Boolean(item.status === 'cleared' && item.clearedByPickupRequestId instanceof ObjectId && row &&
+        originalParticipants(Object.assign({}, row, { history: [row.firstEvent] })) &&
+        row._id.equals(item.clearedByPickupRequestId) && row.itemId.equals(item._id) && row.planId.equals(plan._id) && row.giverId.equals(plan.ownerId) &&
+        row.status === 'completed' && row.active === false && row.completedAt instanceof Date &&
+        row.lastEvent && row.lastEvent.action === 'completed' && row.lastEvent.actorRole === 'giver' &&
+        row.lastEvent.actorId instanceof ObjectId && row.lastEvent.actorId.equals(plan.ownerId) &&
+        row.lastEvent.at instanceof Date && row.lastEvent.at.getTime() === row.completedAt.getTime());
+}
+function itemResponse(item, plan, privateResponse = true, isReserved = null, isPickedUp = null) {
     const result = { id: item._id.toString(), name: item.name, description: item.description, category: item.category, classification: classificationResponse(item),
         status: effectiveStatus(item, plan), availableFrom: item.availableFrom, availableUntil: item.availableUntil,
         effectiveAvailableUntil: endDate(item, plan), city: plan.city, neighborhood: plan.neighborhood,
@@ -62,6 +72,7 @@ function itemResponse(item, plan, privateResponse = true, isReserved = null) {
         createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString(),
         isPublic: effectiveStatus(item, plan) === 'available' && plan.status === 'active' && Boolean(item.publishedAt) });
     if (privateResponse && typeof isReserved === 'boolean') result.isReserved = isReserved;
+    if (privateResponse && typeof isPickedUp === 'boolean') result.isPickedUp = isPickedUp;
     return result;
 }
 function createInventoryService({ connectToDatabase }) {
@@ -72,11 +83,18 @@ function createInventoryService({ connectToDatabase }) {
             { $lookup: { from: 'items', let: { parent: '$_id', owner: '$ownerId' }, pipeline: [
                 { $match: { $expr: { $and: [{ $eq: ['$planId', '$$parent'] }, { $eq: ['$ownerId', '$$owner'] }] } } },
                 { $sort: { createdAt: 1, _id: 1 } }
-            ].concat(pickupReservationStages()), as: 'items' } }
+            ].concat(pickupReservationStages(), [
+                { $lookup: { from: 'pickupRequests', let: { reference: '$clearedByPickupRequestId' }, pipeline: [
+                    { $match: { $expr: { $eq: ['$_id', '$$reference'] } } },
+                    { $project: { itemId: 1, planId: 1, giverId: 1, receiverId: 1, status: 1, active: 1, completedAt: 1,
+                        firstEvent: { $arrayElemAt: [{ $cond: [{ $isArray: '$history' }, '$history', []] }, 0] },
+                        lastEvent: { $arrayElemAt: [{ $cond: [{ $isArray: '$history' }, '$history', []] }, -1] } } }
+                ], as: 'completedHandoffs' } }
+            ]), as: 'items' } }
         ], { readConcern: { level: 'snapshot' }, collation: { locale: 'simple' } }).toArray();
         const plan = rows[0];
         if (!plan) throw notFound();
-        const items = plan.items.map(item => itemResponse(item, plan, true, item.isReserved));
+        const items = plan.items.map(item => itemResponse(item, plan, true, item.isReserved, completedHandoff(item, plan)));
         return { items, plan: Object.assign({ id: plan._id.toString(), title: plan.title, city: plan.city, neighborhood: plan.neighborhood,
             moveOutDeadline: plan.moveOutDeadline, status: plan.status, pickupTimeZone: plan.pickupTimeZone || null }, regionResponse(plan)),
             progress: { total: items.length, cleared: items.filter(item => item.status === 'cleared').length } };
@@ -124,8 +142,8 @@ function createInventoryService({ connectToDatabase }) {
                     item.publicationRequirementsVersion = 1;
                     item.status = 'available'; item.publishedAt = item.publishedAt || new Date();
                 } else if (transition === 'unlist' && ['available', 'expired'].includes(status)) item.status = 'unlisted';
-                else if (transition === 'clear' && status !== 'cleared') item.status = 'cleared';
-                else if (transition === 'reopen' && status === 'cleared') { validateDates(item, plan, true, existing); item.status = 'draft'; }
+                else if (transition === 'clear' && status !== 'cleared') { item.status = 'cleared'; delete item.clearedByPickupRequestId; }
+                else if (transition === 'reopen' && status === 'cleared') { validateDates(item, plan, true, existing); item.status = 'draft'; delete item.clearedByPickupRequestId; }
                 else throw new InventoryError(409, 'INVALID_TRANSITION', 'This action is unavailable for the current item state. Reload the inventory.');
             } else {
                 if (item.status === 'available') {

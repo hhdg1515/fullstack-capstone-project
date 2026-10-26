@@ -4,6 +4,7 @@ import { useUnsavedForm } from '../../forms/UnsavedChanges';
 import useFormErrors from '../../forms/useFormErrors';
 import usePublicCatalog from '../../api/usePublicCatalog';
 import { Feedback, Surface } from '../../design-system/primitives';
+import { ownerStatus } from './inventoryStatus';
 
 export function availabilityIssues(values, plan, publishing = false, previous) {
   const issues = {};
@@ -67,7 +68,7 @@ export default function ItemForm({ plan, item, onSave, onCancel, disabled, focus
     finally { inFlight.current = false; setBusy(false); }
   };
   return <Surface as="form" ref={validation.formRef} className="inventory-form" onSubmit={event => { event.preventDefault(); submit(false); }} noValidate aria-busy={busy}>
-    <h2>{item ? 'Edit ' + item.name : 'Add an item or group'}</h2>
+    <div className="inventory-card-heading"><h2>{item ? 'Edit ' + item.name : 'Add an item or group'}</h2>{item && <span className="ui-status">{ownerStatus(item)}</span>}</div>
     <p className="inventory-form-help">To publish, add a name, category, item type and description. Save a draft with just a name.</p>
     <fieldset disabled={busy || disabled}>
       <legend className="visually-hidden">Item details</legend>

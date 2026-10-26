@@ -34,3 +34,15 @@
 .inventory-classification { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: 0 var(--ui-space-4); }
 .inventory-form .ui-field { margin-block: var(--ui-space-4); }
 @media (max-width: 420px) { .ui-page .inventory-form { padding: var(--ui-space-4); } }
+
+.inventory-list { display: grid; gap: var(--ui-space-4); }
+.inventory-card { display: grid; gap: var(--ui-space-3); }
+.inventory-card > p { margin: 0; }
+.inventory-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--ui-space-3); }
+.inventory-card-heading h2 { min-width: 0; flex: 1; }
+.inventory-card-heading .ui-status { flex-shrink: 0; }
+.inventory-filter { max-width: 22rem; }
+.inventory-more { border-top: 1px solid var(--ui-border); padding-top: var(--ui-space-2); }
+.inventory-more summary { cursor: pointer; min-height: var(--ui-control-height); padding-block: var(--ui-space-2); color: var(--ui-primary); }
+.inventory-more p { color: var(--ui-muted); margin-block: var(--ui-space-3); }
+@media (max-width: 420px) { .inventory-actions { align-items: stretch; } .inventory-actions .ui-button { flex: 1 1 auto; } }

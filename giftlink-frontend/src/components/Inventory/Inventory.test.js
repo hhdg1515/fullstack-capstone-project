@@ -65,13 +65,13 @@ test('populated plans put existing items first and preserve a temporarily collap
   const section = screen.getByRole('region', { name: 'Inventory items' });
   expect(section.compareDocumentPosition(screen.getByLabelText('Item name')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
-test.each([null, 'UTC', undefined])('pickup setup uses the server value %s without treating absent metadata as configured', async zone => {
+test.each([null, 'UTC', undefined, 'Not/A_Zone'])('pickup setup uses the server value %s without treating absent metadata as configured', async zone => {
   data = { ...inventory([]), plan: { ...plan, pickupTimeZone: zone } }; mount(); await formReady();
   if (zone === null) {
     expect(screen.getByRole('link', { name: 'Set pickup timezone' })).toHaveAttribute('href', `/app/plans/${plan.id}/edit`);
     expect(screen.getByText(/still save drafts and publish/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled();
-  } else if (zone === undefined) expect(screen.getByRole('link', { name: 'Check pickup setup' })).toBeInTheDocument();
+  } else if (zone === undefined || zone === 'Not/A_Zone') expect(screen.getByRole('link', { name: 'Check pickup setup' })).toBeInTheDocument();
   else expect(screen.queryByRole('link', { name: /pickup (timezone|setup)/ })).not.toBeInTheDocument();
 });
 test('quick entry adds multiple grouped belongings in the same plan and focuses the next name', async () => {
@@ -120,28 +120,29 @@ test('client rejects invalid availability ranges and empty names without sending
 });
 test.each(['available', 'expired'])('reservation metadata stays distinct from %s publication state and clearance progress', async status => {
   data = inventory([{ ...item, status, isReserved: true }]); mount(); await formReady();
-  expect(screen.getByText('Pickup arranged')).toBeInTheDocument();
+  expect(screen.getByText(/Pickup arranged/)).toBeInTheDocument();
   expect(screen.getByText('0 of 1 items cleared')).toBeInTheDocument();
-  expect(screen.getAllByText(status === 'available' ? 'Published' : 'Expired').length).toBeGreaterThan(0);
+  expect(screen.getAllByText(status === 'available' ? 'Reserved' : 'Expired').length).toBeGreaterThan(0);
 });
 test('all five item states, availability and real clearance progress remain distinguishable', async () => {
-  data = inventory(['draft', 'available', 'unlisted', 'cleared', 'expired'].map((status, index) => ({ ...item, id: String(index), name: `${status} item`, status })));
+  data = inventory(['draft', 'available', 'unlisted', 'cleared', 'expired'].map((status, index) => ({ ...item, id: String(index), name: `${status} item`, status, isPublic: status === 'available' })));
   mount(); await formReady();
   expect(screen.getByText('1 of 5 items cleared')).toBeInTheDocument();
-  for (const label of ['Draft', 'Published', 'Unlisted', 'Cleared', 'Expired']) expect(screen.getAllByText(label).length).toBeGreaterThan(0);
-  fireEvent.change(screen.getByLabelText('Show items'), { target: { value: 'unlisted' } });
+  for (const label of ['Draft', 'Posted', 'Hidden', 'Cleared', 'Expired']) expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+  fireEvent.change(screen.getByLabelText('Show items'), { target: { value: 'Hidden' } });
   expect(screen.getByRole('heading', { name: 'unlisted item' })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'cleared item' })).not.toBeInTheDocument();
 });
-test.each([['available', 'Unlist', 'unlist', 'unlisted'], ['unlisted', 'Relist', 'publish', 'available'],
+test.each([['available', 'Hide', 'unlist', 'unlisted'], ['unlisted', 'Publish', 'publish', 'available'],
   ['unlisted', 'Mark', 'clear', 'cleared'], ['cleared', 'Reopen', 'reopen', 'draft']])('%s owner action confirms intent and uses the current item version', async (initial, label, action, next) => {
-  data = inventory([{ ...item, status: initial, version: 7 }]);
+  data = inventory([{ ...item, status: initial, version: 7, description: 'A household item.', classification: { category: { id: 'other-household' }, itemType: { id: 'other' } } }]);
   handler = async (url, options) => {
     expect(url).toBe(`${root}/${item.id}/actions`); expect(JSON.parse(options.body)).toEqual({ action, version: 7 });
     const updated = { ...item, status: next, version: 8 }; data = inventory([updated]); return reply(200, { item: updated });
   };
   mount(); await formReady();
   const accessibleName = action === 'clear' ? `Mark ${item.name} cleared` : action === 'reopen' ? `Reopen ${item.name} as draft` : `${label} ${item.name}`;
+  if (['clear', 'reopen'].includes(action)) screen.getByText('More actions').closest('details').open = true;
   const button = screen.getByRole('button', { name: accessibleName });
   await act(async () => { fireEvent.click(button); });
   await waitFor(() => expect(data.items[0].version).toBe(8));
@@ -150,12 +151,12 @@ test.each([['available', 'Unlist', 'unlist', 'unlisted'], ['unlisted', 'Relist',
 });
 test('cancelling a consequential action leaves the inventory unchanged', async () => {
   window.confirm.mockReturnValue(false); data = inventory([{ ...item, status: 'available' }]);
-  mount(); await formReady(); fireEvent.click(screen.getByRole('button', { name: `Unlist ${item.name}` }));
+  mount(); await formReady(); fireEvent.click(screen.getByRole('button', { name: `Hide ${item.name}` }));
   expect(fetch.mock.calls.some(([, options]) => options.method === 'POST')).toBe(false);
 });
 test('reopening with a past pickup end is rejected before sending an action or confirming publication', async () => {
   data = inventory([{ ...item, status: 'cleared', availableUntil: date(-1), effectiveAvailableUntil: date(-1) }]);
-  mount(); await formReady();
+  mount(); await formReady(); screen.getByText('More actions').closest('details').open = true;
   fireEvent.click(screen.getByRole('button', { name: `Reopen ${item.name} as draft` }));
   expect(await screen.findByRole('alert')).toHaveTextContent('today or later');
   expect(window.confirm).not.toHaveBeenCalled();
@@ -179,7 +180,7 @@ test('editing and clearing date overrides uses PATCH and preserves the plan asso
 test('stale actions show an error and let the owner reload authoritative state', async () => {
   data = inventory([{ ...item, status: 'available' }]);
   handler = async () => { data = inventory([{ ...item, status: 'cleared', version: 2 }]); return reply(409, { error: { message: 'This item changed. Reload the inventory.' } }); };
-  mount(); await formReady(); fireEvent.click(screen.getByRole('button', { name: `Unlist ${item.name}` }));
+  mount(); await formReady(); fireEvent.click(screen.getByRole('button', { name: `Hide ${item.name}` }));
   expect(await screen.findByRole('alert')).toHaveTextContent('This item changed');
   fireEvent.click(screen.getByRole('button', { name: 'Reload inventory' }));
   expect(await screen.findByText('1 of 1 items cleared')).toBeInTheDocument();
@@ -249,4 +250,23 @@ test('server validation focuses the affected control after the failed save', asy
   expect(screen.getByLabelText('Condition (optional)')).toHaveAccessibleDescription('Choose a listed condition.');
   expect(screen.getByLabelText('Item name')).toHaveValue('Desk');
   expect(screen.getByRole('alert')).not.toHaveTextContent('condition:');
+});
+
+test('only verified handoffs are Picked Up, while manual and unknown clearance remain Cleared', async () => {
+  data = inventory([{ ...item, id: 'done', name: 'Confirmed handoff', status: 'cleared', isPickedUp: true },
+    { ...item, id: 'manual', name: 'Manual clearance', status: 'cleared', isPickedUp: false }]);
+  mount(); await screen.findByRole('heading', { name: 'Confirmed handoff' });
+  expect(screen.getByText('Handoff confirmed in the pickup request.')).toBeInTheDocument();
+  expect(screen.getByText('2 of 2 items cleared')).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Show items'), { target: { value: 'Picked Up' } });
+  expect(screen.queryByRole('heading', { name: 'Manual clearance' })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Show items'), { target: { value: 'Cleared' } });
+  expect(screen.getByRole('heading', { name: 'Manual clearance' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Confirmed handoff' })).not.toBeInTheDocument();
+});
+test('an incomplete draft opens its existing editor instead of posting an invalid publish action', async () => {
+  data = inventory([item]); mount(); await screen.findByRole('heading', { name: item.name });
+  fireEvent.click(screen.getByRole('button', { name: 'Complete ' + item.name + ' for publication' }));
+  expect(screen.getByLabelText('Item name')).toBeVisible(); expect(screen.getByLabelText('Item name')).toHaveValue(item.name);
+  expect(fetch.mock.calls.some(([, options]) => options.method !== 'GET')).toBe(false);
 });
