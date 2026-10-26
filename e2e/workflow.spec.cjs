@@ -163,7 +163,7 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     for (let i = 0; i < itemIds.length; i++) {
       if (i) await b.goto('/app/items/' + itemIds[i] + '/request');
       await b.getByLabel('Pickup date and time', { exact: true }).fill(localTime); await b.getByRole('button', { name: 'Send pickup request', exact: true }).click();
-      await b.getByText('Awaiting giver decision', { exact: true }).first().waitFor(); requestIds.push(b.url().split('/').pop());
+      await b.getByText('Pending', { exact: true }).first().waitFor(); requestIds.push(b.url().split('/').pop());
       const privateResponse = await read(receiver, deployment.origin + '/api/pickup-requests/' + requestIds[i]);
       must((await privateResponse.json()).request.status === 'pending', 'Request was automatically reserved');
     }
@@ -173,7 +173,7 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     for (let i = 0; i < requestIds.length; i++) {
       await primary(a, 'Give Away'); await a.getByRole('navigation', { name: 'Give Away', exact: true }).getByRole('link', { name: 'Incoming requests', exact: true }).click();
       await a.locator(`a[href="/app/pickups/${requestIds[i]}"]`).click(); await a.getByRole('button', { name: 'Accept pickup', exact: true }).click();
-      await a.getByText('Accepted appointment', { exact: true }).first().waitFor();
+      await a.getByText('Accepted', { exact: true }).first().waitFor();
     }
     await test.step('Three pending requests explicitly accepted by giver', async () => {});
     await b.goto('/app/items/' + itemIds[0]);
@@ -196,11 +196,11 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     } else {
       while (Date.now() <= appointment + 1000) await new Promise(resolve => setTimeout(resolve, Math.min(1000, appointment + 1001 - Date.now())));
     }
-    await a.goto('/app/pickups/' + requestIds[0]); await a.getByRole('button', { name: 'Confirm handoff', exact: true }).click(); await a.getByText('Handed over', { exact: true }).first().waitFor();
-    await b.goto('/app/pickups/' + requestIds[0]); await b.getByText('Handed over', { exact: true }).first().waitFor();
+    await a.goto('/app/pickups/' + requestIds[0]); await a.getByRole('button', { name: 'Confirm handoff', exact: true }).click(); await a.getByText('Completed', { exact: true }).first().waitFor();
+    await b.goto('/app/pickups/' + requestIds[0]); await b.getByText('Completed', { exact: true }).first().waitFor();
     must((await read(receiver, deployment.origin + '/api/items/' + itemIds[0])).status() === 404, 'Cleared item remained public');
     const planRow = await deployment.db.collection('moveOutPlans').findOne({ ownerId: userA._id }); await a.goto('/app/plans/' + planRow._id + '/items'); await expect(a.getByText('1 of 3 items cleared', { exact: true })).toBeVisible();
-    await a.goto('/app/pickups/' + requestIds[2]); await a.getByRole('button', { name: 'Record no-show', exact: true }).click(); await a.getByText('Receiver did not arrive', { exact: true }).first().waitFor();
+    await a.goto('/app/pickups/' + requestIds[2]); await a.getByRole('button', { name: 'Record no-show', exact: true }).click(); await a.getByText('No-show', { exact: true }).first().waitFor();
     const noShowListing = await read(receiver, deployment.origin + '/api/items/' + itemIds[2]);
     must(noShowListing.status() === 200 && (await noShowListing.json()).item.isReserved === false, 'No-show did not release public availability');
     const laterTime = Temporal.Instant.fromEpochMilliseconds(deployment.now() + 86400000).toZonedDateTimeISO('America/Los_Angeles').toPlainDateTime().toString({ smallestUnit: 'minute' });

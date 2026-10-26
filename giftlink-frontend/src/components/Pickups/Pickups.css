@@ -6,3 +6,23 @@
 @media (max-width: 600px) { .pickup-page .plan-actions { flex-direction: column; align-items: stretch; } }
 .pickup-scheduling .plan-form { max-width: none; }
 .pickup-scheduling input { min-width: 0; }
+/* Explicit adoption; no Bootstrap/global element overrides. */
+.ui-page.pickup-page .pickup-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 24rem), 1fr)); gap: var(--ui-space-4); list-style: none; padding: 0; }
+.pickup-card-heading { display: flex; align-items: flex-start; flex-wrap: wrap; gap: var(--ui-space-3); margin-bottom: var(--ui-space-4); }
+.pickup-card-heading h2 { flex: 1 1 12rem; min-width: 0; }
+.pickup-card-heading .ui-status { flex-shrink: 0; }
+.pickup-filter { max-width: 24rem; }
+.pickup-actions { display: flex; flex-wrap: wrap; gap: var(--ui-space-3); align-items: center; }
+.pickup-request-card p, .pickup-summary p { margin-block: var(--ui-space-3); }
+.pickup-request-card h2 a { display: block; min-height: var(--ui-control-height); }
+.ui-page.pickup-page .pickup-request-details { margin-top: var(--ui-space-4); }
+.pickup-request-details summary { cursor: pointer; font-weight: 600; min-height: var(--ui-control-height); padding-block: var(--ui-space-2); color: var(--ui-primary); }
+.pickup-appointment { margin-block: var(--ui-space-4); }
+.pickup-help { color: var(--ui-muted); font-size: var(--ui-text-small); }
+.pickup-back { display: inline-flex; align-items: center; min-height: var(--ui-control-height); }
+.pickup-summary, .pickup-arrangement, .pickup-secondary { margin-bottom: var(--ui-space-4); }
+.pickup-request-form { max-width: 42rem; margin-block: var(--ui-space-4); }
+.pickup-request-form fieldset { min-width: 0; }
+.pickup-request-form small { color: var(--ui-muted); }
+#conversation-heading { scroll-margin-top: var(--ui-space-6); }
+@media (max-width: 420px) { .pickup-actions .ui-button { flex: 1 1 auto; } }
