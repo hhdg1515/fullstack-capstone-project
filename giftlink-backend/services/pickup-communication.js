@@ -8,6 +8,31 @@ const invalidQuery = () => new InventoryError(400, 'INVALID_MESSAGE_QUERY', 'Use
 const scoped = (id, userId) => ({ _id: new ObjectId(id), $or: [{ giverId: userId }, { receiverId: userId }] });
 const messageResponse = (message, row) => ({ id: message._id.toString(), sender: message.senderId.equals(row.giverId) ? 'giver' : 'receiver',
     text: message.text, createdAt: message.createdAt.toISOString() });
+const messageWindows = [{ name: 'minute', ms: 60000, limit: 30 }, { name: 'hour', ms: 3600000, limit: 300 }];
+
+// Two constant-size counters on the existing account, shared across requests,
+// sessions and warm instances. MongoDB's clock prevents instance clock skew.
+// This reservation and the message must commit or abort together.
+async function reserveMessage(db, userId, session) {
+    const path = window => '$pickupMessageQuota.' + window.name;
+    const active = window => ({ $gt: [path(window) + '.expiresAt', '$$NOW'] });
+    const used = window => ({ $cond: [active(window), { $ifNull: [path(window) + '.count', 0] }, 0] });
+    const quota = {};
+    for (const window of messageWindows) quota[window.name] = {
+        count: { $add: [used(window), 1] },
+        expiresAt: { $cond: [active(window), path(window) + '.expiresAt', { $add: ['$$NOW', window.ms] }] }
+    };
+    const account = await db.collection('users').findOneAndUpdate({ _id: userId,
+        $expr: { $and: messageWindows.map(window => ({ $lt: [used(window), window.limit] })) }
+    }, [{ $set: { pickupMessageQuota: quota } }], { session, returnDocument: 'after', projection: { _id: 1 } });
+    if (account) return;
+    const delay = await db.collection('users').aggregate([{ $match: { _id: userId } }, { $project: { _id: 0,
+        seconds: { $max: messageWindows.map(window => ({ $cond: [{ $gte: [used(window), window.limit] },
+            { $ceil: { $divide: [{ $subtract: [path(window) + '.expiresAt', '$$NOW'] }, 1000] } }, 0] })) }
+    } }], { session }).next();
+    const retryAfterSeconds = Math.max(1, Math.min(3600, delay && delay.seconds || 1));
+    throw new InventoryError(429, 'MESSAGE_QUOTA_EXCEEDED', 'Message limit reached. Your message was not sent. Try again later.', { retryAfterSeconds });
+}
 
 function messageQuery(query, requestId) {
     if (Object.keys(query).some(key => !['limit', 'before'].includes(key)) ||
@@ -53,6 +78,7 @@ function createPickupCommunicationService({ connectToDatabase, now = () => new D
                 { readConcern: { level: 'snapshot' }, readPreference: 'primary' });
         } catch (error) {
             if (error.code === 20) throw new InventoryError(503, 'TRANSACTIONS_REQUIRED', 'Pickup conversations require a MongoDB replica set.');
+            if (error.code === 50) throw new InventoryError(503, 'CONVERSATION_BUSY', 'Conversation history is busy. Wait and refresh.');
             throw error;
         } finally { await session.endSession(); }
     }
@@ -69,7 +95,8 @@ function createPickupCommunicationService({ connectToDatabase, now = () => new D
             const row = context.row; const paging = messageQuery(query, row._id);
             const filter = { requestId: row._id, senderId: { $in: [row.giverId, row.receiverId] } };
             if (paging.before) filter.$or = [{ createdAt: { $lt: paging.before.at } }, { createdAt: paging.before.at, _id: { $lt: paging.before.id } }];
-            const rows = await db.collection('pickupMessages').find(filter, { session }).sort({ createdAt: -1, _id: -1 }).limit(paging.limit + 1).toArray();
+            const rows = await db.collection('pickupMessages').find(filter, { session, maxTimeMS: 5000,
+                projection: { _id: 1, senderId: 1, text: 1, createdAt: 1 } }).sort({ createdAt: -1, _id: -1 }).limit(paging.limit + 1).toArray();
             const selected = rows.slice(0, paging.limit); const oldest = selected[selected.length - 1];
             const nextCursor = rows.length > paging.limit ? Buffer.from(JSON.stringify({ requestId: row._id.toString(),
                 at: oldest.createdAt.toISOString(), id: oldest._id.toString() })).toString('base64url') : null;
@@ -86,6 +113,7 @@ function createPickupCommunicationService({ connectToDatabase, now = () => new D
             return await planTransaction(db, original.giverId, original.planId.toString(), async (plan, session) => {
                 const context = await authorize(db, userId, id, session, true);
                 if (!context.row.planId.equals(plan._id) || !context.row.giverId.equals(plan.ownerId)) throw unavailable();
+                await reserveMessage(db, userId, session);
                 const message = { _id: new ObjectId(), requestId: context.row._id, senderId: userId, text, createdAt: now() };
                 await db.collection('pickupMessages').insertOne(message, { session });
                 return { message: messageResponse(message, context.row) };

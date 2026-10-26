@@ -22,7 +22,11 @@ function createPickupCommunicationRoutes({ connectToDatabase, now, messageLimit 
         .isLength({ min: 1, max: 2000 }).withMessage('Use 1 to 2000 characters.').bail()
         .not().matches(/[<>\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/).withMessage('Use plain text without markup or control characters.')]),
     async (req, res, next) => {
-        try { res.status(201).json(await service.send(req.user._id, req.params.requestId, req.body.text)); } catch (error) { next(error); }
+        try { res.status(201).json(await service.send(req.user._id, req.params.requestId, req.body.text)); }
+        catch (error) {
+            if (error.code === 'MESSAGE_QUOTA_EXCEEDED') res.set('Retry-After', String(error.details.retryAfterSeconds));
+            next(error);
+        }
     });
     return router;
 }

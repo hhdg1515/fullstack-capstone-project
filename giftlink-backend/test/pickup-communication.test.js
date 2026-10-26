@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const request = require('supertest');
-const { ObjectId } = require('mongodb');
+const { ObjectId, MongoServerError } = require('mongodb');
 const pino = require('pino');
 const createApp = require('../app');
 const { createIsolatedMongo } = require('./helpers/isolated-mongo');
@@ -39,6 +39,11 @@ describe('private pickup communication on verified isolated MongoDB', function (
         assert.equal(await db.collection('pickupMessages').countDocuments({ requestId: before._id }), messages.length);
     };
     const build = (options = {}) => createApp(Object.assign({ connectToDatabase: async () => db, pickupNow: () => new Date(clock), logger: pino({ level: 'silent' }) }, options));
+    const setQuota = async (minute, hour, minuteMs = 60000, hourMs = 3600000) => db.collection('users').updateOne({ _id: new ObjectId(receiver.id) },
+        [{ $set: { pickupMessageQuota: { minute: { count: minute, expiresAt: { $add: ['$$NOW', minuteMs] } },
+            hour: { count: hour, expiresAt: { $add: ['$$NOW', hourMs] } } } } }]);
+    const quota = async (user = receiver) => (await db.collection('users').findOne({ _id: new ObjectId(user.id) })).pickupMessageQuota;
+    const sendVia = (instance, text = 'Coordination', id = pickup.id) => write(request(instance).post(root(id) + '/messages')).set('Cookie', receiver.cookie).send({ text });
     before(async function () {
         isolated = await createIsolatedMongo(); db = isolated.db; await prepareDatabaseIndexes(db);
         app = build();
@@ -51,6 +56,7 @@ describe('private pickup communication on verified isolated MongoDB', function (
     after(async function () { if (isolated) await isolated.close(); });
     beforeEach(async function () {
         clock = new Date(); app = build();
+        await db.collection('users').updateMany({}, { $unset: { pickupMessageQuota: '' } });
         for (const name of ['pickupMessages', 'pickupRequests', 'items', 'moveOutPlans']) await db.collection(name).deleteMany({});
         plan = (await write(request(app).post('/api/move-out-plans')).set('Cookie', giver.cookie)
             .send({ title: 'Private plan title', city: 'Oakland', neighborhood: 'Temescal', moveOutDeadline: day(30), pickupTimeZone: 'UTC' }).expect(201)).body.plan;
@@ -170,6 +176,128 @@ describe('private pickup communication on verified isolated MongoDB', function (
         assert.equal((await send().expect(429)).body.error.code, 'MESSAGE_RATE_LIMIT');
         await send(undefined, giver).expect(201); await get('/messages').expect(200);
         assert.equal(await db.collection('pickupMessages').countDocuments(), 3);
+    });
+    it('enforces one message budget across independent application instances', async function () {
+        for (let i = 0; i < 30; i++) await send({ text: 'Coordination ' + i }).expect(201);
+        app = build(); // A new warm instance has an independent memory limiter.
+        assert.equal((await send().expect(429)).body.error.code, 'MESSAGE_QUOTA_EXCEEDED');
+        assert.equal(await db.collection('pickupMessages').countDocuments(), 30);
+    });
+    it('shares the account budget across conversations and sessions without blocking the other participant', async function () {
+        const nextItem = (await write(request(app).post('/api/move-out-plans/' + plan.id + '/items')).set('Cookie', giver.cookie)
+            .send({ name: 'Chair', publish: true }).expect(201)).body.item;
+        clock = new Date();
+        const nextRequest = (await write(request(app).post('/api/pickup-requests')).set('Cookie', receiver.cookie)
+            .send({ itemId: nextItem.id, localDateTime: day(1) + 'T13:00', timeZone: 'UTC' }).expect(201)).body.request;
+        await setQuota(29, 29); await send().expect(201);
+        const loggedIn = await write(request(app).post('/api/auth/login')).send({ email: 'receiver@example.test', password: 'isolated-communication-password' }).expect(200);
+        const secondSession = { cookie: loggedIn.headers['set-cookie'][0].split(';')[0] };
+        const limited = await send(undefined, secondSession, nextRequest.id).expect(429);
+        assert.equal(limited.body.error.code, 'MESSAGE_QUOTA_EXCEEDED');
+        assert.ok(Number(limited.headers['retry-after']) > 0 && Number(limited.headers['retry-after']) <= 60);
+        assert.equal(limited.body.error.retryAfterSeconds, Number(limited.headers['retry-after']));
+        await send(undefined, giver, nextRequest.id).expect(201); await get('/messages').expect(200);
+        assert.equal((await quota()).minute.count, 30); assert.equal((await quota(giver)).minute.count, 1);
+    });
+    it('enforces the longer budget after a minute reset and restores capacity only when its window expires', async function () {
+        await setQuota(30, 299, -1);
+        await send().expect(201); assert.equal((await quota()).minute.count, 1); assert.equal((await quota()).hour.count, 300);
+        const before = await quota(); const planBefore = await db.collection('moveOutPlans').findOne({ _id: new ObjectId(plan.id) });
+        const limited = await send().expect(429);
+        assert.ok(Number(limited.headers['retry-after']) > 60 && Number(limited.headers['retry-after']) <= 3600);
+        assert.deepEqual(await quota(), before); assert.deepEqual(await db.collection('moveOutPlans').findOne({ _id: planBefore._id }), planBefore);
+        await setQuota(30, 300, -1, -1); await send().expect(201);
+        assert.equal((await quota()).minute.count, 1); assert.equal((await quota()).hour.count, 1);
+    });
+    it('does not reset an exhausted minute when the hour window expires', async function () {
+        await setQuota(30, 300, 60000, -1); const before = await quota();
+        await send().expect(429); assert.deepEqual(await quota(), before);
+        assert.equal(await db.collection('pickupMessages').countDocuments(), 0);
+    });
+    it('reserves only the remaining capacity across concurrent instances and different plan transactions', async function () {
+        const nextPlan = (await write(request(app).post('/api/move-out-plans')).set('Cookie', giver.cookie)
+            .send({ city: 'Oakland', neighborhood: 'Temescal', moveOutDeadline: day(30), pickupTimeZone: 'UTC' }).expect(201)).body.plan;
+        const nextItem = (await write(request(app).post('/api/move-out-plans/' + nextPlan.id + '/items')).set('Cookie', giver.cookie)
+            .send({ name: 'Other plan chair', publish: true }).expect(201)).body.item;
+        clock = new Date();
+        const nextRequest = (await write(request(app).post('/api/pickup-requests')).set('Cookie', receiver.cookie)
+            .send({ itemId: nextItem.id, localDateTime: day(1) + 'T13:00', timeZone: 'UTC' }).expect(201)).body.request;
+        await setQuota(29, 299); const instances = [build({ messageLimit: 1000 }), build({ messageLimit: 1000 })];
+        const plansBefore = await db.collection('moveOutPlans').find({}).toArray();
+        const results = await Promise.all(Array.from({ length: 6 }, (_, i) => sendVia(instances[i % 2], 'Race ' + i, i % 2 ? nextRequest.id : pickup.id)));
+        assert.equal(results.filter(result => result.status === 201).length, 1);
+        assert.equal(results.filter(result => result.status === 429 && result.body.error.code === 'MESSAGE_QUOTA_EXCEEDED').length, 5);
+        assert.equal((await quota()).minute.count, 30); assert.equal((await quota()).hour.count, 300);
+        assert.equal(await db.collection('pickupMessages').countDocuments(), 1);
+        const plansAfter = await db.collection('moveOutPlans').find({}).toArray();
+        assert.equal(plansAfter.reduce((sum, row) => sum + row.inventoryRevision, 0), plansBefore.reduce((sum, row) => sum + row.inventoryRevision, 0) + 1);
+        const histories = await Promise.all([pickup.id, nextRequest.id].map(id => get('/messages', receiver, id).expect(200)));
+        assert.deepEqual(histories.flatMap(result => result.body.messages), results.filter(result => result.status === 201).map(result => result.body.message));
+    });
+    it('does not charge invalid, unauthorized or closed sends and checks authorization before quota disclosure', async function () {
+        await send({ text: '<invalid>' }).expect(400); await send(undefined, stranger).expect(404);
+        assert.equal(await quota(), undefined); assert.equal(await quota(stranger), undefined);
+        await setQuota(30, 300); const before = await quota();
+        await send(undefined, receiver, new ObjectId().toString()).expect(404);
+        await act('decline').expect(200); await send().expect(404);
+        assert.deepEqual(await quota(), before); assert.equal(await db.collection('pickupMessages').countDocuments(), 0);
+    });
+    it('does not trust a function pickup clock or client profile fields to reset message budgets', async function () {
+        app = build({ pickupNow: () => new Date(clock.getTime() + 3600000) });
+        await send().expect(201); const stored = await quota();
+        const dbNow = (await db.command({ hello: 1 })).localTime;
+        assert.ok(Math.abs(stored.minute.expiresAt.getTime() - dbNow.getTime() - 60000) < 5000);
+        await write(request(app).patch('/api/me')).set('Cookie', receiver.cookie).send({ pickupMessageQuota: null }).expect(400);
+        assert.deepEqual(await quota(), stored);
+    });
+    [false, true].forEach(transient => it('rolls quota back with a failed insert' + (transient ? ' and charges once after transaction retry' : ''), async function () {
+        let attempts = 0;
+        const wrapped = { client: db.client, collection: name => name !== 'pickupMessages' ? db.collection(name) : {
+            insertOne: async (message, options) => {
+                attempts++;
+                if (!transient || attempts === 1) {
+                    const error = new MongoServerError({ message: 'private-insert-marker', code: transient ? 112 : 12345 });
+                    if (transient) error.addErrorLabel('TransientTransactionError');
+                    throw error;
+                }
+                return db.collection(name).insertOne(message, options);
+            }
+        } };
+        app = build({ connectToDatabase: async () => wrapped });
+        const result = await send().expect(transient ? 201 : 500);
+        assert.ok(!JSON.stringify(result.body).includes('private-insert-marker'));
+        assert.equal(await db.collection('pickupMessages').countDocuments(), transient ? 1 : 0);
+        assert.equal((await quota()) && (await quota()).minute.count, transient ? 1 : undefined);
+        if (transient) assert.equal(attempts, 2);
+    }));
+    it('keeps explicit repeated POSTs distinct rather than silently dropping matching text', async function () {
+        const first = (await send().expect(201)).body.message, second = (await send().expect(201)).body.message;
+        assert.notEqual(first.id, second.id); assert.equal(first.text, second.text);
+        assert.equal((await quota()).minute.count, 2); assert.equal(await db.collection('pickupMessages').countDocuments(), 2);
+    });
+    it('keeps quota metadata out of account, participant, public and log responses', async function () {
+        const logs = []; app = build({ logger: pino({ level: 'info' }, { write: line => logs.push(line) }) });
+        const before = await db.collection('users').findOne({ _id: new ObjectId(receiver.id) });
+        await send().expect(201); assert.ok(await quota());
+        const after = await db.collection('users').findOne({ _id: before._id }); delete after.pickupMessageQuota;
+        assert.deepEqual(after, before);
+        const responses = await Promise.all([request(app).get('/api/me').set('Cookie', receiver.cookie), get(), get('/messages'), request(app).get('/api/items/' + item.id)]);
+        assert.ok(responses.every(result => result.status === 200));
+        assert.ok(!JSON.stringify(responses.map(result => result.body)).includes('pickupMessageQuota'));
+        assert.ok(!logs.join('').includes('pickupMessageQuota'));
+    });
+    it('bounds history query execution and returns a sanitized busy error without modifying messages', async function () {
+        const original = (await send().expect(201)).body.message; let options;
+        const wrapped = { client: db.client, collection: name => name !== 'pickupMessages' ? db.collection(name) : {
+            find: (filter, config) => { options = config; return { sort() { return this; }, limit() { return this; },
+                toArray: async () => { throw Object.assign(new Error('private-history-query'), { code: 50 }); } }; }
+        } };
+        app = build({ connectToDatabase: async () => wrapped });
+        const result = await get('/messages').expect(503);
+        assert.equal(result.body.error.code, 'CONVERSATION_BUSY'); assert.equal(options.maxTimeMS, 5000);
+        assert.deepEqual(options.projection, { _id: 1, senderId: 1, text: 1, createdAt: 1 });
+        assert.ok(!JSON.stringify(result.body).includes('private-history-query'));
+        app = build(); assert.deepEqual((await get('/messages').expect(200)).body.messages, [original]);
     });
     it('keeps accepted conversations open through the appointment, without changing reservation/version state', async function () {
         const accepted = (await act('accept').expect(200)).body.request;

@@ -12,7 +12,8 @@ const failureText = (failure, sending) => {
   if (failure.status === 403) return 'Access could not be verified. Refresh the conversation; if this continues, sign in again.';
   if (failure.status === 404) return 'This conversation is unavailable. Refresh to check whether the request or your access changed.';
   if (failure.status === 409) return 'The conversation changed. Refresh before sending again.';
-  if (failure.status === 429) return 'Too many requests. Wait a minute, then try again.';
+  if (failure.status === 429) return failure.code === 'MESSAGE_QUOTA_EXCEEDED' ?
+    'Message limit reached. Your text is kept. Try again later.' : 'Too many requests. Wait a minute, then try again.';
   return sending ? 'Sending could not be confirmed. Your text is kept. Refresh and check recent messages before sending it again.' :
     'Could not load messages. Your loaded history and unsent text are kept. Please retry.';
 };

@@ -1,6 +1,7 @@
 const { randomUUID } = require('node:crypto');
 const fs = require('node:fs'); const path = require('node:path');
 const AxeBuilder = require('@axe-core/playwright').default;
+const { ObjectId } = require('../giftlink-backend/node_modules/mongodb');
 const { test: base, expect } = require('./fixtures.cjs');
 const { localEnvironment } = require('./local.cjs');
 // A dedicated local worker keeps this message-heavy case within real rate limits.
@@ -83,6 +84,29 @@ test('participants exchange private text, retain reading position and drafts, th
     await expect(a.getByLabel('Unsent message', { exact: true })).toHaveAttribute('readonly'); await expect(a.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
     fail = false; await a.getByRole('button', { name: 'Refresh conversation', exact: true }).click(); await expect(a.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
     await expect(a.getByLabel('Message', { exact: true })).toHaveValue('Do not lose this draft.'); await expect(history.locator('.chat-message')).toHaveCount(25);
+    // Only this fixture's verified disposable DB is available here. Exhaust the
+    // hour budget without hundreds of synthetic writes or changing remote limits.
+    const me = await (await giver.request.get('/api/me')).json();
+    await deployment.db.collection('users').updateOne({ _id: new ObjectId(me.user.id) }, [{ $set: { pickupMessageQuota: {
+      minute: { count: 0, expiresAt: { $add: ['$$NOW', 60000] } }, hour: { count: 300, expiresAt: { $add: ['$$NOW', 3600000] } }
+    } } }]);
+    let quotaPosts = 0; a.on('request', value => { if (value.method() === 'POST' && value.url().endsWith(endpoint)) quotaPosts++; });
+    const [limited] = await Promise.all([a.waitForResponse(value => value.request().method() === 'POST' && value.url().endsWith(endpoint)),
+      a.getByRole('button', { name: 'Send message', exact: true }).click()]);
+    expect(limited.status()).toBe(429); expect((await limited.json()).error.code).toBe('MESSAGE_QUOTA_EXCEEDED');
+    expect(Number(limited.headers()['retry-after'])).toBeGreaterThan(60);
+    await expect(a.getByRole('alert').filter({ hasText: 'Message limit reached. Your text is kept. Try again later.' })).toBeVisible();
+    await expect(input).toHaveValue('Do not lose this draft.'); expect(quotaPosts).toBe(1);
+    expect(await deployment.db.collection('pickupMessages').countDocuments({ requestId: new ObjectId(request.id) })).toBe(25);
+    // Error focus can scroll a secondary control under the pointer. Audit the
+    // settled feedback state rather than Bootstrap's intermediate hover colors.
+    await a.mouse.move(0, 0);
+    await a.locator('.pickup-conversation').evaluate(async section => {
+      await Promise.all(section.getAnimations({ subtree: true }).map(animation => animation.finished.catch(() => {})));
+    });
+    const quotaRules = (await new AxeBuilder({ page: a }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations.map(row => row.id);
+    await test.step('Message quota feedback WCAG rules: ' + (quotaRules.join(', ') || 'none'), async () => expect(quotaRules).toEqual([]));
+    expect(quotaPosts).toBe(1);
     await a.getByRole('button', { name: 'Cancel request', exact: true }).click(); await expect(a.getByText(/This request is closed/)).toBeVisible();
     await expect(a.getByLabel('Unsent message', { exact: true })).toHaveAttribute('readonly'); await expect(a.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
     await a.getByRole('button', { name: 'Discard draft', exact: true }).click(); await expect(a.getByRole('button', { name: 'Send message', exact: true })).toHaveCount(0);
