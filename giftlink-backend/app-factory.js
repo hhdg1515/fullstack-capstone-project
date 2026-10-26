@@ -32,6 +32,7 @@ function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', sec
     app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
     app.use('/api', auth.protectWrites);
     app.use(express.json({ limit: '32kb' }));
+    app.get('/api/regions', (req, res) => res.json(require('./services/regions').directory));
     app.use('/api/gifts', createGiftRoutes({ connectToDatabase, logger, auth }));
     app.use('/api/search', createSearchRoutes({ connectToDatabase }));
     app.use('/api/auth', createAuthRoutes({ identity, auth, authLimit }));

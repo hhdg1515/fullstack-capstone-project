@@ -1,3 +1,4 @@
+jest.mock('../api/usePublicCatalog', () => ({ __esModule: true, default: () => ({ data: require('../test-support/catalogs').regions }) }));
 import React, { useState } from 'react';
 import 'whatwg-fetch';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';

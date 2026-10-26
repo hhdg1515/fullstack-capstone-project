@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { isCalendarDate, utcToday } from './dates';
 import { useUnsavedForm } from '../../forms/UnsavedChanges';
 import useFormErrors from '../../forms/useFormErrors';
+import usePublicCatalog from '../../api/usePublicCatalog';
+import RegionFields from './RegionFields';
 
 export const statusLabels = { active: 'Active', completed: 'Completed', cancelled: 'Cancelled' };
 const hasControlCharacters = value => Array.from(value).some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127);
@@ -11,17 +13,25 @@ export default function PlanForm({ initialPlan, onSave, focusPickupTimeZone = fa
   const timezoneInput = useRef();
   useEffect(() => { if (focusPickupTimeZone) timezoneInput.current?.focus(); }, [focusPickupTimeZone]);
   const editing = Boolean(initialPlan);
+  const directory = usePublicCatalog('/api/regions');
   const [values, setValues] = useState(() => initialPlan ? {
     moveOutDeadline: initialPlan.moveOutDeadline, city: initialPlan.city, neighborhood: initialPlan.neighborhood,
-    title: initialPlan.title, status: initialPlan.status, pickupTimeZone: initialPlan.pickupTimeZone || '',
-  } : { moveOutDeadline: '', city: '', neighborhood: '', title: '', pickupTimeZone: '' });
+    title: initialPlan.title, status: initialPlan.status, pickupTimeZone: initialPlan.pickupTimeZone || '', stateId: initialPlan.stateId || '', metroId: initialPlan.metroId || '',
+  } : { moveOutDeadline: '', city: '', neighborhood: '', title: '', pickupTimeZone: '', stateId: '', metroId: '' });
   const guard = useUnsavedForm(values, initialPlan ? { moveOutDeadline: initialPlan.moveOutDeadline, city: initialPlan.city,
-    neighborhood: initialPlan.neighborhood, title: initialPlan.title, status: initialPlan.status, pickupTimeZone: initialPlan.pickupTimeZone || '' } :
-    { moveOutDeadline: '', city: '', neighborhood: '', title: '', pickupTimeZone: '' });
+    neighborhood: initialPlan.neighborhood, title: initialPlan.title, status: initialPlan.status, pickupTimeZone: initialPlan.pickupTimeZone || '', stateId: initialPlan.stateId || '', metroId: initialPlan.metroId || '' } :
+    { moveOutDeadline: '', city: '', neighborhood: '', title: '', pickupTimeZone: '', stateId: '', metroId: '' });
   const [busy, setBusy] = useState(false);
   const validation = useFormErrors(busy);
   const { errors, error } = validation;
   const [conflicts, setConflicts] = useState([]);
+  const changeRegion = change => {
+    setValues(previous => {
+      const suggestion = directory.data?.metros.find(metro => metro.id === change.metroId)?.suggestedTimeZone;
+      return { ...previous, ...change, ...(!previous.pickupTimeZone && suggestion ? { pickupTimeZone: suggestion } : {}) };
+    });
+    validation.clear('stateId'); validation.clear('metroId');
+  };
   const change = event => {
     const { name, value } = event.target;
     setValues(current => ({ ...current, [name]: value }));
@@ -33,6 +43,9 @@ export default function PlanForm({ initialPlan, onSave, focusPickupTimeZone = fa
     validation.reset();
     setConflicts([]);
     const details = { ...values, title: values.title.trim(), city: values.city.trim(), neighborhood: values.neighborhood.trim() };
+    if (values.stateId || initialPlan?.stateId || initialPlan?.metroId) {
+      details.stateId = values.stateId || null; details.metroId = values.metroId || null;
+    } else { delete details.stateId; delete details.metroId; }
     details.pickupTimeZone = values.pickupTimeZone.trim() || null;
     if (!details.pickupTimeZone && !initialPlan?.pickupTimeZone) delete details.pickupTimeZone;
     const issues = {};
@@ -49,7 +62,7 @@ export default function PlanForm({ initialPlan, onSave, focusPickupTimeZone = fa
     setBusy(true);
     try { await onSave(details, guard.markSaved); guard.markSaved(); }
     catch (failure) {
-      validation.failure(failure, ['moveOutDeadline', 'city', 'neighborhood', 'title', 'status', 'pickupTimeZone']);
+      validation.failure(failure, ['moveOutDeadline', 'city', 'neighborhood', 'title', 'status', 'pickupTimeZone', 'stateId', 'metroId']);
       setConflicts(failure.conflicts || []);
     } finally { setBusy(false); }
   };
@@ -63,6 +76,8 @@ export default function PlanForm({ initialPlan, onSave, focusPickupTimeZone = fa
     <p id="plan-privacy">Only you can see this plan. Use city and neighborhood names; keep street addresses private.</p>
     <fieldset disabled={busy} aria-describedby="plan-privacy">
       <legend className="visually-hidden">Plan details</legend>
+      <RegionFields directory={directory} values={values} onChange={changeRegion} validation={validation} prefix="plan-region" />
+      {!values.metroId && <p>This plan's items will not appear in metro discovery until you assign a listed metro. You can still save a plan and share its public item links.</p>}
       {fields.map(field => <div className="plan-field" key={field.name}>
         <label htmlFor={`plan-${field.name}`}>{field.label}</label>
         <input id={`plan-${field.name}`} name={field.name} type={field.type || 'text'} required={field.required}
@@ -84,7 +99,7 @@ export default function PlanForm({ initialPlan, onSave, focusPickupTimeZone = fa
       <div className="plan-field"><label htmlFor="plan-timezone">Pickup timezone (needed to receive requests)</label>
         <input id="plan-timezone" ref={timezoneInput} name="pickupTimeZone" list="pickup-timezones" maxLength={100} value={values.pickupTimeZone} onChange={change} {...validation.fieldProps('pickupTimeZone', 'plan-timezone-help')} placeholder="America/Los_Angeles" />
         <datalist id="pickup-timezones">{['UTC', ...(Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : ['America/Los_Angeles', 'America/New_York', 'Europe/London', 'Asia/Kolkata'])].map(zone => <option value={zone} key={zone} />)}</datalist>
-        <small id="plan-timezone-help">Choose the timezone at the pickup location yourself. We do not infer it from your browser or city. Existing listings remain browsable without it. Changing the timezone or general location cancels outstanding requests after confirmation.</small>
+        <small id="plan-timezone-help">Choose the timezone at the pickup location. A curated metro suggestion fills only an empty field; explicit timezones are preserved. We never use your browser or guess from a multi-timezone state. Review this field after changing region. Changing timezone or location cancels outstanding requests after confirmation.</small>
         {errors.pickupTimeZone && <p className="plan-field-error" id="pickupTimeZone-error">{errors.pickupTimeZone}</p>}
       </div>
     </fieldset>

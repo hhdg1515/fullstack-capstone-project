@@ -72,6 +72,7 @@ export function PlanDetail() {
         <dl className="plan-details">
           <dt>Move-out deadline</dt><dd><time dateTime={plan.moveOutDeadline}>{formatDeadline(plan.moveOutDeadline)}</time></dd>
           <dt>City</dt><dd>{plan.city}</dd><dt>Neighborhood</dt><dd>{plan.neighborhood}</dd>
+          <dt>Metro region</dt><dd>{plan.metroLabel || 'Not assigned. Edit the plan to include its items in metro discovery.'}</dd>
           <dt>Status</dt><dd>{statusLabels[plan.status]}</dd>
           <dt>Pickup timezone</dt><dd>{plan.pickupTimeZone || 'Set a timezone in Edit plan to receive pickup requests.'}</dd>
         </dl>

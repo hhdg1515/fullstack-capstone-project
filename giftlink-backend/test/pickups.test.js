@@ -155,6 +155,20 @@ describe('two-party pickup lifecycle on verified isolated MongoDB', function () 
         assert.deepEqual(await db.collection('moveOutPlans').findOne({ _id: before._id }), before);
         await submit({}, receiver).expect(201);
     });
+    it('requires explicit reservation cancellation when assigning or changing canonical plan regions', async function () {
+        const pending = (await submit().expect(201)).body.request;
+        const accepted = (await act(pending, 'accept').expect(200)).body.request;
+        const conflict = await planEdit({ stateId: '06', metroId: '41860' }).expect(409);
+        assert.equal(conflict.body.error.code, 'PICKUP_CONFIRMATION_REQUIRED');
+        assert.equal((await get(accepted).expect(200)).body.request.status, 'accepted');
+        assert.equal((await db.collection('moveOutPlans').findOne({ _id: new ObjectId(plan.id) })).metroId, undefined);
+        await planEdit({ stateId: '06', metroId: '41860', confirmCancelRequests: true }).expect(200);
+        const cancelled = (await get(accepted).expect(200)).body.request;
+        assert.equal(cancelled.status, 'cancelled'); assert.equal(cancelled.cancellationReason, 'location_changed');
+        assert.equal((await request(app).get('/api/move-out-plans/' + plan.id + '/items').set('Cookie', giver.cookie).expect(200)).body.plan.metroId, '41860');
+        const stored = await db.collection('items').findOne({ _id: new ObjectId(item.id) });
+        assert.equal(stored.metroId, undefined); assert.equal(stored.stateId, undefined);
+    });
     it('accepts advance requests only inside the inclusive local availability window', async function () {
         await write(request(app).patch(itemPath())).set('Cookie', giver.cookie).send({ version: item.version, availableFrom: day(5), availableUntil: day(10) }).expect(200);
         await submit().expect(400); await submit({ localDateTime: day(11) + 'T00:00' }).expect(400);

@@ -2,6 +2,7 @@ const { ObjectId } = require('mongodb');
 const { todayUTC } = require('./calendar');
 const { InventoryError } = require('./inventory-error');
 const { invalidateRequests, pickupReservationStages } = require('./pickup-policy');
+const { regionResponse } = require('./regions');
 const notFound = () => new InventoryError(404, 'ITEM_NOT_FOUND', 'Item or plan not found');
 const endDate = (item, plan) => item.availableUntil || plan.moveOutDeadline;
 const effectiveStatus = (item, plan) => item.status === 'available' && endDate(item, plan) < todayUTC() ? 'expired' : item.status;
@@ -61,8 +62,8 @@ function createInventoryService({ connectToDatabase }) {
         const plan = rows[0];
         if (!plan) throw notFound();
         const items = plan.items.map(item => itemResponse(item, plan, true, item.isReserved));
-        return { items, plan: { id: plan._id.toString(), title: plan.title, city: plan.city, neighborhood: plan.neighborhood,
-            moveOutDeadline: plan.moveOutDeadline, status: plan.status, pickupTimeZone: plan.pickupTimeZone || null },
+        return { items, plan: Object.assign({ id: plan._id.toString(), title: plan.title, city: plan.city, neighborhood: plan.neighborhood,
+            moveOutDeadline: plan.moveOutDeadline, status: plan.status, pickupTimeZone: plan.pickupTimeZone || null }, regionResponse(plan)),
             progress: { total: items.length, cleared: items.filter(item => item.status === 'cleared').length } };
     }
     async function create(ownerId, planId, input) {
