@@ -108,3 +108,26 @@ on that branch; review/merge backend first, then retarget the frontend to main.
 Local/normal CI checks use disposable data only. No remote E2E, provider setting,
 Atlas data/index, deployment or merge is performed. Real iOS/Safari/virtual
 keyboards and screen-reader behavior remain manual verification gaps.
+
+
+## Milestone 6.4D arrangement integration
+
+The same canonical request detail groups status separately from pickup arrangement,
+formal proposals and conversation. Confirmed time stays visible while a proposal
+waits; chat names its item and links an existing proposal back to arrangement.
+Compact visible timestamps retain full accessible dates and the stored IANA zone.
+Only backend permission flags and the opposite proposer role enable responses;
+expired proposals do not promise an unavailable acceptance/replacement action.
+
+Cancel time edit returns keyboard focus to its entry; discarding a closed time
+draft returns to arrangement. Chat and time guards remain independent. Old details
+retained after a failed reload are explicitly labeled last loaded, and lifecycle/
+scheduling writes stay blocked until fresh canonical data arrives. Request reload
+and conversation refresh keep their separate responsibilities and never retry a
+POST automatically. No state-machine, DST/window, quota or storage changes occur.
+
+[6.4D evidence/tests](milestone-6.4d-pickup-experience.md) include both roles,
+stale versions, a committed proposal with a failed response, self-approval denial,
+elapsed-proposal decline, confirmed-time preservation, and a local-clock handoff
+with both drafts retained before closed read-only history. No hosted E2E,
+production/provider or remote database/index operation follows from these tests.

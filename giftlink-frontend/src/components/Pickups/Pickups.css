@@ -26,3 +26,13 @@
 .pickup-request-form small { color: var(--ui-muted); }
 #conversation-heading { scroll-margin-top: var(--ui-space-6); }
 @media (max-width: 420px) { .pickup-actions .ui-button { flex: 1 1 auto; } }
+.ui-page .pickup-scheduling { margin-top: var(--ui-space-4); padding-top: var(--ui-space-4); border-color: var(--ui-border); }
+.ui-page .pickup-scheduling h3 { margin: 0; font-size: var(--ui-text-section); }
+.pickup-proposal { padding: var(--ui-space-4); margin-block: var(--ui-space-4); border-inline-start: 3px solid var(--ui-control-border); background: var(--ui-subtle); border-radius: var(--ui-radius-control); }
+.pickup-proposal > p { margin-block: 0 var(--ui-space-3); }
+.pickup-time-form { margin-block: var(--ui-space-4); }
+.pickup-time-form .ui-field { margin-block: var(--ui-space-4); }
+.pickup-time-form small { color: var(--ui-muted); }
+.pickup-secondary ul { padding-inline-start: var(--ui-space-6); }
+.pickup-secondary li { margin-block: var(--ui-space-3); }
+#pickup-arrangement-heading { scroll-margin-top: var(--ui-space-6); }

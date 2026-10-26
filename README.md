@@ -411,7 +411,7 @@ Each feed response is `{ items, total, today, page: { limit, hasMore, nextCursor
 1. The giver explicitly selects **Pickup timezone** in Create/Edit plan, using an IANA identifier such as `America/Los_Angeles`, `Asia/Kolkata`, or `UTC`. No browser, city lookup, environment variable, offset or geocoder supplies a hidden default. Setup is optional for legacy browsing and required to receive pickup requests.
 2. A receiver follows **Request pickup** on a public detail link, signs in if necessary, selects a local date/time in the displayed giver timezone, and optionally leaves a private note (500 plain-text characters). Each listing, including a box/group, is one indivisible pickup unit. No residential address is requested. Suggest general public rendezvous instructions rather than personal contact/address details.
 3. **Incoming requests** consolidates the giver's requests across all plans; **My requests** shows the receiver's proposals. Filter by status to review accepted appointments. Lists use 25-record pages with Next/First controls. A private detail retains the item's full description after withdrawal/clearance, shows the other party's first name only, appointment timezone, note, status and action history. A receiver never receives private plan title/ID; the giver sees a management link to their own plan.
-4. The giver accepts/declines. A pending request never reserves an item. An accepted appointment reserves that entire listing until cancellation, no-show or completion; it is not a recorded handoff. Other pending proposals remain pending. New submissions are blocked while reserved, although public discovery remains available. Cancel a proposal and submit a new one to change its time; no counteroffer/chat is implemented.
+4. The giver accepts/declines. A pending request never reserves an item. An accepted appointment reserves that entire listing until cancellation, no-show or completion; it is not a recorded handoff. Other pending proposals remain pending. New submissions are blocked while reserved, although public discovery remains available. Use the request conversation to coordinate. Future accepted appointments can change only through the formal proposal/acceptance workflow described below; chat never changes the appointment.
 5. Either party can cancel; the giver records the actual handoff or a no-show after the scheduled time. Completion clears the item and cancels competing requests atomically. No-show releases the reservation without clearing the item or selecting another receiver. All actions require confirmation and a fresh request version.
 
 ### Time semantics
@@ -420,7 +420,7 @@ The API accepts a minute-precision local `YYYY-MM-DDTHH:mm` and the plan's expli
 
 Availability **labels** retain their existing YYYY-MM-DD values. For appointments, the proposed instant's date **in the giver-selected timezone** must fall between explicit `availableFrom` (or immediate) and `availableUntil ?? moveOutDeadline`, inclusive. The instant must also be before **00:00 UTC on the following end date**, preserving the existing global listing expiration. For example, a Los Angeles listing ending July 3 cannot book 11pm local July 3, because it has already expired in UTC; choose an earlier time or extend its dates. This deliberate extra cutoff prevents a future accepted appointment from outliving listing availability. Discovery's Now/Later badges still use the existing UTC date convention, so they describe calendar eligibility rather than a neighborhood's exact current clock time.
 
-Expired listings reject new requests and acceptances. Pending proposals whose time has passed cannot be accepted; either party can cancel or the giver can decline them. Accepted appointments whose time has passed remain available for truthful handoff/no-show reporting, including after date expiry; expiry alone does not falsely record a missed or successful pickup. No background job changes their outcome. Completion/no-show before the scheduled instant is refused. Giver-declared zones can be wrong, and future timezone legislation/ICU updates can change wall-clock rendering: the stored UTC appointment remains authoritative. Location verification, time rescheduling/counteroffers, grace periods and a neighborhood-aware expiry migration need later product decisions.
+Expired listings reject new requests and acceptances. Pending proposals whose time has passed cannot be accepted; either party can cancel or the giver can decline them. Accepted appointments whose time has passed remain available for truthful handoff/no-show reporting, including after date expiry; expiry alone does not falsely record a missed or successful pickup. No background job changes their outcome. Completion/no-show before the scheduled instant is refused. Giver-declared zones can be wrong, and future timezone legislation/ICU updates can change wall-clock rendering: the stored UTC appointment remains authoritative. Location verification, grace periods and a neighborhood-aware expiry migration need later product decisions. Future accepted appointments support the formal rescheduling workflow below.
 
 ### State machine, authorization and concurrency
 
@@ -463,7 +463,7 @@ Consequential edits first return `409 PICKUP_CONFIRMATION_REQUIRED` with a count
 
 Lists accept optional `status` (one of the six states) and `cursor` (the previous page's `nextCursor`); return `{ requests, nextCursor }`, with at most 25 rows. Every page is scoped to the session/role. Unknown, structured, repeated or malformed parameters fail validation. Creation returns a clear 409 if a listing changed, timezone setup is missing/changed, the receiver already has an active proposal, or another pickup is accepted. Protected request routes are `/app/items/:id/request`, `/app/pickups`, `/app/pickups/incoming`, and `/app/pickups/:id`.
 
-Milestone 6 still needs messaging/contact and rendezvous UX, notifications, moderation/reporting, data retention, no-show grace/dispute handling, timezone verification/rescheduling and production abuse controls. This milestone supplies no exact address, chat, notifications, ratings, payments, shipping or external location service.
+Remaining launch decisions include contact/rendezvous policies, notifications, moderation/reporting, retention, no-show grace/dispute handling, timezone verification and production abuse controls. Private chat and formal future-time rescheduling use the existing pickup request. No residential address is disclosed automatically; notifications, ratings, payments, shipping and external location services remain outside this flow.
 
 ### MongoDB pagination, safety and limits
 
@@ -531,7 +531,7 @@ GitHub Actions runs frozen installs, backend lint and isolated API/identity/plan
 - Legacy bcrypt hashes consider only the first 72 bytes of overlong passwords. A future reviewed password-reset/rehash strategy can retire this compatibility behavior; existing accounts are not silently rewritten.
 - Logout revokes the current session. Password reset, email verification/change, MFA, global session management, and automated account recovery are not implemented. Duplicate-registration feedback can reveal that an email is registered; login errors are generic and rate-limited.
 - HttpOnly prevents reading the session token through JavaScript; it does not make XSS harmless. A production CSP and broader content/upload/abuse controls need review before public launch. Account and pickup-location data should never be added to listing DTOs.
-- Existing listing search and the private plan list remain unpaginated. Plans now enforce server-side ownership; future item/request/conversation authorization must use server-side ownership/participant predicates. Those features are outside this milestone.
+- Legacy demo search and the private plan list remain unpaginated. Native discovery, pickup requests and message history use bounded pages. Private item/request/conversation access uses existing backend ownership/participant checks; frontend labels never grant authorization.
 - The optional sentiment example still lacks its logger; its test command and the nested importer test command remain course placeholders. The actual importer is covered by backend seed tests.
 - No merge, deployment, production index creation, or production database modification is included.
 
@@ -701,3 +701,33 @@ No client-side download-all filtering, GPS, paid geography or image upload exist
 distinguish isolated local/CI checks from hosted or production readiness. Review
 order is **#49 → #50 → #51 → #52 (coverage) → #53 (layout) → #54 (cards/states)**.
 Nothing is merged or deployed automatically.
+
+
+## Milestone 6.4D: pickup coordination experience
+
+Request cards offer **View request** and **Open conversation** using the existing
+request ID. Status/cursor URLs and role-derived return links retain list context.
+Detail separates request status, pickup arrangement, private conversation and
+collapsible history. Pending/Accepted/Completed/No-show labels preserve canonical
+backend states; accepted is a reservation, not a handoff.
+
+Messages retain chronological bounded history, Load earlier, manual Refresh,
+reading position, multiline Enter, explicit Send and memory-only draft guards.
+Message timestamps use device time; pickup timestamps use the stored giver zone.
+Existing 429 quota delay metadata supplies a bounded suggested wait. Uncertain
+sends/proposals require successful explicit revalidation and review before any
+manual retry; no POST is automatically repeated.
+
+Formal proposals remain separate from chat, retain the confirmed appointment,
+attribute the proposer and allow only server-authorized responses. Conversation
+entry retains item context and links an existing time proposal back to the same
+arrangement section. **Reload request** refreshes lifecycle/scheduling;
+**Refresh conversation** refreshes messages. Neither silently drains history.
+Chat and scheduling drafts remain independent through conflicts and closure.
+
+[Audit, actual before/after evidence, privacy/compatibility and verification](docs/milestone-6.4d-pickup-experience.md)
+also documents the explicitly deferred server-backed unread design. No unread
+badge/read receipt, polling, new conversation entity, persistent draft, message
+attachment or retention change is implemented. Review/merge prerequisites remain
+**#49 → #50 → #51 → #52 → #53 → #54 → #55 → #56 → scheduling/regression PR**;
+nothing is merged or deployed automatically.

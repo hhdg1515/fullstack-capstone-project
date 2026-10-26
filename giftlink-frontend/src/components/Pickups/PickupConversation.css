@@ -19,3 +19,7 @@
   .chat-message { max-width: 100%; }
   .chat-header .ui-button, .chat-actions .ui-button { width: 100%; }
 }
+
+.chat-item { font-weight: 600; margin-block: var(--ui-space-3); }
+.chat-arrangement { font-size: var(--ui-text-small); }
+.chat-arrangement a { display: inline-flex; align-items: center; min-height: var(--ui-control-height); }

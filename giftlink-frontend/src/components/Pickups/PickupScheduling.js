@@ -3,19 +3,24 @@ import { apiRequest } from '../../api/client';
 import { useAppContext } from '../../context/AuthContext';
 import { useUnsavedForm } from '../../forms/UnsavedChanges';
 import useFormErrors from '../../forms/useFormErrors';
-import { pickupMinimum, pastPickupSelection } from '../../forms/pickupTime';
+import { Feedback } from '../../design-system/primitives';
+import { closedStates } from './conversationHistory';
+import { pickupMinimum, pastPickupSelection, validPickupTimeZone } from '../../forms/pickupTime';
 
 export function PickupTime({ value, compact = false }) {
   let display;
-  try { display = new Intl.DateTimeFormat('en', { dateStyle: compact ? 'medium' : 'full', timeStyle: 'short', timeZone: value.timeZone }).format(new Date(value.proposedAt)); }
+  try {
+    if (!validPickupTimeZone(value?.timeZone)) throw new RangeError('Pickup timezone unavailable');
+    display = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short', timeZone: value.timeZone }).format(new Date(value.proposedAt)); }
   catch { return <span>Time unavailable. Reload the request.</span>; }
-  if (compact) return <><time dateTime={value.proposedAt}>{display}</time> ({value.timeZone})</>;
-  return <><time dateTime={value.proposedAt}>{display}</time>{' '}<strong>{value.timeZone}</strong></>;
+  const full = new Intl.DateTimeFormat('en', { dateStyle: 'full', timeStyle: 'long', timeZone: value.timeZone }).format(new Date(value.proposedAt));
+  return <><time dateTime={value.proposedAt} title={full} aria-label={`${full} (${value.timeZone})`}>{display}</time>{' '}
+    {compact ? `(${value.timeZone})` : <strong>{value.timeZone}</strong>}</>;
 }
 const reasonText = {
   appointment_passed: 'The confirmed pickup time has passed. Use the existing outcome or cancellation actions; it cannot be changed retrospectively.',
   listing_unavailable: 'Pickup availability changed. Reload the request before changing its time.',
-  proposal_unavailable: 'The proposed time is no longer valid. The other participant can decline it; the confirmed time still applies.',
+  proposal_unavailable: 'The proposed time is no longer valid. The confirmed time still applies.',
   unavailable: 'Time changes are unavailable. Reload the request to check its current state.',
 };
 const eventLabels = { reschedule_proposed: 'Time change proposed', reschedule_accepted: 'New pickup time confirmed',
@@ -43,10 +48,14 @@ function TimeChange({ request, onRefresh, disabled = false }) {
   const [blocked, setBlocked] = useState(false); const [notice, setNotice] = useState('');
   const validation = useFormErrors(busy); const reset = useRef(validation.reset); reset.current = validation.reset;
   const guard = useUnsavedForm({ localDateTime }, { localDateTime: '' });
-  const input = useRef();
+  const input = useRef(), toggle = useRef(), wasEditing = useRef(false);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => { setBlocked(false); reset.current(); }, [request]);
-  useEffect(() => { if (editing) input.current?.focus(); }, [editing]);
+  useEffect(() => {
+    if (editing) input.current?.focus();
+    else if (wasEditing.current) (toggle.current || document.getElementById('pickup-arrangement-heading'))?.focus();
+    wasEditing.current = editing;
+  }, [editing]);
   const accepted = request.status === 'accepted';
   const canPropose = accepted && !proposal && scheduling?.canPropose === true;
   const canAccept = accepted && proposal && proposal.proposedBy !== request.role && scheduling?.canAccept === true;
@@ -88,37 +97,38 @@ function TimeChange({ request, onRefresh, disabled = false }) {
   if (!accepted && !editing && !localDateTime) return null;
   return <section className="pickup-scheduling" aria-labelledby="scheduling-heading">
     <h3 id="scheduling-heading">Pickup time change</h3>
-    {proposal && <div className="plan-panel" role="group" aria-label="Pending time change">
+    <p className="pickup-help">Chat does not change the confirmed pickup. Use a formal proposal below.</p>
+    {proposal && <div className="pickup-proposal" role="group" aria-label="Pending time change">
       <p><b>Proposed time — waiting for approval</b><br /><PickupTime value={proposal} /></p>
       <p>Proposed by {proposal.proposedBy === request.role ? 'you' : request.counterpart.firstName} ({proposal.proposedBy === 'giver' ? 'giver' : 'requester'}).</p>
       <p>The confirmed time above still applies until the other participant accepts this change.</p>
       {proposal.proposedBy === request.role && <p>Waiting for the other participant to respond. You cannot approve your own proposal.</p>}
-      <div className="plan-actions">
-        {canAccept && <button type="button" className="btn btn-primary" disabled={locked} onClick={() => mutate('accept')}>Accept proposed time</button>}
-        {canDecline && <button type="button" className="btn btn-outline-secondary" disabled={locked} onClick={() => mutate('decline')}>Decline time change</button>}
+      <div className="pickup-actions">
+        {canAccept && <button type="button" className="ui-button" disabled={locked} onClick={() => mutate('accept')}>Accept proposed time</button>}
+        {canDecline && <button type="button" className="ui-button ui-button--secondary" disabled={locked} onClick={() => mutate('decline')}>Decline time change</button>}
       </div>
     </div>}
-    {accepted && !scheduling && <p>Reload the request to check whether time changes are available.</p>}
-    {accepted && scheduling?.reason && reasonText[scheduling.reason] && <p>{reasonText[scheduling.reason]}</p>}
-    {!accepted && <p>This request is closed. Your unsent time has not been applied; no time changes can be submitted.</p>}
-    {canPropose && !editing && <button type="button" className="btn btn-outline-primary" disabled={locked} onClick={() => setEditing(true)}>Propose new time</button>}
-    {editing && <form ref={validation.formRef} className="plan-form" noValidate aria-busy={busy} onSubmit={event => { event.preventDefault(); mutate('propose'); }}>
-      <div className="plan-field"><label htmlFor="reschedule-time">New pickup date and time</label>
+    {accepted && !scheduling && <Feedback>Reload the request to check whether time changes are available.</Feedback>}
+    {accepted && scheduling?.reason && reasonText[scheduling.reason] && <Feedback>{reasonText[scheduling.reason]}</Feedback>}
+    {!accepted && <Feedback>{closedStates.includes(request.status) ? 'This request is closed. Your unsent time has not been applied; no time changes can be submitted.' : 'Time changes are unavailable for this request. Your unsent time has not been applied.'}</Feedback>}
+    {canPropose && !editing && <button type="button" ref={toggle} className="ui-button ui-button--secondary" disabled={locked} onClick={() => setEditing(true)}>Propose new time</button>}
+    {editing && <form ref={validation.formRef} className="pickup-time-form" noValidate aria-busy={busy} onSubmit={event => { event.preventDefault(); mutate('propose'); }}>
+      <div className="ui-field"><label htmlFor="reschedule-time">New pickup date and time</label>
         <input ref={input} id="reschedule-time" name="localDateTime" type="datetime-local" step="60" min={pickupMinimum(request.timeZone)} required value={localDateTime}
           readOnly={!canPropose || locked} {...validation.fieldProps('localDateTime', 'reschedule-zone-help')}
           onChange={event => { setTime(event.target.value); validation.clear('localDateTime'); }} />
-        {validation.errors.localDateTime && <p id="localDateTime-error" className="plan-field-error">{validation.errors.localDateTime}</p>}
-        <small id="reschedule-zone-help">Local time in {request.timeZone}, the giver's pickup timezone. Your browser timezone is not used.
-          {' '}Choose a future time within the existing listing window, before its UTC expiration. Skipped or repeated daylight-saving times are not allowed.</small>
+        {validation.errors.localDateTime && <p id="localDateTime-error" className="ui-field-error">{validation.errors.localDateTime}</p>}
+        <small id="reschedule-zone-help">Local time in {request.timeZone}, the giver's pickup timezone. Your device timezone does not change it.
+          {' '}Choose a future time within the listing window and UTC cutoff. Avoid skipped or repeated daylight-saving times.</small>
       </div>
       {!canPropose && localDateTime && <p>Your draft is kept, but cannot be submitted in the current request state.</p>}
-      <div className="plan-actions"><button type="submit" className="btn btn-primary" disabled={locked || !canPropose}>Propose time change</button>
-        <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={() => {
+      <div className="pickup-actions"><button type="submit" className="ui-button" disabled={locked || !canPropose}>Propose time change</button>
+        <button type="button" className="ui-button ui-button--secondary" disabled={busy} onClick={() => {
           if (guard.confirmDiscard()) { setTime(''); setEditing(false); validation.reset(); }
         }}>{canPropose ? 'Cancel time edit' : 'Discard time draft'}</button></div>
     </form>}
-    <p role="status">{busy ? 'Saving time change…' : notice}</p>
-    {validation.error && <div><p ref={validation.summaryRef} tabIndex={-1} role="alert" className="plan-field-error">{validation.error}</p>
-      {blocked && <button type="button" className="btn btn-outline-secondary" disabled={busy || disabled} onClick={() => { validation.reset(); onRefresh(); }}>Reload current times</button>}</div>}
+    {(busy || notice) && <Feedback>{busy ? 'Saving time change…' : notice}</Feedback>}
+    {validation.error && <Feedback error ref={validation.summaryRef} tabIndex={-1}><p>{validation.error}</p>
+      {blocked && <button type="button" className="ui-button ui-button--secondary" disabled={busy || disabled} onClick={() => { validation.reset(); onRefresh(); }}>Reload current times</button>}</Feedback>}
   </section>;
 }

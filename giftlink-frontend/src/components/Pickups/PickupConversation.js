@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { apiRequest } from '../../api/client';
 import { useAppContext } from '../../context/AuthContext';
 import { useUnsavedForm } from '../../forms/UnsavedChanges';
@@ -33,7 +34,8 @@ export default function PickupConversation(props) {
   return <Conversation key={`${user.id}:${props.requestId}`} {...props} />;
 }
 
-function Conversation({ requestId, requestStatus }) {
+function Conversation({ requestId, requestStatus, itemName, hasTimeProposal = false }) {
+  const location = useLocation();
   const root = `/api/pickup-requests/${encodeURIComponent(requestId)}/conversation`;
   const [view, setView] = useState({ context: null, ranges: [] });
   const current = useRef(view);
@@ -136,6 +138,8 @@ function Conversation({ requestId, requestStatus }) {
   return <Surface id="conversation" className="pickup-conversation" aria-labelledby="conversation-heading">
     <div className="chat-header"><h2 id="conversation-heading" tabIndex={-1}>Pickup conversation</h2>
       <button type="button" className="ui-button ui-button--secondary" disabled={Boolean(busy)} onClick={() => { validation.reset(); load(); }}>{context ? 'Refresh conversation' : 'Retry conversation'}</button></div>
+    {itemName && <p className="chat-item">{itemName}</p>}
+    {hasTimeProposal && <p className="chat-arrangement"><Link to={{ hash: '#pickup-arrangement-heading', search: location.search }} state={location.state}>Review pickup time change</Link>. Chat does not change the confirmed time.</p>}
     {context && <p className="chat-participant">With {context.counterpart.firstName} ({roleLabel(context.role === 'giver' ? 'receiver' : 'giver')}). Private to this request.</p>}
     {(busy || notice) && <Feedback>{busy === 'send' ? 'Sending message…' : busy ? (busy === 'earlier' ? 'Loading earlier messages…' : 'Loading conversation…') : notice}</Feedback>}
     {error && <Feedback error>{error}</Feedback>}

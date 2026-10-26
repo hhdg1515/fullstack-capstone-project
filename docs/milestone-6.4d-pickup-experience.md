@@ -176,3 +176,81 @@ retained; cropped panels use a taller real viewport so Chromium does not paint
 an offscreen fixed skip-link into a beyond-viewport capture. No masking or image
 editing is used. Navigation PR #55 passes all three CI jobs. Conversation branch
 CI and immutable heads are recorded in the PRs.
+
+
+## Scheduling integration and final acceptance
+
+Arrangement uses compact pickup-zone timestamps with full accessible date labels,
+refusing missing/invalid zones rather than falling back to device time,
+explicit confirmed/proposed separation and token-based proposal/feedback groups.
+Unknown/expired proposal metadata never promises an unauthorized response.
+Cancelling time entry restores focus; discarding a closed time draft returns to
+arrangement. Pending creation history says Request submitted while current status
+says Pending. Retained details after a failed read are labeled last loaded rather
+than presented as fresh. Conversation entry repeats the actual item name and
+links a known formal proposal back to arrangement without losing either draft.
+
+An additional strictly local two-role scenario covers stale proposal versions,
+confirmed time surviving discussion/decline, an actually committed proposal with
+a lost response, one POST/no automatic replacement, proposer self-approval denial,
+expired-proposal decline, then a legitimate handoff after advancing only the local
+fixture clock. Both unsent drafts remain copyable/read-only at closure; discarding
+one still protects the other. Completed inventory provenance is checked through
+the existing private API. Existing backend transactional/race/ownership/DST tests
+and all prior browser journeys remain unchanged in scope.
+
+## Actual UI evidence
+
+All images show synthetic local accounts/listings/messages in the actual production
+build over the owned local HTTPS/replica-set harness. No credentials, cookies,
+tokens, real personal data, generated concepts or edited images are included.
+Twenty final whole-page samples (22 images including cropped conversation panels)
+had zero axe A/AA findings, horizontal overflow or server errors. Visually reviewed
+request lists, proposed/confirmed arrangement, messages, quota/closed history,
+long text, 320/375/390px, tablet 768px and 640px with 200% root text sizing.
+The latter is reflow stress, not a claim of physical browser zoom/keyboard testing.
+
+| View | Before desktop | After desktop | Before 320px | After 320px |
+| --- | --- | --- | --- | --- |
+| Giver requests | [Before](assets/milestone-6.4d/before-giver-list-desktop.png) | [After](assets/milestone-6.4d/after-giver-list-desktop.png) | [Before](assets/milestone-6.4d/before-giver-list-mobile.png) | [After](assets/milestone-6.4d/after-giver-list-mobile.png) |
+| Requester requests | [Before](assets/milestone-6.4d/before-requester-list-desktop.png) | [After](assets/milestone-6.4d/after-requester-list-desktop.png) | [Before](assets/milestone-6.4d/before-requester-list-mobile.png) | [After](assets/milestone-6.4d/after-requester-list-mobile.png) |
+| Pending detail | [Before](assets/milestone-6.4d/before-pending-desktop.png) | [After](assets/milestone-6.4d/after-pending-desktop.png) | [Before](assets/milestone-6.4d/before-pending-mobile.png) | [After](assets/milestone-6.4d/after-pending-mobile.png) |
+| Accepted detail | [Before](assets/milestone-6.4d/before-accepted-desktop.png) | [After](assets/milestone-6.4d/after-accepted-desktop.png) | [Before](assets/milestone-6.4d/before-accepted-mobile.png) | [After](assets/milestone-6.4d/after-accepted-mobile.png) |
+| Conversation | [Before](assets/milestone-6.4d/before-conversation-desktop.png) | [After](assets/milestone-6.4d/after-conversation-desktop.png) | [Before](assets/milestone-6.4d/before-conversation-mobile.png) | [After](assets/milestone-6.4d/after-conversation-mobile.png) |
+| Time proposal | [Before](assets/milestone-6.4d/before-proposal-desktop.png) | [After](assets/milestone-6.4d/after-proposal-desktop.png) | [Before](assets/milestone-6.4d/before-proposal-mobile.png) | [After](assets/milestone-6.4d/after-proposal-mobile.png) |
+| Cancelled history | [Before](assets/milestone-6.4d/before-closed-desktop.png) | [After](assets/milestone-6.4d/after-closed-desktop.png) | [Before](assets/milestone-6.4d/before-closed-mobile.png) | [After](assets/milestone-6.4d/after-closed-mobile.png) |
+| Quota feedback | [Before](assets/milestone-6.4d/before-quota-desktop.png) | [After](assets/milestone-6.4d/after-quota-desktop.png) | [Before](assets/milestone-6.4d/before-quota-mobile.png) | [After](assets/milestone-6.4d/after-quota-mobile.png) |
+
+Extra evidence: [completed handoff desktop](assets/milestone-6.4d/after-completed-desktop.png),
+[completed 320px](assets/milestone-6.4d/after-completed-mobile.png),
+[375px](assets/milestone-6.4d/after-reflow-mobile375.png),
+[390px](assets/milestone-6.4d/after-reflow-mobile390.png),
+[tablet](assets/milestone-6.4d/after-reflow-tablet.png),
+[200% text](assets/milestone-6.4d/after-reflow-zoom200.png).
+Completed captures use a second actual request and the local clock to record the
+handoff through the existing transaction; no request was reopened or manually
+relabeled. Intermediate navigation/conversation evidence remains in their PRs.
+
+## Verification, limits and rollback
+
+Backend **303 tests**, frontend **322 tests / 17 suites**, backend lint, strict
+production build and **56 policy tests** pass. Full browser and immutable-head CI
+results are recorded in the PRs; the final suite includes all original 28 and six
+additional local desktop/mobile scenarios. actionlint/whitespace and relative
+document links are checked. No backend service/router/DTO, index definition,
+identity/CSRF, geography/taxonomy, inventory transaction, hosted policy/cleanup,
+provider or workflow configuration changed. All 16 gifts are byte-identical.
+
+Remaining limits: manual Refresh is intentional; there are no read markers,
+unread counts or realtime receipts. There is no POST idempotency key: after
+uncertainty, refresh/review precedes an explicit manual retry. Names can match;
+roles, appointment and canonical request reference distinguish records without
+publishing private account IDs. List/history paging retains existing bounds, not
+unlimited search. Physical Safari/iOS/virtual keyboards and manual screen readers
+were not verified; local/CI success is not live staging or production readiness.
+The existing operational/retention/abuse launch decisions remain outside 6.4D.
+
+Revert scheduling/integration, then conversation, then navigation if needed.
+No DDL, migration, data cleanup or deployment rollback is required for these UI
+changes. Preserve all predecessor branches and coordinate subsequent deployment
+separately; a merge does not authorize provider changes or remote testing.

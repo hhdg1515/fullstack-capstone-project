@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from '../../context/AuthContext';
 import RequireAuth from '../RequireAuth';
-import PickupScheduling from './PickupScheduling';
+import PickupScheduling, { PickupTime } from './PickupScheduling';
 import { PickupDetail } from './Pickups';
 
 const id = '64a000000000000000000001', otherId = '64a000000000000000000002';
@@ -143,4 +143,30 @@ test('the real detail distinguishes confirmed/proposed time and renders structur
   expect(screen.queryByRole('group', { name: 'Pending time change' })).not.toBeInTheDocument();
   expect(screen.getByText('New pickup time confirmed')).toBeInTheDocument();
   expect(within(screen.getByRole('region', { name: 'Message history' })).getByText('No messages yet.')).toBeInTheDocument();
+});
+
+test('cancelling a valid time edit restores focus to its existing proposal entry', async () => {
+  mount(); const input = await open(); fireEvent.change(input, { target: { value: '2030-01-18T15:00' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel time edit' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Propose new time' })).toHaveFocus());
+  expect(screen.queryByLabelText('New pickup date and time')).not.toBeInTheDocument(); expect(fetch.mock.calls.filter(([,o]) => o.method === 'POST')).toHaveLength(0);
+});
+test('an expired proposal describes unchanged confirmation and offers only actual server-authorized responses', async () => {
+  const row = pending(); mount({ ...row, rescheduling: { ...row.rescheduling, canAccept: false, reason: 'proposal_unavailable' } });
+  expect(await screen.findByText('The proposed time is no longer valid. The confirmed time still applies.')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Accept proposed time' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Decline time change' })).toBeEnabled();
+  expect(screen.getByText(/Chat does not change the confirmed pickup/)).toBeInTheDocument();
+});
+test('unknown proposal metadata cannot promise a decline action or overwrite an existing proposal', async () => {
+  mount({ ...base, rescheduling: { proposal: null, canPropose: false, canAccept: false, canDecline: false, reason: 'proposal_unavailable' } });
+  await screen.findByText('The proposed time is no longer valid. The confirmed time still applies.');
+  expect(screen.queryByRole('button')).not.toBeInTheDocument();
+});
+
+
+test.each([undefined, null, '', 'Not/AZone'])('pickup display refuses missing/invalid zone %s instead of using device time', timeZone => {
+  render(<PickupTime value={{ ...base, timeZone }} />);
+  expect(screen.getByText('Time unavailable. Reload the request.')).toBeInTheDocument();
+  expect(document.querySelector('time')).toBeNull(); expect(fetch).not.toHaveBeenCalled();
 });
