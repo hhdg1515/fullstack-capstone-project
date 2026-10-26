@@ -2,7 +2,8 @@
 
 The B proposal below is superseded by the focused [6.4B implementation](milestone-6.4b-listing-inventory.md),
 including required publication details while name-only drafts remain supported.
-C–E remain a reviewable backlog, **not implemented scope**. Each phase gets small
+C is implemented in the focused [6.4C discovery stack](milestone-6.4c-discovery.md).
+D–E remain a reviewable backlog, **not implemented scope**. Each phase gets small
 PRs and the existing CI; no remote operation follows automatically. Build on the
 [audit](milestone-6.4-design-audit.md) and [shared vocabulary](design-system.md).
 Do not change inventory/request state machines as a side effect of styling.
@@ -31,7 +32,7 @@ Acceptance: existing inventory-first, repeated-create, date-conflict, unsaved-ed
 permission and reservation tests plus 320px keyboard/axe and status screenshots.
 Ship forms and inventory/card adoption as separate PRs if needed.
 
-## C: discovery and evidence-backed directory coverage
+## C: discovery and evidence-backed directory coverage (implemented separately)
 
 First improve long metro headings, selected-region/change action, filter summary
 and compact category navigation using existing query state. Keep one region
@@ -52,7 +53,8 @@ candidate IDs/names were checked in the same pinned official Census CitySDK
 | 37980 | Philadelphia-Camden-Wilmington, PA-NJ-DE-MD | Adds another cross-state search region, including Delaware |
 | 26420 | Houston-The Woodlands-Sugar Land, TX | Extends Texas beyond the current Dallas region |
 
-These are candidates, not new advertised coverage or current-boundary claims.
+The original proposal below is superseded by the [50-metro implementation](geographic-directory.md).
+Its verified 2021 names are retained; none are current-boundary claims.
 Choose a small initial batch based on actual intended pilot communities. Before
 adding records: validate the full source feature and member-state list, source
 hash/version, stable ID, catalog tests and a conservative timezone mapping

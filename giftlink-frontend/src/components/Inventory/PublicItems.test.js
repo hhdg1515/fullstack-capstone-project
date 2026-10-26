@@ -1,3 +1,4 @@
+jest.mock('../../context/AuthContext', () => ({ useAppContext: () => mockAuth }));
 jest.mock('../../api/usePublicCatalog', () => ({ __esModule: true, default: path => ({ data: require('../../test-support/catalogs')[path === '/api/regions' ? 'regions' : 'taxonomy'] }) }));
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -13,6 +14,7 @@ const places = { locations: [{ city: 'Oakland', neighborhoods: ['Temescal', 'Roc
 const reply = (status, data) => ({ status, ok: status >= 200 && status < 300, json: async () => data });
 const feed = (items, cursor = null, total = items.length ? 2 : 0) => reply(200, { items, total, today: day(0), page: { limit: 12, hasMore: Boolean(cursor), nextCursor: cursor } });
 const pending = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
+let mockAuth;
 let handler;
 let locationHandler;
 function Navigation() {
@@ -32,7 +34,7 @@ function mount(path = '/app/items', unselected = false) {
   </MemoryRouter>);
 }
 beforeEach(() => {
-  localStorage.clear();
+  mockAuth = undefined; localStorage.clear();
   handler = async () => feed([a, b]); locationHandler = async () => reply(200, places);
   global.fetch = jest.fn(async (url, options) => url.includes('/api/items/locations') ? locationHandler(url, options) : handler(url, options));
 });
@@ -86,8 +88,8 @@ test('anonymous discovery uses the selected metro without an account and shows u
   expect(screen.getByLabelText('City')).toHaveValue(''); expect(screen.getByLabelText('Neighborhood')).toHaveValue('');
   const cards = screen.getByRole('list', { name: 'Available items' });
   expect(within(cards).getByText('Available Now')).toBeInTheDocument(); expect(within(cards).getByText('Available Later')).toBeInTheDocument();
-  expect(within(cards).getAllByText(a.category)).toHaveLength(2); expect(within(cards).getByText(/Pickup from: Immediately/)).toBeInTheDocument();
-  expect(within(cards).getByText('Temescal, Oakland · Free')).toBeInTheDocument();
+  expect(within(cards).getAllByText(a.category)).toHaveLength(2); expect(within(cards).getAllByText(/Pickup until/)).toHaveLength(2);
+  expect(within(cards).getByText('Temescal, Oakland, CA')).toBeInTheDocument();
   expect(fetch.mock.calls.every(([url]) => url.includes('/api/items'))).toBe(true);
   expect(screen.queryByRole('img')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /pickup request|reserve|login/i })).not.toBeInTheDocument();
@@ -357,6 +359,7 @@ test('a changed total during pagination refreshes the first page instead of appe
   mount(); await ready(); await click('Load more'); await screen.findByRole('link', { name: b.name });
   expect(screen.queryByRole('link', { name: a.name })).not.toBeInTheDocument(); expect(reads).toBe(3);
   expect(screen.getByRole('heading', { name: /1 available/ })).toBeInTheDocument();
+  expect(screen.getByText('Availability changed. Results have been refreshed.')).toBeVisible();
 });
 test.each([{ ...a, metroId: '31080' }, { ...a, isReserved: true }])('inconsistent regional response metadata cannot be advertised as available', async row => {
   handler = async () => feed([row]); mount();
@@ -369,7 +372,7 @@ test('missing counts are a service error instead of a fabricated empty or page-s
 });
 test('owner cards remain visible with compact authoritative type and condition labels', async () => {
   handler = async () => feed([{ ...a, isOwner: true, classification: { itemType: { id: 'sofa', label: 'Sofa' }, condition: { id: 'good', label: 'Good' } } }]);
-  mount(); await ready(); expect(screen.getByText('Your listing')).toBeInTheDocument(); expect(screen.getByText('Sofa · Good')).toBeInTheDocument();
+  mount(); await ready(); expect(screen.getByText('Your listing')).toBeInTheDocument(); expect(screen.getByText('Sofa · Kitchen & craft')).toBeInTheDocument(); expect(screen.getByText('Condition: Good')).toBeInTheDocument();
 });
 
 test('location-first hierarchy keeps the page title short, common controls visible and secondary controls collapsed', async () => {
@@ -415,4 +418,46 @@ test('reset is offered only when useful and clears unsubmitted filters without l
   await click('Clear filters'); await ready();
   expect(screen.getByLabelText('Category')).toHaveValue(''); expect(screen.getByLabelText('Current URL')).toHaveTextContent('metroId=41860');
   expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument();
+});
+
+test.each([{ ...a, status: 'draft' }, { ...a, pickupTimeZone: 'not/a-zone' }, { ...a, effectiveAvailableUntil: '2026-02-30' }, { ...a, availability: 'reserved' }])('unsafe availability metadata produces a service error rather than a truthful-looking card', async row => {
+  handler = async () => feed([row]); mount();
+  expect(await screen.findByRole('alert')).toHaveTextContent(/unavailable/i);
+  expect(screen.queryByRole('link', { name: a.name })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: /\d+ available/ })).not.toBeInTheDocument();
+});
+test('cards expose real type/category, optional condition, location and UTC window without invented imagery', async () => {
+  handler = async () => feed([{ ...b, classification: { category: { id: 'office-lighting', label: 'Office & Lighting' }, itemType: { id: 'lamp', label: 'Lamp' }, condition: null } }]);
+  mount(); const link = await screen.findByRole('link', { name: b.name });
+  const card = within(link.closest('li'));
+  expect(card.getByRole('heading', { level: 3 })).toHaveTextContent(b.name);
+  expect(card.getByText('Lamp · Office & Lighting')).toBeVisible();
+  expect(card.getByText('Rockridge, Oakland, CA')).toBeVisible();
+  expect(card.getByText('Free')).toBeVisible(); expect(card.getByText('(UTC)')).toBeVisible();
+  expect(card.getByText(formatDate(b.availableFrom))).toHaveAttribute('datetime', b.availableFrom);
+  expect(card.queryByText(/Condition:/)).not.toBeInTheDocument();
+  expect(card.queryByRole('img')).not.toBeInTheDocument();
+});
+const formatDate = value => new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(new Date(value + 'T00:00:00Z'));
+test('next-page errors suppress current count claims and identify retained cards as previously loaded', async () => {
+  handler = async url => url.includes('cursor=') ? reply(503, { error: { message: 'Search is busy' } }) : feed([a], 'next', 24);
+  mount(); await ready(); await click('Load more');
+  expect(await screen.findByRole('alert')).toHaveTextContent('Previously loaded items are shown below. Refresh to confirm availability.');
+  expect(screen.queryByRole('heading', { name: /24 available/ })).not.toBeInTheDocument();
+  expect(screen.queryByText(/Showing 1 item/)).not.toBeInTheDocument();
+  expect(screen.getByRole('link', { name: a.name })).toBeVisible();
+});
+test('session changes clear owner-aware cards immediately and ignore an old account response', async () => {
+  const old = pending(); let calls = 0;
+  mockAuth = { status: 'authenticated', user: { id: 'account-a' } };
+  handler = async () => ++calls === 1 ? feed([{ ...a, isOwner: true }]) : calls === 2 ? old.promise : feed([{ ...b, isOwner: false }]);
+  mount(); await ready(); expect(screen.getByText('Your listing')).toBeVisible();
+  await act(async () => { fireEvent(window, new Event('focus')); });
+  mockAuth = { status: 'anonymous', user: null };
+  await click('Filters');
+  expect(screen.queryByText('Your listing')).not.toBeInTheDocument();
+  await screen.findByRole('link', { name: b.name });
+  await act(async () => old.resolve(feed([{ ...a, name: 'Stale owner listing', isOwner: true }])));
+  expect(screen.queryByRole('link', { name: 'Stale owner listing' })).not.toBeInTheDocument();
+  expect(screen.queryByText('Your listing')).not.toBeInTheDocument();
 });

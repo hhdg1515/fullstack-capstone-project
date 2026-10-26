@@ -8,8 +8,7 @@ Verified before implementation: PR #51 is open at
 `902bfcd79804d90f58c6ce3ae7bd1a9c399e8616`. No prerequisite was merged
 or changed. Start here, not on main.
 
-Dependency/merge order: **#49 → #50 → #51 → geographic coverage → discovery
-layout → cards/states/browser evidence**. Each new branch targets its direct
+Dependency/merge order: **#49 → #50 → #51 → #52 (coverage) → #53 (layout) → cards/states/browser evidence**. Each new branch targets its direct
 predecessor. Retarget dependents to main only after prerequisites merge; never
 merge or deploy automatically.
 
@@ -102,3 +101,75 @@ and error-state images follow in the next dependent change.
 CI initially caught the first card falling below the mobile viewport. The layout
 was corrected; the original viewport assertion and all workflow safeguards remain.
 This was a product reflow problem, not an excuse to scroll in the assertion.
+
+
+## Cards and service states
+
+Public cards now group name, actual type/category, general location, optional
+condition and a compact UTC pickup window. One title link opens the full detail;
+there are no misleading stock photographs or invented item attributes. The link
+has a 44px target, wraps long names and uses the shared focus/primary tokens.
+Owner status is the server's boolean, never an inferred owner ID or browser role.
+Cards offer no self-request control; existing detail/request and backend guards
+remain unchanged. Historical category fallback still works; full descriptions
+remain on detail pages.
+
+Feedback distinguishes loading, unsupported area, successful empty region,
+filtered emptiness, HTML/network/API failure and invalid/stale cursors. Temporary
+next-page errors label old cards as previously loaded and suppress current-count
+claims. A changed total starts a fresh first page and explains that availability
+changed. Session/account switches immediately scope out old cards and discard
+late owner-aware replies. Regional feed validation rejects malformed lifecycle,
+calendar/timezone/availability metadata rather than advertising unsafe results.
+No discovery MongoDB pipeline or public DTO was changed for presentation.
+
+## Evidence
+
+All images are actual local HTTPS production-build captures using disposable
+MongoDB and synthetic accounts/items. No credentials, private real data, cookies,
+headers, traces or generated mockups are included. Before and after views were
+visually inspected, including long names and expanded controls. The intermediate
+layout evidence remains in PR #53. Final samples also include tablet 768px,
+375px mobile, and 640px with 200% root text sizing as a reflow stress check (not
+physical browser zoom certification).
+
+| View | Before desktop | After desktop | Before 320px | After 320px |
+| --- | --- | --- | --- | --- |
+| Region | [Before](assets/milestone-6.4c/before-region-desktop.png) | [After](assets/milestone-6.4c/after-region-desktop.png) | [Before](assets/milestone-6.4c/before-region-mobile.png) | [After](assets/milestone-6.4c/after-region-mobile.png) |
+| Populated | [Before](assets/milestone-6.4c/before-populated-desktop.png) | [After](assets/milestone-6.4c/after-populated-desktop.png) | [Before](assets/milestone-6.4c/before-populated-mobile.png) | [After](assets/milestone-6.4c/after-populated-mobile.png) |
+| Filtered | [Before](assets/milestone-6.4c/before-filtered-desktop.png) | [After](assets/milestone-6.4c/after-filtered-desktop.png) | [Before](assets/milestone-6.4c/before-filtered-mobile.png) | [After](assets/milestone-6.4c/after-filtered-mobile.png) |
+| Empty | [Before](assets/milestone-6.4c/before-empty-desktop.png) | [After](assets/milestone-6.4c/after-empty-desktop.png) | [Before](assets/milestone-6.4c/before-empty-mobile.png) | [After](assets/milestone-6.4c/after-empty-mobile.png) |
+| Error | [Before](assets/milestone-6.4c/before-error-desktop.png) | [After](assets/milestone-6.4c/after-error-desktop.png) | [Before](assets/milestone-6.4c/before-error-mobile.png) | [After](assets/milestone-6.4c/after-error-mobile.png) |
+| Owner | [Before](assets/milestone-6.4c/before-owner-desktop.png) | [After](assets/milestone-6.4c/after-owner-desktop.png) | [Before](assets/milestone-6.4c/before-owner-mobile.png) | [After](assets/milestone-6.4c/after-owner-mobile.png) |
+
+Additional samples: [768px tablet](assets/milestone-6.4c/after-reflow-tablet.png),
+[375px](assets/milestone-6.4c/after-reflow-mobile375.png),
+[200% text at 640px](assets/milestone-6.4c/after-reflow-zoom200.png).
+
+## Verification and remaining limits
+
+Final local backend **303 tests**, frontend **291 tests / 17 suites**, and strict
+production build pass. Geographic source verification checks the pinned full-file
+hash and all 50 extracted properties. Existing integration coverage still checks
+exact counts, both sorts/cursors, reservations, owner privacy, legacy records,
+time windows, classifications and synonyms. The added strictly local browser
+scenario verifies new cross-state coverage, preferences/URL precedence, responsive
+controls, safe focus, owner-session changes, count changes, HTML/loading/errors,
+unsupported states and recovery. It adds no hosted fixtures or data allowances.
+Full local browser/CI evidence and immutable heads are recorded in the PRs.
+
+No dependency/framework, collection/index, plan-location migration, transaction,
+auth/session, chat, scheduling, hosted E2E, deployment or provider change is part
+of 6.4C. The 16 bundled gifts are byte-identical to the prerequisite. Catalog
+expansion is additive; a cached older frontend may need refresh to see choices.
+Coverage remains curated/dated; new metros outside California have no automatic
+zone suggestion. Database pipelines were regression-tested, not remotely
+benchmarked. Real Safari/iOS, manual screen readers and live staging are not
+verified. Operational launch gates from 6.0 are unchanged.
+
+Rollback in reverse dependency order: cards/states, layout, then geographic
+catalog. No DDL/data rollback is required. Before removing new catalog IDs from a
+running deployment, inventory plan references and browser preferences: plans
+assigned new IDs must not be silently reassigned. Coordinate frontend/backend
+versions and preserve published records/owner correction paths. A merge does not
+authorize deployment or remote preparation.

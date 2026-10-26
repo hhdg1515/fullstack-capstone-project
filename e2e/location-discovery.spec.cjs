@@ -51,7 +51,7 @@ test('regional discovery, structured items, counts and ownership work without ch
     await page.getByLabel('Metro area', { exact: true }).selectOption('41860');
     await expect(page.getByRole('heading', { name: /1 available/ })).toBeVisible();
     const results = page.getByRole('list', { name: 'Available items', exact: true });
-    await expect(results.getByRole('link', { name: 'Comfortable seat', exact: true })).toBeVisible(); await expect(results.getByText('Sofa · Good', { exact: true })).toBeVisible();
+    await expect(results.getByRole('link', { name: 'Comfortable seat', exact: true })).toBeVisible(); await expect(results.getByText('Sofa · Living Room', { exact: true })).toBeVisible(); await expect(results.getByText('Condition: Good', { exact: true })).toBeVisible();
     await expect(results.getByText('Reserved sofa', { exact: true })).toHaveCount(0); await expect(results.getByText('Other metro couch', { exact: true })).toHaveCount(0);
     await page.getByLabel('Search items', { exact: true }).fill('couch'); await page.getByRole('button', { name: 'Find free items', exact: true }).click();
     await expect(results.getByRole('link', { name: 'Comfortable seat', exact: true })).toBeVisible();
