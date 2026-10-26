@@ -16,7 +16,8 @@ const definitions = [
     { collection: 'pickupRequests', name: 'pickup_sent', key: { receiverId: 1, _id: -1 }, options: { collation: { locale: 'simple' } } },
     { collection: 'pickupRequests', name: 'pickup_one_accepted', key: { itemId: 1 }, options: { unique: true, partialFilterExpression: { status: 'accepted' }, collation: { locale: 'simple' } } },
     { collection: 'pickupRequests', name: 'pickup_active_receiver', key: { itemId: 1, receiverId: 1 }, options: { unique: true, partialFilterExpression: { active: true }, collation: { locale: 'simple' } } },
-    { collection: 'pickupMessages', name: 'pickup_messages_request_time', key: { requestId: 1, createdAt: -1, _id: -1 }, options: { collation: { locale: 'simple' } } }
+    { collection: 'pickupMessages', name: 'pickup_messages_request_time', key: { requestId: 1, createdAt: -1, _id: -1 }, options: { collation: { locale: 'simple' } } },
+    { collection: 'moveOutPlans', name: 'plan_metro_discovery', key: { metroId: 1, status: 1, stateId: 1, _id: 1 }, options: { collation: { locale: 'simple' } } }
 ];
 const sameKey = (index, definition) => JSON.stringify(index.key) === JSON.stringify(definition.key);
 function compatible(index, definition) {

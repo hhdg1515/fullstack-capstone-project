@@ -46,8 +46,8 @@ function createItemRoutes({ connectToDatabase, auth, discoveryLimit = 120 }) {
     publicRouter.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
     publicRouter.use(rateLimit({ windowMs: 60000, limit: discoveryLimit, standardHeaders: 'draft-7', legacyHeaders: false,
         handler: (req, res) => errorResponse(res, 429, 'DISCOVERY_RATE_LIMIT', 'Too many discovery requests. Please wait a minute and retry.') }));
-    publicRouter.get('/', async (req, res, next) => {
-        try { res.json(await discovery.browse(req.query)); } catch (error) { next(error); }
+    publicRouter.get('/', auth.optionalAuth, async (req, res, next) => {
+        try { res.json(await discovery.browse(req.query, req.user && req.user._id)); } catch (error) { next(error); }
     });
     publicRouter.get('/locations', async (req, res, next) => {
         try { res.json(await discovery.locations(req.query)); } catch (error) { next(error); }
