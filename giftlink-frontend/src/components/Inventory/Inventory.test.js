@@ -1,4 +1,4 @@
-jest.mock('../../api/usePublicCatalog', () => ({ __esModule: true, default: () => ({ data: require('../../test-support/catalogs').regions }) }));
+jest.mock('../../api/usePublicCatalog', () => ({ __esModule: true, default: path => ({ data: require('../../test-support/catalogs')[path === '/api/regions' ? 'regions' : 'taxonomy'] }) }));
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -49,7 +49,7 @@ test('inventory loads an empty plan with inherited location/deadline and a name-
   expect(screen.getByText(/No items yet/)).toBeInTheDocument();
   expect(screen.getByText('0 of 0 items cleared')).toBeInTheDocument();
   expect(screen.getByText(/Temescal, Oakland/)).toBeInTheDocument();
-  expect(screen.getByLabelText('Category or tag (optional)')).not.toBeRequired();
+  expect(screen.getByLabelText('Category (optional)')).not.toBeRequired();
   expect(screen.queryByLabelText('City')).not.toBeInTheDocument();
   expect(screen.queryByLabelText(/price|address|dimensions|brand/i)).not.toBeInTheDocument();
 });
@@ -238,11 +238,11 @@ test('date validation keeps calendar boundaries and does not treat publication t
 });
 
 test('server validation opens optional item details and focuses the affected control after the failed save', async () => {
-  handler = async () => reply(400, { error: { message: 'Check item details', fields: [{ field: 'category', message: 'Use a shorter category.' }] } });
+  handler = async () => reply(400, { error: { message: 'Check item details', fields: [{ field: 'condition', message: 'Choose a listed condition.' }] } });
   mount(); await formReady(); name('Desk'); submitDraft();
-  await waitFor(() => expect(screen.getByLabelText('Category or tag (optional)')).toHaveFocus());
-  expect(screen.getByLabelText('Category or tag (optional)').closest('details')).toHaveAttribute('open');
-  expect(screen.getByLabelText('Category or tag (optional)')).toHaveAccessibleDescription('Use a shorter category.');
+  await waitFor(() => expect(screen.getByLabelText('Condition (optional)')).toHaveFocus());
+  expect(screen.getByLabelText('Condition (optional)').closest('details')).toHaveAttribute('open');
+  expect(screen.getByLabelText('Condition (optional)')).toHaveAccessibleDescription('Choose a listed condition.');
   expect(screen.getByLabelText('Item name')).toHaveValue('Desk');
-  expect(screen.getByRole('alert')).not.toHaveTextContent('category:');
+  expect(screen.getByRole('alert')).not.toHaveTextContent('condition:');
 });

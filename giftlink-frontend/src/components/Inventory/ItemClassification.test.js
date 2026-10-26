@@ -1,0 +1,30 @@
+import React from 'react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import ItemForm from './ItemForm';
+import { taxonomy } from '../../test-support/catalogs';
+const plan = { status: 'active', moveOutDeadline: '2099-01-01' };
+beforeEach(() => { global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => taxonomy })); });
+const select = (label, value) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
+test('category restricts item types, changing it clears type, and condition remains separate', async () => {
+  const save = jest.fn(); render(<ItemForm plan={plan} onSave={save} />);
+  await screen.findByRole('option', { name: 'Living Room' });
+  expect(screen.getByLabelText('Item type (optional)')).toBeDisabled();
+  select('Category (optional)', 'living-room'); select('Item type (optional)', 'sofa');
+  expect(screen.queryByRole('option', { name: 'Desk' })).not.toBeInTheDocument();
+  select('Category (optional)', 'office-lighting'); expect(screen.getByLabelText('Item type (optional)')).toHaveValue('');
+  select('Item type (optional)', 'desk'); select('Condition (optional)', 'good');
+  fireEvent.change(screen.getByLabelText('Item name'), { target: { value: 'Study table' } });
+  fireEvent.submit(screen.getByRole('button', { name: 'Save draft & add another' }).closest('form'));
+  await waitFor(() => expect(save).toHaveBeenCalled());
+  expect(save.mock.calls[0][0]).toMatchObject({ name: 'Study table', categoryId: 'office-lighting', itemTypeId: 'desk', condition: 'good' });
+  expect(save.mock.calls[0][0]).not.toHaveProperty('category');
+});
+test('editing a legacy item shows its original category without silently classifying or overwriting it', async () => {
+  const save = jest.fn(); render(<ItemForm plan={plan} item={{ name: 'Existing desk', category: 'Old Furniture', status: 'draft' }} onSave={save} />);
+  await screen.findByRole('option', { name: 'Living Room' });
+  expect(screen.getByText('Existing category: Old Furniture. It will be preserved.')).toBeInTheDocument();
+  expect(screen.getByLabelText('Category (optional)')).toHaveValue('');
+  fireEvent.submit(screen.getByRole('button', { name: 'Save changes' }).closest('form')); await waitFor(() => expect(save).toHaveBeenCalled());
+  expect(save.mock.calls[0][0]).toMatchObject({ categoryId: null, itemTypeId: null, condition: null });
+  expect(save.mock.calls[0][0]).not.toHaveProperty('category');
+});
