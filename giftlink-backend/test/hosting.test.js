@@ -116,10 +116,12 @@ describe('Vercel Express runtime using verified isolated MongoDB', function () {
         clock = 5001; await request(app).get('/api/health').expect(200); assert.equal(factories, 2);
     });
     it('requires prepared indexes and never silently creates them', async function () {
-        await isolated.db.collection('items').dropIndex('items_pickup_start');
-        try {
-            const app = hosted(); await request(app).get('/api/health').expect(503);
-            assert.ok(!(await isolated.db.collection('items').indexes()).some(index => index.name === 'items_pickup_start'));
-        } finally { await prepareDatabaseIndexes(isolated.db); }
+        for (const [collection, index] of [['items', 'items_pickup_start'], ['pickupMessages', 'pickup_messages_request_time']]) {
+            await isolated.db.collection(collection).dropIndex(index);
+            try {
+                const app = hosted(); await request(app).get('/api/health').expect(503);
+                assert.ok(!(await isolated.db.collection(collection).indexes()).some(value => value.name === index));
+            } finally { await prepareDatabaseIndexes(isolated.db); }
+        }
     });
 });

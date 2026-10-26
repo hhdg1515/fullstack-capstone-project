@@ -81,6 +81,17 @@ test.each([0, 409, 429, 503])('preserves failed-send drafts for status %s, witho
   refresh(); await screen.findByText('Conversation refreshed.'); expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled(); expect(count).toBe(1);
   expect(screen.getByDisplayValue('Keep my unfinished text')).toBeInTheDocument();
 });
+test('keeps the draft on a shared message quota without promising a one-minute reset or automatically retrying', async () => {
+  const posts = [];
+  handler = async (url, options) => {
+    if (options.method === 'POST') { posts.push(options); return problem(429, 'MESSAGE_QUOTA_EXCEEDED'); }
+    return url.endsWith('/conversation') ? reply(context()) : reply({ messages: [], nextCursor: null });
+  };
+  mount(); await ready(); type('Please keep this draft.'); submit();
+  expect(await screen.findByRole('alert')).toHaveTextContent('Message limit reached. Your text is kept. Try again later.');
+  expect(screen.getByLabelText('Message', { exact: true })).toHaveValue('Please keep this draft.');
+  expect(posts).toHaveLength(1);
+});
 test('server field errors describe and focus the preserved input after sending stops', async () => {
   handler = async (url, options) => options.method === 'POST' ? problem(400, 'VALIDATION_FAILED', [{ field: 'text', message: 'Use plain text.' }]) :
     url.endsWith('/conversation') ? reply(context()) : reply({ messages: [], nextCursor: null });

@@ -89,12 +89,50 @@ All paths are beneath `/api/pickup-requests/:requestId/conversation`:
 
 Messages are plain text, not HTML. A future UI must render text without HTML
 interpretation. The existing request-wide limiter and a per-authenticated-user
-message-write limiter bound requests per warm process; they are not a distributed
-Vercel quota. Stored messages are application-readable plaintext, not end-to-end
+message-write limiter bound requests per warm process; they are not distributed
+Vercel request quotas. Phase 4 adds the shared successful-send quota below. Stored messages are application-readable plaintext, not end-to-end
 encrypted; no automated contact-detail redaction or moderation is included.
 Repeated POSTs can create repeated messages: automatic retries,
 idempotency keys and realtime delivery are not included. Phase 1 introduced no chat UI, attachments, notifications, scheduling changes or
 external infrastructure. The frontend panel added in Phase 2 is described below.
+
+## Phase 4 — Shared message bounds
+
+In addition to the unchanged per-process 30-message/minute limiter, successful
+sends reserve two account-scoped MongoDB counters: **30 per 60 seconds and 300
+per 3,600 seconds**, shared across conversations, sessions and warm instances.
+Each window starts with the first send after expiry; these are anchored windows,
+not sliding windows, so bursts can straddle a boundary. MongoDB `$$NOW` determines
+expiry independently of function or browser clocks. Two constant-size counters
+live in `users.pickupMessageQuota`; no message text, new collection/index, TTL,
+upsert, migration or startup write is added. Existing accounts initialize lazily
+on their next authorized send. Account/profile/public DTOs and logs exclude them.
+
+Canonical participant/eligibility checks run before quota reservation, inside the
+existing plan transaction. Reservation and message insertion commit together;
+failed authorization, rejected sends, aborts and callback retries do not consume
+extra quota or leave partial messages. Quota exhaustion returns **429
+MESSAGE_QUOTA_EXCEEDED** with a bounded `Retry-After` header and
+`error.retryAfterSeconds` (1–3,600). No message is inserted. The UI keeps the draft,
+says to try later and never retries POST automatically. The counters use the
+existing user `_id` index. They add one user-document update to a successful send;
+they are not a global storage cap, anti-Sybil control or shared GET limiter.
+
+The pickup router's existing 120-request/minute per-process IP limiter now runs
+before session lookup, including invalid-session traffic. The authenticated
+per-process send limiter remains before validation. Proxy/IP attribution and
+multi-instance request amplification still need operational review; no forwarded
+header is newly trusted. Ordinary 401/404 behavior applies until this outer limit
+is reached. Rejected/invalid attempts can consume local attempt limits, never
+the database successful-send allowance.
+
+Message history still defaults to 20 and caps at 50 results with one lookahead;
+the indexed page query now has `maxTimeMS: 5000` and an explicit projection.
+MongoDB code 50 returns sanitized 503 `CONVERSATION_BUSY`. This bounds that query,
+not the entire authorization/transaction/network lifetime. No callback retry of
+an HTTP POST is added; the driver's existing transaction retries remain atomic.
+Explicit duplicate POSTs still produce distinct messages; uncertain outcomes
+require refresh/review before any manual resend. There is no idempotency key.
 
 ## Index preparation and rollout boundary
 

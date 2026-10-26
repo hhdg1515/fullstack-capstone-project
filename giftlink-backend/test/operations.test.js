@@ -5,6 +5,17 @@ const createApp = require('../app-factory');
 const { failureCategory } = require('../middleware/diagnostics');
 
 describe('operational diagnostics and bounded legacy queries', function () {
+    it('limits invalid-session pickup traffic before database authentication work', async function () {
+        let connections = 0;
+        const app = createApp({ logger: pino({ level: 'silent' }), connectToDatabase: async () => {
+            connections++; return { collection: () => ({ findOne: async () => null }) };
+        } });
+        for (let i = 0; i < 120; i++) await request(app).get('/api/pickup-requests/unknown/conversation/messages')
+            .set('Cookie', 'giftlink_session=' + 'a'.repeat(64)).expect(401);
+        const result = await request(app).get('/api/pickup-requests/unknown/conversation/messages')
+            .set('Cookie', 'giftlink_session=' + 'a'.repeat(64)).expect(429);
+        assert.equal(result.body.error.code, 'PICKUP_RATE_LIMIT'); assert.equal(connections, 120);
+    });
     it('generates server IDs, correlates safe error logs and never records client IDs, query text, cookies or bodies', async function () {
         const lines = [];
         const app = createApp({ connectToDatabase: async () => { throw new Error('private-database-password'); },
