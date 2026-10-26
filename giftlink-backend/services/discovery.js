@@ -13,7 +13,7 @@ const invalid = message => new InventoryError(400, 'INVALID_DISCOVERY_QUERY', me
 const invalidCursor = () => new InventoryError(400, 'INVALID_CURSOR', 'This pagination link is invalid for the selected filters. Refresh results.');
 const staleCursor = () => new InventoryError(409, 'STALE_CURSOR', 'These results have changed or the pagination link expired. Refresh results to start again.');
 const cursorLifetime = 15 * 60 * 1000;
-function parseQuery(raw, today) {
+function parseQuery(raw, today, requireRegion = true) {
     const allowed = ['q', 'city', 'neighborhood', 'stateId', 'metroId', 'categoryId', 'itemTypeId', 'condition', 'availability', 'date', 'sort', 'limit', 'cursor'];
     if (Object.keys(raw).some(key => !allowed.includes(key) || typeof raw[key] !== 'string')) {
         throw invalid('Use only supported, single-value discovery parameters.');
@@ -21,6 +21,7 @@ function parseQuery(raw, today) {
     const query = { q: '', city: '', neighborhood: '', availability: raw.availability || 'all',
         date: raw.date || '', sort: raw.sort || 'newest', limit: raw.limit === undefined ? 12 : Number(raw.limit),
         stateId: raw.stateId || '', metroId: raw.metroId || '', categoryId: raw.categoryId || '', itemTypeId: raw.itemTypeId || '', condition: raw.condition || '' };
+    if (requireRegion && (!query.stateId || !query.metroId)) throw new InventoryError(400, 'REGION_REQUIRED', 'Choose a listed state and metro before browsing.');
     if (query.stateId || query.metroId) {
         validateRegion(query.stateId, query.metroId);
         if (!query.stateId || !query.metroId) throw new InventoryError(400, 'REGION_REQUIRED', 'Choose a listed state and metro before browsing.');
@@ -142,14 +143,13 @@ function createDiscoveryService({ connectToDatabase, now = () => new Date() }) {
         const start = query.availability === 'date' ? query.date : today;
         if (['now', 'date'].includes(query.availability)) terms.push({ $or: [{ availableFrom: null }, { availableFrom: { $lte: start } }] });
         if (query.availability === 'later') terms.push({ availableFrom: { $gt: today } });
-        const regional = Boolean(query.metroId);
-        const pipeline = regional ? regionalPipeline(query, terms, today) : visibilityPipeline({ $and: terms }, today);
+        const pipeline = regionalPipeline(query, terms, today);
         for (const key of ['city', 'neighborhood']) {
             if (query[key]) pipeline.push({ $match: { ['plan.' + key]: { $regex: '(*UCP)^\\s*' + phrase(query[key]) + '\\s*$', $options: 'i' } } });
         }
         if (query.availability === 'date') pipeline.push({ $match: { effectiveAvailableUntil: { $gte: query.date } } });
         pipeline.push(...pickupReservationStages());
-        if (regional) pipeline.push({ $match: { isReserved: false } });
+        pipeline.push({ $match: { isReserved: false } });
         const page = [];
         if (cursor) {
             const newest = query.sort === 'newest', field = newest ? 'publishedAt' : 'effectiveAvailableUntil';
@@ -159,7 +159,7 @@ function createDiscoveryService({ connectToDatabase, now = () => new Date() }) {
         page.push({ $sort: query.sort === 'newest' ? { publishedAt: -1, _id: -1 } : { effectiveAvailableUntil: 1, _id: 1 } },
             { $limit: query.limit + 1 }, { $project: projection });
         pipeline.push({ $facet: { rows: page, total: [{ $count: 'value' }] } });
-        const [result] = await aggregate(pipeline, {}, regional ? 'moveOutPlans' : 'items');
+        const [result] = await aggregate(pipeline, {}, 'moveOutPlans');
         const rows = result.rows;
         const hasMore = rows.length > query.limit; const selected = rows.slice(0, query.limit);
         const last = selected[selected.length - 1];
@@ -178,7 +178,7 @@ function createDiscoveryService({ connectToDatabase, now = () => new Date() }) {
     }
     async function locations(raw) {
         if (Object.keys(raw).some(key => !['stateId', 'metroId'].includes(key))) throw invalid('Location options accept only state and metro IDs.');
-        const current = now(), today = todayUTC(current), query = parseQuery(raw, today);
+        const current = now(), today = todayUTC(current), query = parseQuery(raw, today, false);
         const regional = Boolean(query.metroId);
         const pipeline = regional ? regionalPipeline(query, [initialMatch(current.getTime())], today) : visibilityPipeline(initialMatch(current.getTime()), today);
         if (regional) pipeline.push(...pickupReservationStages(), { $match: { isReserved: false } });

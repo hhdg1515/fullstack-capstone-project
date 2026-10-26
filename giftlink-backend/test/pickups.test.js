@@ -51,7 +51,7 @@ describe('two-party pickup lifecycle on verified isolated MongoDB', function () 
         app = createApp({ connectToDatabase: async () => db, logger: pino({ level: 'silent' }) });
         for (const name of ['pickupRequests', 'items', 'moveOutPlans']) await db.collection(name).deleteMany({});
         const result = await write(request(app).post('/api/move-out-plans')).set('Cookie', giver.cookie)
-            .send({ title: 'Private management title', city: 'Oakland', neighborhood: 'Temescal', moveOutDeadline: day(30), pickupTimeZone: 'UTC' }).expect(201);
+            .send({ title: 'Private management title', city: 'Oakland', neighborhood: 'Temescal', moveOutDeadline: day(30), pickupTimeZone: 'UTC', stateId: '06', metroId: '41860' }).expect(201);
         plan = result.body.plan;
         item = (await write(request(app).post('/api/move-out-plans/' + plan.id + '/items')).set('Cookie', giver.cookie)
             .send({ name: 'One box of household supplies', description: 'Whole box, one pickup.', publish: true }).expect(201)).body.item;
@@ -79,9 +79,10 @@ describe('two-party pickup lifecycle on verified isolated MongoDB', function () 
     });
     async function assertReservation(expected) {
         const detail = (await request(app).get('/api/items/' + item.id).expect(200)).body.item;
-        const listing = (await request(app).get('/api/items').expect(200)).body.items.find(row => row.id === item.id);
+        const listing = (await request(app).get('/api/items?stateId=06&metroId=41860').expect(200)).body.items.find(row => row.id === item.id);
         const owned = (await request(app).get('/api/move-out-plans/' + plan.id + '/items').set('Cookie', giver.cookie).expect(200)).body.items.find(row => row.id === item.id);
-        for (const row of [detail, listing, owned]) assert.equal(row.isReserved, expected);
+        for (const row of [detail, owned]) assert.equal(row.isReserved, expected);
+        if (expected) assert.equal(listing, undefined); else assert.equal(listing.isReserved, false);
         for (const value of ['pickupReservations', 'receiverId', 'giverId', 'public library', receiver.id, plan.id]) {
             assert.ok(!JSON.stringify(detail).includes(value));
         }
@@ -146,6 +147,8 @@ describe('two-party pickup lifecycle on verified isolated MongoDB', function () 
         const before = await db.collection('moveOutPlans').findOne({ _id: new ObjectId(plan.id) });
         const own = await request(app).get('/api/items/' + item.id).set('Cookie', giver.cookie).expect(200);
         assert.equal(own.body.item.isOwner, true); assert.equal(own.headers['cache-control'], 'no-store');
+        const ownedFeed = await request(app).get('/api/items?stateId=06&metroId=41860').set('Cookie', giver.cookie).expect(200);
+        assert.equal(ownedFeed.body.items[0].isOwner, true); assert.ok(!JSON.stringify(ownedFeed.body).includes(giver.id));
         assert.ok(!JSON.stringify(own.body).includes(giver.id));
         for (const cookie of [receiver.cookie, '', 'giftlink_session=' + 'a'.repeat(64)]) {
             assert.equal((await request(app).get('/api/items/' + item.id).set('Cookie', cookie).expect(200)).body.item.isOwner, false);
@@ -156,6 +159,7 @@ describe('two-party pickup lifecycle on verified isolated MongoDB', function () 
         await submit({}, receiver).expect(201);
     });
     it('requires explicit reservation cancellation when assigning or changing canonical plan regions', async function () {
+        await db.collection('moveOutPlans').updateOne({ _id: new ObjectId(plan.id) }, { $unset: { stateId: '', metroId: '' } });
         const pending = (await submit().expect(201)).body.request;
         const accepted = (await act(pending, 'accept').expect(200)).body.request;
         const conflict = await planEdit({ stateId: '06', metroId: '41860' }).expect(409);
@@ -337,7 +341,7 @@ describe('two-party pickup lifecycle on verified isolated MongoDB', function () 
         assert.deepEqual(row.counterpart, { firstName: 'Giver' }); assert.equal(row.note, 'Meet near the public library.');
         const incoming = (await get(row, giver)).body.request; assert.equal(incoming.plan.id, plan.id);
         assert.deepEqual(incoming.counterpart, { firstName: 'Receiver' });
-        for (const path of ['/api/items', '/api/items/' + item.id, '/api/items/locations']) {
+        for (const path of ['/api/items?stateId=06&metroId=41860', '/api/items/' + item.id, '/api/items/locations']) {
             const body = (await request(app).get(path)).body; const publicText = JSON.stringify(body);
             for (const secret of ['public library', 'receiverId', 'giverId', 'counterpart', 'note', '@example.test', plan.id]) assert.ok(!publicText.includes(secret));
         }

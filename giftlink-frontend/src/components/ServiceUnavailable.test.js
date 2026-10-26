@@ -80,7 +80,9 @@ test('legacy search retries the submitted filters rather than replacing them wit
   await screen.findByText(gift.name); expect(fetch.mock.calls.at(-1)[0]).toMatch(/\/api\/search\?name=chair&/);
 });
 test('discovery handles the same missing-backend response through its existing retry UI', async () => {
-  mount('/app/items'); await screen.findByRole('button', { name: 'Retry results' });
-  expect(screen.getByText('The service is temporarily unavailable. Please try again later.')).toBeInTheDocument();
+  mount('/app/items'); await screen.findByRole('button', { name: 'Retry region options' });
+  expect(screen.getByText(/Region options are unavailable/)).toBeInTheDocument();
+  expect(screen.queryByText(/0 available|No available items/)).not.toBeInTheDocument();
+  expect(fetch.mock.calls.some(([url]) => url.includes('/api/items?'))).toBe(false);
   expect(screen.queryByText(/Cannot read|Unexpected token/)).not.toBeInTheDocument();
 });

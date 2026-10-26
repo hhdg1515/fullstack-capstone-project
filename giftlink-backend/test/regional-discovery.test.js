@@ -21,6 +21,15 @@ describe('region-first discovery on verified disposable MongoDB', function () {
         await db.collection('moveOutPlans').insertOne(parent);
         app = createApp({ connectToDatabase: async () => db, logger: pino({ level: 'silent' }) });
     });
+    it('rejects unscoped browsing before connecting rather than fetching a global feed', async function () {
+        let connections = 0;
+        const isolatedApp = createApp({ connectToDatabase: async () => { connections++; throw new Error('Must not connect'); }, logger: pino({ level: 'silent' }) });
+        for (const suffix of ['', '?city=Oakland', '?stateId=06', '?metroId=41860']) {
+            const result = await request(isolatedApp).get('/api/items' + suffix).expect(400);
+            assert.equal(result.body.error.code, 'REGION_REQUIRED');
+        }
+        assert.equal(connections, 0);
+    });
     it('filters canonical plan regions on the server without copying region labels onto items', async function () {
         const elsewhere = Object.assign({}, parent, { _id: new ObjectId(), metroId: '31080', city: 'Oakland' });
         const legacy = Object.assign({}, parent, { _id: new ObjectId() }); delete legacy.stateId; delete legacy.metroId;

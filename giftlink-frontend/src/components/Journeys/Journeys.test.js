@@ -1,3 +1,4 @@
+jest.mock('../../api/usePublicCatalog', () => ({ __esModule: true, default: path => ({ data: require('../../test-support/catalogs')[path === '/api/regions' ? 'regions' : 'taxonomy'] }) }));
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
@@ -7,7 +8,7 @@ import App from '../../App';
 const user = { id: '64a000000000000000000001', firstName: 'Neighbor', lastName: 'Member', email: 'neighbor@example.test' };
 const plan = { id: '64a000000000000000000002', title: 'Pasadena move', city: 'Pasadena', neighborhood: 'Bungalow Heaven', status: 'active', moveOutDeadline: '2030-07-10', pickupTimeZone: 'America/Los_Angeles' };
 const item = { id: '64a000000000000000000003', name: 'Replacement table', description: 'A useful table.', city: 'Irvine', neighborhood: 'Woodbridge', status: 'available', availability: 'now', availableFrom: null,
-  availableUntil: null, effectiveAvailableUntil: '2030-07-10', pickupTimeZone: 'America/Los_Angeles', version: 1 };
+  stateId: '06', metroId: '31080', isOwner: false, isReserved: false, availableUntil: null, effectiveAvailableUntil: '2030-07-10', pickupTimeZone: 'America/Los_Angeles', version: 1 };
 const pickup = { id: '64a000000000000000000004', role: 'receiver', item, status: 'pending', version: 1, timeZone: 'America/Los_Angeles', proposedAt: '2030-07-01T19:00:00Z', note: '', counterpart: { firstName: 'Other neighbor' }, history: [] };
 let sessionUser, detailRole;
 const reply = (data, status = 200) => ({ ok: status < 400, status, json: async () => data });
@@ -28,7 +29,7 @@ async function login() {
   await act(async () => { fireEvent.submit(screen.getByRole('button', { name: 'Login', exact: true }).closest('form')); });
 }
 beforeEach(() => {
-  sessionUser = null; detailRole = 'receiver';
+  localStorage.clear(); sessionUser = null; detailRole = 'receiver';
   jest.spyOn(window, 'scrollTo').mockImplementation(() => {});
   global.fetch = jest.fn(async (url, options = {}) => {
     const path = new URL(url, 'http://localhost').pathname;
@@ -36,7 +37,7 @@ beforeEach(() => {
     if (path === '/api/auth/login' || path === '/api/auth/register') { sessionUser = user; return reply({ user }, path.endsWith('register') ? 201 : 200); }
     if (path === '/api/auth/logout') { sessionUser = null; return reply(null, 204); }
     if (path === '/api/items/locations') return reply({ locations: [{ city: 'Irvine', neighborhoods: ['Woodbridge'] }], truncated: false });
-    if (path === '/api/items') return reply({ items: [item], page: { hasMore: false, nextCursor: null } });
+    if (path === '/api/items') return reply({ items: [item], total: 1, page: { hasMore: false, nextCursor: null } });
     if (path === '/api/items/' + item.id) return reply({ item });
     if (path.endsWith('/items') && path.startsWith('/api/move-out-plans/')) return reply({ plan, items: [{ ...item, city: plan.city, neighborhood: plan.neighborhood }], progress: { total: 1, cleared: 0 } });
     if (path === '/api/move-out-plans') return reply({ plans: [plan] });
@@ -60,10 +61,11 @@ test('anonymous homepage exposes both intentions immediately while the session c
   expect(screen.getByText(/Everything is free/)).toBeInTheDocument();
   expect(fetch).toHaveBeenCalledTimes(1); expect(fetch.mock.calls[0][0]).toMatch(/\/api\/me$/);
 });
-test('Find Free Items opens discovery anonymously without a plan or location requirement', async () => {
+test('Find Free Items opens anonymously without a plan and asks for a browsing region', async () => {
   mount(); await click(screen.getByRole('link', { name: 'Explore Free Items' }));
-  expect(await screen.findByRole('heading', { name: 'Free items near your neighborhood' })).toBeInTheDocument();
-  expect(screen.getByLabelText('City', { exact: true })).toHaveValue('');
+  expect(await screen.findByRole('heading', { name: 'Where would you like to find free items?' })).toBeInTheDocument();
+  expect(screen.getByLabelText('State', { exact: true })).toHaveValue('');
+  expect(fetch.mock.calls.some(([url]) => url.includes('/api/items?'))).toBe(false);
   expect(primary().getByRole('link', { name: 'Find Free Items' })).toHaveAttribute('aria-current', 'location');
   expect(context('Find Free Items').getByRole('link', { name: 'My pickup requests' })).toHaveAccessibleDescription('Sign in required');
   expect(fetch.mock.calls.some(([url]) => url.includes('/api/move-out-plans'))).toBe(false);
@@ -102,11 +104,13 @@ test('one account gives in Pasadena and searches Irvine without copying or enfor
   sessionUser = user; mount('/app/plans');
   expect(await screen.findByRole('link', { name: 'Pasadena move' })).toBeInTheDocument();
   await click(primary().getByRole('link', { name: 'Find Free Items' }));
+  await act(async () => fireEvent.change(screen.getByLabelText('State'), { target: { value: '06' } }));
+  await act(async () => fireEvent.change(screen.getByLabelText('Metro area'), { target: { value: '31080' } }));
   await click(screen.getByRole('button', { name: /^Filters/ }));
   await screen.findByRole('option', { name: 'Irvine' }); expect(screen.getByLabelText('City', { exact: true })).toHaveValue('');
   fireEvent.change(screen.getByLabelText('City', { exact: true }), { target: { value: 'Irvine' } });
   await click(screen.getByRole('button', { name: 'Find free items' }));
-  await waitFor(() => expect(screen.getByTestId('route')).toHaveTextContent('/app/items?city=Irvine'));
+  await waitFor(() => expect(screen.getByTestId('route')).toHaveTextContent('/app/items?stateId=06&metroId=31080&city=Irvine'));
   await click(primary().getByRole('link', { name: 'Give Away' })); await screen.findByRole('link', { name: 'Pasadena move' });
   await click(screen.getByRole('button', { name: 'Browser Back' }));
   expect(await screen.findByLabelText('City', { exact: true })).toHaveValue('Irvine');
@@ -130,10 +134,10 @@ test('Give Away provides consolidated incoming requests and per-plan inventory/c
   expect(fetch.mock.calls.some(([url]) => url.includes('/api/pickup-requests/sent'))).toBe(true);
 });
 test('public details and browser Back/Forward preserve shared discovery filters', async () => {
-  mount('/app/items?city=Irvine&neighborhood=Woodbridge&q=table');
+  mount('/app/items?stateId=06&metroId=31080&city=Irvine&neighborhood=Woodbridge&q=table');
   await click(await screen.findByRole('link', { name: item.name }));
   expect(await screen.findByRole('heading', { name: item.name })).toBeInTheDocument();
-  expect(context('Find Free Items').getByRole('link', { name: 'Browse listings' })).toHaveAttribute('href', '/app/items?city=Irvine&neighborhood=Woodbridge&q=table');
+  expect(context('Find Free Items').getByRole('link', { name: 'Browse listings' })).toHaveAttribute('href', '/app/items?stateId=06&metroId=31080&city=Irvine&neighborhood=Woodbridge&q=table');
   await click(screen.getByRole('button', { name: 'Browser Back' }));
   expect(await screen.findByLabelText('Search items')).toHaveValue('table');
   expect(screen.getByLabelText('City', { exact: true })).toHaveValue('Irvine');

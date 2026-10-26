@@ -95,6 +95,8 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     await login(a, emailA); await expect(a.getByRole('heading', { name: 'Your account', exact: true })).toBeVisible();
     await primary(a, 'Give Away'); await a.getByRole('link', { name: 'Create your first plan', exact: true }).click();
     for (const [label, value] of [['Move-out deadline', day(deployment.now() + 7 * 86400000)], ['City', 'E2E City'], ['Neighborhood', 'E2E Neighborhood'], ['Plan title (optional)', prefix + ' move'], ['Pickup timezone (needed to receive requests)', 'America/Los_Angeles']]) await a.getByLabel(label, { exact: true }).fill(value);
+    await a.getByLabel('State', { exact: true }).selectOption('06');
+    await a.getByLabel('Metro area', { exact: true }).selectOption('41860');
     await a.getByRole('button', { name: 'Create plan', exact: true }).click(); await a.getByRole('link', { name: 'Manage items', exact: true }).click();
     await test.step('Giver login and plan creation verified', async () => {});
     const itemIds = [];
@@ -109,7 +111,7 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     await expect(a.getByText('0 of 3 items cleared', { exact: true })).toBeVisible();
     // Existing public limit/cursor parameters exercise real UI pagination with
     // the same three records, keeping the approved remote data budget intact.
-    await b.goto('/app/items?q=' + encodeURIComponent(prefix) + '&limit=1');
+    await b.goto('/app/items?stateId=06&metroId=41860&q=' + encodeURIComponent(prefix) + '&limit=1');
     const results = b.getByRole('list', { name: 'Available items', exact: true });
     await expect(results.getByRole('listitem')).toHaveCount(1);
     await expect(results.getByRole('listitem').first()).toBeInViewport();
@@ -134,7 +136,7 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     await filters(b);
     await b.getByLabel('Pickup availability', { exact: true }).selectOption('later');
     await b.getByRole('button', { name: 'Find free items', exact: true }).click();
-    await expect(b.getByText('No available items match. Try another search or clear filters.', { exact: true })).toBeVisible();
+    await expect(b.getByText('No available items match these filters. Clear filters or try another search.', { exact: true })).toBeVisible();
     await filters(b);
     await b.getByLabel('Pickup availability', { exact: true }).selectOption('now');
     await b.getByLabel('Search items', { exact: true }).fill(prefix + ' desk');

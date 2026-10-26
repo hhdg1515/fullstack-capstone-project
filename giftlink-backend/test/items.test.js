@@ -35,11 +35,12 @@ describe('transactional plan inventory on verified isolated MongoDB', function (
         await db.collection('items').deleteMany({}); await db.collection('moveOutPlans').deleteMany({});
         async function parent(user) {
             return (await write(request(app).post('/api/move-out-plans')).set('Cookie', user.cookie)
-                .send({ city: 'San Francisco', neighborhood: 'Sunset', moveOutDeadline: day(20) }).expect(201)).body.plan;
+                .send({ city: 'San Francisco', neighborhood: 'Sunset', moveOutDeadline: day(20), stateId: '06', metroId: '41860', pickupTimeZone: 'UTC' }).expect(201)).body.plan;
         }
         plan = await parent(owner); otherPlan = await parent(other);
     });
     it('reports the owner plan timezone explicitly without requiring it to publish', async function () {
+        await updatePlan({ pickupTimeZone: null }).expect(200);
         assert.equal((await list().expect(200)).body.plan.pickupTimeZone, null);
         const item = (await create({ publish: true }).expect(201)).body.item;
         await publicGet(item).expect(200);
@@ -81,7 +82,7 @@ describe('transactional plan inventory on verified isolated MongoDB', function (
             for (const field of ['city', 'neighborhood', 'moveOutDeadline', 'price', 'address']) assert.equal(item[field], undefined);
         });
         assert.equal(response.headers['cache-control'], 'no-store');
-        assert.deepEqual((await request(app).get('/api/items').expect(200)).body.items, []);
+        assert.deepEqual((await request(app).get('/api/items?stateId=06&metroId=41860').expect(200)).body.items, []);
     });
     it('publishes with distinct first-publication time and future pickup dates, retaining the timestamp on relist', async function () {
         let item = (await create({ availableFrom: day(5), availableUntil: day(10) })).body.item;
@@ -117,8 +118,8 @@ describe('transactional plan inventory on verified isolated MongoDB', function (
         await updatePlan({ city: 'Oakland', neighborhood: 'Temescal', moveOutDeadline: day(15) }).expect(200);
         const visible = (await publicGet(item).expect(200)).body.item;
         assert.equal(visible.city, 'Oakland'); assert.equal(visible.neighborhood, 'Temescal'); assert.equal(visible.effectiveAvailableUntil, day(15));
-        assert.equal((await request(app).get('/api/items').query({ q: '[kitchen]', city: 'oakland' }).expect(200)).body.items.length, 1);
-        assert.equal((await request(app).get('/api/items').query({ city: 'San Francisco' })).body.items.length, 0);
+        assert.equal((await request(app).get('/api/items?stateId=06&metroId=41860').query({ q: '[kitchen]', city: 'oakland' }).expect(200)).body.items.length, 1);
+        assert.equal((await request(app).get('/api/items?stateId=06&metroId=41860').query({ city: 'San Francisco' })).body.items.length, 0);
         await request(app).get('/api/items?q[a]=bad').expect(400);
         assert.equal((await list()).body.items[0].moveOutDeadline, day(15));
     });
@@ -151,7 +152,7 @@ describe('transactional plan inventory on verified isolated MongoDB', function (
         const first = item.publishedAt;
         await db.collection('moveOutPlans').updateOne({ _id: new ObjectId(plan.id) }, { $set: { moveOutDeadline: day(-1) } });
         assert.equal((await list()).body.items[0].status, 'expired'); await publicGet(item).expect(404);
-        assert.equal((await request(app).get('/api/items')).body.items.length, 0);
+        assert.equal((await request(app).get('/api/items?stateId=06&metroId=41860')).body.items.length, 0);
         assert.equal((await db.collection('items').findOne({ _id: new ObjectId(item.id) })).status, 'available');
         await action(item, 'publish').expect(400);
         await updatePlan({ moveOutDeadline: day(30) }).expect(200);

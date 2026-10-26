@@ -1,3 +1,4 @@
+jest.mock('../../api/usePublicCatalog', () => ({ __esModule: true, default: path => ({ data: require('../../test-support/catalogs')[path === '/api/regions' ? 'regions' : 'taxonomy'] }) }));
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
@@ -5,12 +6,12 @@ import PublicItems from './PublicItems';
 
 const day = offset => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
 const a = { id: '64a000000000000000000001', name: 'Kitchen supplies', description: 'A full box of cookware and utensils.', category: 'Kitchen & craft',
-  city: 'Oakland', neighborhood: 'Temescal', status: 'available', isReserved: false, availability: 'now', availableFrom: null, availableUntil: null,
+  city: 'Oakland', neighborhood: 'Temescal', metroId: '41860', stateId: '06', pickupTimeZone: 'UTC', isOwner: false, status: 'available', isReserved: false, availability: 'now', availableFrom: null, availableUntil: null,
   effectiveAvailableUntil: day(20), moveOutDeadline: day(20), publishedAt: '2026-01-01T12:00:00.000Z' };
 const b = { ...a, id: '64a000000000000000000002', name: 'Reading lamp', availability: 'later', availableFrom: day(5), neighborhood: 'Rockridge' };
 const places = { locations: [{ city: 'Oakland', neighborhoods: ['Temescal', 'Rockridge'] }, { city: 'Berkeley', neighborhoods: ['Temescal', 'Downtown'] }], truncated: false };
 const reply = (status, data) => ({ status, ok: status >= 200 && status < 300, json: async () => data });
-const feed = (items, cursor = null) => reply(200, { items, today: day(0), page: { limit: 12, hasMore: Boolean(cursor), nextCursor: cursor } });
+const feed = (items, cursor = null, total = items.length ? 2 : 0) => reply(200, { items, total, today: day(0), page: { limit: 12, hasMore: Boolean(cursor), nextCursor: cursor } });
 const pending = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 let handler;
 let locationHandler;
@@ -18,19 +19,27 @@ function Navigation() {
   const location = useLocation(); const navigate = useNavigate();
   return <><output aria-label="Current URL">{location.pathname}{location.search}</output><button onClick={() => navigate(-1)}>Browser back</button></>;
 }
-function mount(path = '/app/items') {
+function mount(path = '/app/items', unselected = false) {
+  const regional = value => {
+    if (typeof value !== 'string' || !value.match(/^\/app\/items(?:\?|$)/) || unselected) return value;
+    const url = new URL(value, 'http://localhost');
+    if (!url.searchParams.has('stateId') && !url.searchParams.has('metroId')) { url.searchParams.set('stateId', '06'); url.searchParams.set('metroId', '41860'); }
+    return url.pathname + url.search;
+  };
+  path = Array.isArray(path) ? path.map(regional) : regional(path);
   return render(<MemoryRouter initialEntries={Array.isArray(path) ? path : [path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
     <Navigation /><Routes><Route path="/app/items" element={<PublicItems />} /><Route path="/app/items/:itemId" element={<PublicItems />} /></Routes>
   </MemoryRouter>);
 }
 beforeEach(() => {
+  localStorage.clear();
   handler = async () => feed([a, b]); locationHandler = async () => reply(200, places);
-  global.fetch = jest.fn(async (url, options) => url.endsWith('/locations') ? locationHandler(url, options) : handler(url, options));
+  global.fetch = jest.fn(async (url, options) => url.includes('/api/items/locations') ? locationHandler(url, options) : handler(url, options));
 });
 const ready = () => screen.findByRole('link', { name: a.name });
 const submit = async () => { await act(async () => { fireEvent.submit(screen.getByRole('button', { name: 'Find free items' }).closest('form')); }); };
 const click = async name => { await act(async () => { fireEvent.click(screen.getByRole('button', { name })); }); };
-const apiCalls = () => fetch.mock.calls.filter(([url]) => !url.endsWith('/locations'));
+const apiCalls = () => fetch.mock.calls.filter(([url]) => !url.includes('/api/items/locations'));
 
 test('uses the server owner flag to replace the public request action without hiding the listing', async () => {
   handler = async () => reply(200, { item: { ...a, pickupTimeZone: 'UTC', isOwner: true } });
@@ -40,7 +49,7 @@ test('uses the server owner flag to replace the public request action without hi
   expect(screen.queryByRole('link', { name: 'Request pickup' })).not.toBeInTheDocument();
 });
 
-test.each(['/app/items', '/app/items/' + a.id])('reserved items never promise immediate availability at %s', async path => {
+test.each(['/app/items/' + a.id])('reserved items never promise immediate availability at %s', async path => {
   const reserved = { ...a, isReserved: true, pickupTimeZone: 'UTC' };
   handler = async url => url.includes('/api/items?') ? feed([reserved]) : reply(200, { item: reserved });
   mount(path);
@@ -72,7 +81,7 @@ test('an older response without reservation data describes a window rather than 
   expect(screen.queryByText('Available Now')).not.toBeInTheDocument();
 });
 
-test('anonymous discovery needs no account or location and shows useful now/later text cards', async () => {
+test('anonymous discovery uses the selected metro without an account and shows useful now/later text cards', async () => {
   mount(); await ready();
   expect(screen.getByLabelText('City')).toHaveValue(''); expect(screen.getByLabelText('Neighborhood')).toHaveValue('');
   const cards = screen.getByRole('list', { name: 'Available items' });
@@ -125,7 +134,7 @@ test('shared URLs restore filters and browser back restores the previous query a
   expect(screen.getByLabelText('Search items')).toHaveValue('lamp'); expect(screen.getByLabelText('City')).toHaveValue('Oakland');
   expect(screen.getByLabelText('Sort items')).toHaveValue('deadline');
   await click('Clear filters');
-  await waitFor(() => expect(screen.getByLabelText('Current URL')).toHaveTextContent(/^\/app\/items$/));
+  await waitFor(() => expect(screen.getByLabelText('Current URL')).toHaveTextContent(/^\/app\/items\?stateId=06&metroId=41860$/));
   expect(screen.getByLabelText('Pickup availability')).toHaveValue('all');
   await click('Browser back');
   await waitFor(() => expect(screen.getByLabelText('Search items')).toHaveValue('lamp'));
@@ -198,7 +207,7 @@ test('loading, empty, error and retry states support searching again', async () 
   await act(async () => request.resolve(reply(500, { error: { message: 'Listings failed' } })));
   expect(await screen.findByRole('alert')).toHaveTextContent('Listings failed');
   handler = async () => feed([]); await click('Retry results');
-  expect(await screen.findByText(/No available items match/)).toBeInTheDocument();
+  expect(await screen.findByText(/No available items in this metro/)).toBeInTheDocument();
 });
 test('anonymous direct detail shows full content, general location, pickup window and a copyable direct URL', async () => {
   handler = async () => reply(200, { item: b });
@@ -222,7 +231,7 @@ test('detail navigation returns to the applied filters and direct unavailable li
   handler = async url => url.includes(a.id) ? reply(200, { item: a }) : feed([a]);
   mount('/app/items?city=Oakland&availability=now'); await ready(); await act(async () => { fireEvent.click(screen.getByRole('link', { name: a.name })); });
   expect(await screen.findByRole('heading', { name: a.name, level: 1 })).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Back to free items' })).toHaveAttribute('href', '/app/items?city=Oakland&availability=now');
+  expect(screen.getByRole('link', { name: 'Back to free items' })).toHaveAttribute('href', '/app/items?city=Oakland&availability=now&stateId=06&metroId=41860');
   handler = async () => reply(404, { error: { message: 'Listing unavailable' } });
   await click('Refresh listings');
   expect(await screen.findByRole('alert')).toHaveTextContent('This listing is no longer available');
@@ -274,13 +283,91 @@ test('an incomplete date filter reopens with an actionable error and safe focus,
 });
 test('Find free items refreshes results/options without adding an identical history entry', async () => {
   mount(['/app/items?q=before', '/app/items?q=lamp']); await ready();
-  const reads = apiCalls().length, locations = fetch.mock.calls.filter(([url]) => url.endsWith('/locations')).length;
+  const reads = apiCalls().length, locations = fetch.mock.calls.filter(([url]) => url.includes('/api/items/locations')).length;
   await submit(); await ready();
   expect(apiCalls()).toHaveLength(reads + 1);
-  expect(fetch.mock.calls.filter(([url]) => url.endsWith('/locations'))).toHaveLength(locations + 1);
+  expect(fetch.mock.calls.filter(([url]) => url.includes('/api/items/locations'))).toHaveLength(locations + 1);
   await click('Clear filters'); await ready();
   await click('Browser back'); await ready();
   expect(screen.getByLabelText('Search items')).toHaveValue('lamp');
   await click('Browser back'); await ready();
   expect(screen.getByLabelText('Search items')).toHaveValue('before');
+});
+
+test('an unselected region asks where to browse without requesting any listings or showing a false zero', async () => {
+  mount('/app/items', true);
+  expect(screen.getByRole('heading', { name: 'Where would you like to find free items?' })).toBeInTheDocument();
+  expect(screen.getByLabelText('State')).toBeVisible(); expect(screen.getByLabelText('Metro area')).toBeDisabled();
+  expect(apiCalls()).toHaveLength(0); expect(screen.queryByText(/0 available/)).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('State'), { target: { value: '06' } });
+  expect(apiCalls()).toHaveLength(0);
+  await act(async () => fireEvent.change(screen.getByLabelText('Metro area'), { target: { value: '41860' } })); await ready();
+  expect(JSON.parse(localStorage.getItem('moveout.browse-region.v1'))).toEqual({ stateId: '06', metroId: '41860' });
+  expect(screen.getByRole('button', { name: 'Change region' })).toHaveFocus();
+});
+test('a valid saved preference restores an unscoped URL and never writes an account or plan', async () => {
+  localStorage.setItem('moveout.browse-region.v1', JSON.stringify({ stateId: '06', metroId: '41860' }));
+  mount('/app/items', true); await ready();
+  expect(screen.getByLabelText('Current URL')).toHaveTextContent('stateId=06&metroId=41860');
+  expect(fetch.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true);
+});
+test('an explicit URL overrides the saved preference and changing region clears granular filters', async () => {
+  localStorage.setItem('moveout.browse-region.v1', JSON.stringify({ stateId: '06', metroId: '31080' }));
+  mount('/app/items?stateId=06&metroId=41860&city=Oakland&neighborhood=Temescal&q=seat'); await ready();
+  expect(screen.getByLabelText('Current URL')).toHaveTextContent('metroId=41860');
+  await click('Change region');
+  handler = async () => feed([{ ...a, metroId: '31080', name: 'Other metro item' }]);
+  await act(async () => fireEvent.change(screen.getByLabelText('Metro area'), { target: { value: '31080' } }));
+  await screen.findByRole('link', { name: 'Other metro item' });
+  const url = screen.getByLabelText('Current URL').textContent;
+  expect(url).toContain('metroId=31080'); expect(url).toContain('q=seat'); expect(url).not.toContain('city='); expect(url).not.toContain('neighborhood=');
+  expect(fetch.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true);
+});
+test.each(['not-json', JSON.stringify({ stateId: '06', metroId: 'unknown' })])('invalid stored preference %s cannot authorize a global search', async value => {
+  localStorage.setItem('moveout.browse-region.v1', value); mount('/app/items', true);
+  expect(screen.getByRole('heading', { name: 'Where would you like to find free items?' })).toBeInTheDocument(); expect(apiCalls()).toHaveLength(0);
+});
+test('blocked local storage does not prevent choosing a valid URL region', async () => {
+  const get = jest.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('Blocked'); });
+  const set = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Blocked'); });
+  mount(); await ready(); expect(screen.getByRole('link', { name: a.name })).toBeInTheDocument(); get.mockRestore(); set.mockRestore();
+});
+test('an uncovered state explains limited coverage instead of showing an empty marketplace', async () => {
+  mount('/app/items?stateId=02', true);
+  expect(screen.getByText('No metros are listed for this state yet.')).toBeInTheDocument();
+  expect(apiCalls()).toHaveLength(0); expect(screen.queryByText(/0 available|No available items/)).not.toBeInTheDocument();
+});
+test('controlled category/type/condition filters combine with text and reset incompatible type selection', async () => {
+  mount(); await ready(); await click('Filters');
+  fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'living-room' } });
+  fireEvent.change(screen.getByLabelText('Item type'), { target: { value: 'sofa' } });
+  fireEvent.change(screen.getByLabelText('Condition'), { target: { value: 'good' } });
+  fireEvent.change(screen.getByLabelText('Search items'), { target: { value: 'couch' } }); await submit();
+  expect(screen.getByLabelText('Current URL')).toHaveTextContent('categoryId=living-room&itemTypeId=sofa&condition=good');
+  await click('Filters (3)'); fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'office-lighting' } });
+  expect(screen.getByLabelText('Item type')).toHaveValue(''); expect(screen.queryByRole('option', { name: 'Sofa' })).not.toBeInTheDocument();
+});
+test('the heading uses the backend filtered total, not the number of loaded rows', async () => {
+  handler = async () => feed([a], 'more', 24); mount(); await ready();
+  expect(screen.getByRole('heading', { name: /24 available/ })).toBeInTheDocument(); expect(screen.getByText('Showing 1 item')).toBeInTheDocument();
+});
+test('a changed total during pagination refreshes the first page instead of appending a mixed availability set', async () => {
+  let reads = 0;
+  handler = async url => ++reads === 1 ? feed([a], 'more', 2) : feed([b], null, 1);
+  mount(); await ready(); await click('Load more'); await screen.findByRole('link', { name: b.name });
+  expect(screen.queryByRole('link', { name: a.name })).not.toBeInTheDocument(); expect(reads).toBe(3);
+  expect(screen.getByRole('heading', { name: /1 available/ })).toBeInTheDocument();
+});
+test.each([{ ...a, metroId: '31080' }, { ...a, isReserved: true }])('inconsistent regional response metadata cannot be advertised as available', async row => {
+  handler = async () => feed([row]); mount();
+  expect(await screen.findByRole('alert')).toHaveTextContent(/unavailable/i);
+  expect(screen.queryByText(/No available items/)).not.toBeInTheDocument(); expect(screen.queryByRole('heading', { name: /\d+ available/ })).not.toBeInTheDocument();
+});
+test('missing counts are a service error instead of a fabricated empty or page-sized total', async () => {
+  handler = async () => reply(200, { items: [], page: { hasMore: false, nextCursor: null } }); mount();
+  expect(await screen.findByRole('alert')).toHaveTextContent(/unavailable/i); expect(screen.queryByText(/No available items/)).not.toBeInTheDocument();
+});
+test('owner cards remain visible with compact authoritative type and condition labels', async () => {
+  handler = async () => feed([{ ...a, isOwner: true, classification: { itemType: { id: 'sofa', label: 'Sofa' }, condition: { id: 'good', label: 'Good' } } }]);
+  mount(); await ready(); expect(screen.getByText('Your listing')).toBeInTheDocument(); expect(screen.getByText('Sofa · Good')).toBeInTheDocument();
 });

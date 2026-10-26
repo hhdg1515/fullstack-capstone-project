@@ -24,18 +24,18 @@ responses retain a server-checked request path. Deploy the backend before the fr
 when this change is separately approved. Availability can change after a read, so
 submission still checks ownership, sessions, CSRF and reservation state on the server.
 
-Move-Out Marketplace remains a React, Express, Node.js, and MongoDB native-driver application. Milestone 5.5 organizes the product around **Give Away** and **Find Free Items**, with one shared account and no fixed account roles. Plans, inventory, anonymous discovery, pickup coordination and handoffs retain their existing APIs and data model. The original GiftLink collection/search and all 16 demo records remain available. Messaging, notifications, payments, shipping, property integrations, image uploads, and geographical APIs are not implemented.
+Move-Out Marketplace remains a React, Express, Node.js, and MongoDB native-driver application. Milestone 5.5 organizes the product around **Give Away** and **Find Free Items**, with one shared account and no fixed account roles. Plans, inventory, anonymous discovery, pickup coordination and handoffs retain their existing APIs and data model. The original GiftLink collection/search and all 16 demo records remain available. Private pickup chat and rescheduling are implemented; notifications, payments, shipping, property integrations, image uploads and external mapping/geocoding APIs remain out of scope.
 
 ## Two journeys, one account
 
 The public homepage at `/` presents **Move lighter. Settle smarter.** with two actions:
 
 - **Start Giving** → the existing `/app/plans` dashboard (sign in or register first). Pick a plan to manage items and clearance progress, review Incoming requests across your plans, and complete handoffs. There is no additional giver dashboard or mandatory account-type onboarding.
-- **Explore Free Items** → `/app/items`, immediately available to anonymous visitors. Search/filter any city or neighborhood, open/share a listing, and sign in only when requesting pickup. **My pickup requests** stays in this journey's navigation.
+- **Explore Free Items** → `/app/items`, immediately available to anonymous visitors. Choose a supported state/metro, refine by city/neighborhood and item type, open/share a listing, and sign in only when requesting pickup. **My pickup requests** stays in this journey's navigation.
 
 Primary navigation contains **Find Free Items**, **Give Away**, and **Account**. Journey navigation links existing pages in context; item inventory and progress remain together on each plan's inventory page. The mobile menu has an explicit expanded state, Escape/focus return, and closes on navigation. Active sections, visible keyboard focus, a skip link and main-content focus after page navigation support keyboard/screen-reader use. Query-only discovery changes preserve search focus and the existing URL state. Both homepage actions remain prominent on small screens.
 
-Giver location always comes from that plan. Discovery location comes only from current URL search/filter choices: someone giving in Pasadena can search Irvine with the same account. This refinement does not save a location preference, infer a city from a plan, restrict neighborhoods, add user roles, or alter MongoDB schemas/indexes. Existing server-derived giver/receiver authorization remains in effect for each action.
+Giver location always comes from that plan. Discovery uses the selected URL state/metro and filters, with an optional browser-local preference containing only region IDs. The same account can browse another area without changing a plan. No account-location schema or fixed user role is added; see the Milestone 6.3 model and index contract below. Existing server-derived giver/receiver authorization remains in effect for each action.
 
 | Route | Journey / compatibility |
 | --- | --- |
@@ -170,6 +170,7 @@ The tool rechecks the live target and accounts before creating:
 - A binary/simple-collation unique `users.email` index. The application stores this field trimmed and lowercased, and login uses the same binary comparison.
 - A TTL index on `sessions.expiresAt`; expiration is also enforced on every authenticated request.
 - A non-unique compound `moveOutPlans` index on `{ ownerId: 1, moveOutDeadline: 1, _id: 1 }` for private owner listings in deadline order.
+- `plan_metro_discovery` on `{ metroId: 1, status: 1, stateId: 1, _id: 1 }` for regional discovery; `pickup_messages_request_time` on `{ requestId: 1, createdAt: -1, _id: -1 }` for private message history. Both are required by startup; neither is created automatically.
 - Non-unique `items` indexes on `{ planId: 1, ownerId: 1, createdAt: 1, _id: 1 }` and `{ status: 1, publishedAt: -1, _id: -1 }` for management and public discovery.
 - Non-unique `items_pickup_start` on `{ status: 1, availableFrom: 1, publishedAt: -1, _id: -1 }` for pickup-start filtering during discovery.
 - Four `pickupRequests` indexes: `pickup_received` on `{ giverId: 1, _id: -1 }`, `pickup_sent` on `{ receiverId: 1, _id: -1 }`, unique `pickup_one_accepted` on `{ itemId: 1 }` **only where `status: "accepted"`**, and unique `pickup_active_receiver` on `{ itemId: 1, receiverId: 1 }` **only where `active: true`**. Exact partial predicates and binary collation are checked on startup/preparation; a broader/different predicate is incompatible.
@@ -298,7 +299,8 @@ All plans are private to their owner. The interface supports session checks, loa
 | `ownerId` | Account ObjectId derived from the authenticated session. Never accepted from the caller or included in plan responses. |
 | `title` | Optional trimmed single-line text, at most 120 characters; omitted/cleared titles are stored as `""`. |
 | `moveOutDeadline` | Required real calendar date, exactly `YYYY-MM-DD`, stored as a string. |
-| `city`, `neighborhood` | Required trimmed single-line labels, 1–100 characters each. Free text; no external lookup or location taxonomy. |
+| `city`, `neighborhood` | Required trimmed single-line labels, 1–100 characters each. Free text retained independently of the curated region IDs; no geocoding or residence verification. |
+| `stateId`, `metroId` | Optional validated Census/state FIPS and CBSA IDs. Items inherit the region through their plan. Legacy plans remain unassigned until an explicit owner edit. |
 | `status` | Created as `active`; owners may edit to `active`, `completed`, or `cancelled`. |
 | `createdAt`, `updatedAt` | Server-generated BSON dates, serialized as UTC ISO timestamps. Creation time is immutable. |
 
@@ -312,24 +314,25 @@ All endpoints require the existing valid session cookie; writes also require the
 
 | Endpoint | Behavior |
 | --- | --- |
-| `POST /api/move-out-plans` | `{ moveOutDeadline, city, neighborhood, title?, pickupTimeZone? }` → `201 { plan }` plus a Location header. Ownership, status, and timestamps are server-derived. |
+| `POST /api/move-out-plans` | `{ moveOutDeadline, city, neighborhood, title?, pickupTimeZone?, stateId?, metroId? }` → `201 { plan }` plus a Location header. Ownership, status, and timestamps are server-derived. |
 | `GET /api/move-out-plans` | `200 { plans: [...] }` for the current owner only, sorted by deadline then ID. Query parameters cannot select another owner. |
 | `GET /api/move-out-plans/:id` | `200 { plan }` for an owned plan. |
-| `PATCH /api/move-out-plans/:id` | Nonempty partial update of title/deadline/city/neighborhood/status/pickupTimeZone, optional `confirmCancelRequests` → `200 { plan }`. |
+| `PATCH /api/move-out-plans/:id` | Nonempty partial update of title/deadline/city/neighborhood/stateId/metroId/status/pickupTimeZone, optional `confirmCancelRequests` → `200 { plan }`. |
 
-A plan DTO contains only `id`, `title`, `moveOutDeadline`, `city`, `neighborhood`, `pickupTimeZone` (null when unset), `status`, `createdAt`, and `updatedAt`. Private contact, address, password, and session fields are excluded by database inclusion projections and response serialization. Read and update queries include both the plan ID and the authenticated owner ID; updates never trust a supplied owner. Missing, malformed, and other users' plan IDs share `404 PLAN_NOT_FOUND`. Validation uses `400 VALIDATION_FAILED` with field messages without submitted values. Missing/expired sessions use `401`; invalid write origins use `403`.
+A plan DTO contains only `id`, `title`, `moveOutDeadline`, `city`, `neighborhood`, `pickupTimeZone` (null when unset), `status`, `createdAt`, and `updatedAt`, plus nullable `stateId`, `metroId`, `stateLabel` and `metroLabel`. Private contact, address, password, and session fields are excluded by database inclusion projections and response serialization. Read and update queries include both the plan ID and the authenticated owner ID; updates never trust a supplied owner. Missing, malformed, and other users' plan IDs share `404 PLAN_NOT_FOUND`. Validation uses `400 VALIDATION_FAILED` with field messages without submitted values. Missing/expired sessions use `401`; invalid write origins use `403`.
 
 Each plan can now have any number of incremental items, including zero. Plan editing never copies location/deadline into item documents. A shorter deadline that conflicts with item overrides returns `409 ITEM_DATE_CONFLICT` with the affected owned item IDs/names/dates. The edit form leaves the proposed plan unchanged, links to those item editors in new tabs, and keeps its draft. Explicitly edit/clear the overrides or choose another deadline, then retry. There is no silent date truncation or bulk account/data repair.
 
 ## Inventory workflow and item API
 
-From plan detail choose **Manage items** (`/app/plans/:id/items`). Enter only an item name, then **Save draft & add another** or **Publish & add another**. The name resets and regains focus for quick repeated entry. Optional details are collapsed initially: description (2,000 characters), free-text category/tag (80), and pickup dates. Names allow 1–160 characters and may describe grouped belongings or multiple identical objects. No furniture taxonomy, brand, condition, dimensions, weight, price, or image is required.
+From plan detail choose **Manage items** (`/app/plans/:id/items`). Enter only an item name, then **Save draft & add another** or **Publish & add another**. The name resets and regains focus for quick repeated entry. Optional category and item-type selectors use the household catalog. Description (2,000 characters), optional condition and pickup dates remain collapsed initially. Names allow 1–160 characters and may describe grouped belongings or multiple identical objects. Only name is required; legacy category text is preserved and never overwritten by the new form.
 
 The inventory shows each state, effective date window, status filtering, and cleared/total progress. Progress counts item records/groups, rather than the number of physical objects inside a group. Unlisting does not count as clearing. Actions use confirmation prompts; editing a live listing confirms its immediate public change. A failed save retains the draft. Stale versions request an inventory reload rather than overwriting another tab's change. Refreshing an open edit asks for confirmation and replaces outdated values with current saved details before adopting a newer version. No normal action deletes records. Clearance reasons are not collected in this milestone.
 
 | Item field | Meaning |
 | --- | --- |
 | `_id`, `planId`, `ownerId` | ObjectIds; server derives the owner and verifies the owned parent for every management operation. Items cannot be moved between plans through the API. |
+| `categoryId`, `itemTypeId`, `condition` | Optional controlled classification IDs, separate from legacy category text. Partial edits validate the resulting category/type relationship. |
 | `name`, `description`, `category` | Required free-text name and optional plain-text description/tag. Unknown fields, markup, control characters, and ownership/location/price spoofing are rejected. |
 | `availableFrom`, `availableUntil` | Optional `YYYY-MM-DD` strings or `null`. Empty fields become `null`; shared location/deadline are never duplicated. |
 | `status` | Stored lifecycle state; the API additionally derives expiry from the effective latest pickup date on every read. |
@@ -354,7 +357,7 @@ Editing an expired item's dates keeps it expired until explicit publication. A p
 | Endpoint | Behavior |
 | --- | --- |
 | `GET /api/move-out-plans/:planId/items` | Private plan context, items and `{ total, cleared }` progress. |
-| `POST /api/move-out-plans/:planId/items` | `{ name, description?, category?, availableFrom?, availableUntil?, publish? }` → `201 { item }`. `publish` is an explicit boolean intent; default false. |
+| `POST /api/move-out-plans/:planId/items` | `{ name, description?, category?, categoryId?, itemTypeId?, condition?, availableFrom?, availableUntil?, publish? }` → `201 { item }`. `publish` is an explicit boolean intent; default false. |
 | `PATCH /api/move-out-plans/:planId/items/:id` | Partial item details plus numeric `version` → `{ item }`. No ownership, status, price or shared-location changes. |
 | `POST /api/move-out-plans/:planId/items/:id/actions` | `{ action: "publish" | "unlist" | "clear" | "reopen", version }` → `{ item }`. |
 | `GET /api/items` | Anonymous filtered, sorted and cursor-paginated discovery; see below. |
@@ -369,13 +372,13 @@ Publication blocks obvious restricted-goods keywords and email patterns, and the
 
 ## Anonymous neighborhood discovery
 
-Open **Find Free Items** (`/app/items`) without registering, signing in, or selecting a location. Search names, full descriptions and optional tags, choose a city and/or neighborhood, filter pickup availability, and sort by newest publication or earliest effective pickup deadline. Location labels are approximate public text; they do not restrict who may browse or eventually receive an item. There is no location tracking, GPS permission, map, geocoder or external search provider.
+Open **Find Free Items** (`/app/items`) without registering or signing in. Choose **State → Metro area** before any listings are requested. Then search titles/descriptions/types, refine by category/type/condition and city/neighborhood, filter pickup availability, and sort by newest publication or earliest effective pickup deadline. Location labels are approximate public text; they do not restrict who may browse or eventually receive an item. There is no location tracking, GPS permission, map, geocoder or external search provider.
 
-City/neighborhood selectors are populated from currently public listings and deduplicated after whitespace normalization and case-insensitive comparison, including common Unicode whitespace/case variants. Choosing a city narrows neighborhood suggestions and clears a previous neighborhood selection. With All cities, a neighborhood label searches across cities. A city can be selected without a neighborhood. Raw stored plan labels are preserved; comparison/display normalization happens at read time.
+Within the selected metro, city/neighborhood selectors are populated from currently eligible listings and deduplicated after whitespace normalization and case-insensitive comparison, including common Unicode whitespace/case variants. Choosing a city narrows neighborhood suggestions and clears a previous neighborhood selection. With All cities, a neighborhood label searches across cities within the metro. A city can be selected without a neighborhood. Raw stored plan labels are preserved; comparison/display normalization happens at read time.
 
 Filters and sort order are stored in URL query parameters, so filtered pages can be shared and browser Back works normally. Changing filters restarts pagination, and late responses from an earlier query cannot replace new results. **Load more** appends the next server page and deduplicates IDs. Loading, empty, retry and expired-cursor states have explicit controls. Location-option failures have an independent retry and do not block general browsing. Focus/Refresh rechecks current publication visibility and restarts the first page while retaining filters.
 
-Cards show name, optional category, general location, **Available Now** or **Available Later**, earliest pickup when specified, and effective latest pickup. Details include the full description, first publication date, and a read-only direct URL with Copy link/manual-copy fallback. Links work anonymously. Cards use text; no photos are fabricated and no fake reservation/pickup control is provided.
+Cards show name, type (or category/legacy fallback), optional condition, general location, **Available Now** or **Available Later**, earliest pickup when specified, and effective latest pickup. Details include the full description, first publication date, and a read-only direct URL with Copy link/manual-copy fallback. Links work anonymously. Cards use text; no photos are fabricated and no fake reservation/pickup control is provided.
 
 ### Query and availability contract
 
@@ -383,7 +386,9 @@ Cards show name, optional category, general location, **Available Now** or **Ava
 
 | Parameter | Meaning/default |
 | --- | --- |
-| `q` | Optional literal phrase across name, description, or category. Case-insensitive; whitespace collapses. Maximum 100 input characters; regex operators are escaped. |
+| `stateId`, `metroId` | Required supported state/metro pair. Example: `stateId=06&metroId=41860`. Cross-state metros cover all their member states, not only the entry state. |
+| `categoryId`, `itemTypeId`, `condition` | Optional catalog IDs. A type must belong to the selected category. |
+| `q` | Optional literal phrase across name, description, legacy category or standardized type, with a small explicit synonym mapping. Case-insensitive; whitespace collapses. Maximum 100 input characters; regex operators are escaped. |
 | `city`, `neighborhood` | Optional exact labels after whitespace/case normalization. Each at most 100 input characters. Neither is required. |
 | `availability` | `all` (default), `now`, `later`, or `date`. |
 | `date` | Required only with `availability=date`: valid `YYYY-MM-DD`, today or later in UTC. Other combinations are rejected. |
@@ -391,9 +396,9 @@ Cards show name, optional category, general location, **Available Now** or **Ava
 | `limit` | Canonical integer 1–50; default 12. This is a per-page bound, replacing the old total 50-result cap. |
 | `cursor` | Opaque continuation from the previous page; retain the same filters, sort and page size. At most 1,024 characters. |
 
-Unknown parameters, repeated/array/object values, oversized text, invalid dates, excessive page sizes and unsupported sort/filter modes return `400 INVALID_DISCOVERY_QUERY`. Text errors never echo submitted values. `GET /api/items/locations` accepts no query parameters.
+Unknown parameters, repeated/array/object values, oversized text, invalid dates, excessive page sizes and unsupported sort/filter modes return `400 INVALID_DISCOVERY_QUERY`. Text errors never echo submitted values. `GET /api/items/locations` accepts the state/metro pair for scoped options; the old bounded label-only metadata response remains available without it. Unscoped **listing** queries return `400 REGION_REQUIRED`; invalid IDs/pairs return 400 without guessing a location.
 
-Each feed response is `{ items, today, page: { limit, hasMore, nextCursor } }`. `today` is the server's UTC calendar date. `nextCursor` is `null` at the end. Item/detail DTOs retain the Milestone 3 public fields and add `availability: "now" | "later"` and `pickupTimeZone` (IANA string or null); detail also returns `today`. Owner IDs, plan IDs, versions, credentials and private fields remain excluded.
+Each feed response is `{ items, total, today, page: { limit, hasMore, nextCursor } }`. `total` counts the same filtered eligible set before the cursor boundary, not just this page. Accepted reservations, hidden/cleared/expired items, unassigned regions and missing timezone setup do not inflate the count. Count and page share one snapshot query; changes between HTTP pages still require refresh. `today` is the server's UTC calendar date. `nextCursor` is `null` at the end. Item/detail DTOs retain the Milestone 3 public fields and add `availability: "now" | "later"` and `pickupTimeZone` (IANA string or null), classification labels, region ID/label pairs and a server-validated `isOwner` boolean; detail also returns `today`. Owners see Your listing instead of request controls, and the backend independently rejects self-requests with `409 OWN_ITEM`. Owner IDs, plan IDs, versions, credentials and private fields remain excluded.
 
 **Now** means the explicit start is today/past or omitted; **Later** means an explicit start is after today. General browsing includes both. For a selected date, an item matches only if its start is omitted or on/before the date, and its effective end (`availableUntil ?? plan.moveOutDeadline`) is on/after the date. Boundaries are inclusive. Expired items are excluded even if a caller requests another date. Publication time is never substituted for a pickup start. React displays the API's availability classification and uses UTC-preserving calendar formatting. Changing this existing discovery-date convention to neighborhood-specific dates remains deferred.
 
@@ -464,7 +469,7 @@ Newest ordering is `(publishedAt DESC, _id DESC)`; deadline ordering is `(effect
 
 Cursors are versioned base64url JSON containing public ordering keys and a query fingerprint. They are opaque client state, not encrypted secrets, signed capabilities or authentication. A forged position cannot override filters or reveal private records. Pagination is live, not a long-lived historical snapshot: item/plan edits can move records between pages or filters. The client deduplicates IDs; refresh to obtain a complete current ordering after changes. Already downloaded public text cannot be revoked.
 
-The existing publication and parent indexes remain useful; the new pickup-start index narrows now/later/date candidates. Effective deadlines and normalized locations depend on joined plan data and are not duplicated/backfilled into items. Substring/phrase regex search, cross-collection filters and deadline sorts can scan many candidates and do not offer external-search relevance, stemming, accent-insensitive matching or a precomputed location taxonomy. Aggregations have a 5-second execution cap and disallow disk spilling; time/memory limits return `503 DISCOVERY_BUSY`, asking the caller to narrow filters/retry. Public discovery/detail/options share a per-process limit of 120 requests/minute/IP and return `429 DISCOVERY_RATE_LIMIT` with retry guidance. Review proxy/IP configuration and distributed limiting with the chosen host.
+The region index narrows plans before item joins; existing plan/owner, publication and pickup-start indexes remain available for their lookup and compatibility paths. Effective deadlines and normalized locations depend on joined plan data and are not duplicated/backfilled into items. Substring/phrase regex search, cross-collection filters and deadline sorts can scan many candidates and do not offer external-search relevance, stemming, accent-insensitive matching or a complete city/neighborhood taxonomy. Aggregations have a 5-second execution cap and disallow disk spilling; time/memory limits return `503 DISCOVERY_BUSY`, asking the caller to narrow filters/retry. Public discovery/detail/options share a per-process limit of 120 requests/minute/IP and return `429 DISCOVERY_RATE_LIMIT` with retry guidance. Review proxy/IP configuration and distributed limiting with the chosen host.
 
 Location suggestions are capped at 500 distinct public city/neighborhood pairs with a `truncated` flag. Existing shared/API filters still work outside the suggestion list. There is no global geographic registry or guarantee that free-text labels represent official boundaries. Advanced search/index optimization and larger metadata catalogs are future scale decisions.
 
@@ -611,3 +616,39 @@ The proposed 90-day closed-message retention is **not implemented or approved**;
 currently no automatic message deletion occurs. The Phase 1 message index still
 requires separately approved remote preview/apply before deployment. Verification
 is local/CI only; hosted chat/rescheduling and public launch are not certified.
+
+## Location-first discovery and classification (Milestone 6.3)
+
+The single backend catalog serves all 50 U.S. states plus DC and 12 curated
+metros using documented Census FIPS/CBSA identifiers. Metro membership is pinned
+to **2021 Census geography**, with its source commit/hashes recorded; this is
+limited, dated coverage, not every city or current OMB boundaries. Unsupported
+areas can retain a state and city/neighborhood on a plan with no metro assignment.
+No city guessing, GPS permission, maps, geocoding or external search is used.
+
+`GET /api/regions` and `GET /api/item-taxonomy` provide display labels and stable
+IDs. Six household groups contain 28 item types; four optional conditions stay
+separate. Other Household → Other and Uncategorized/Not specified are available.
+Legacy category values, international/free-text location labels and all 16 demo
+gifts are preserved. Only an explicit owner edit assigns an older plan to a
+metro, with existing pickup-cancellation confirmation when necessary. A curated
+zone suggestion fills only a blank field; existing explicit zones remain intact.
+
+Discovery stores only `{ stateId, metroId }` in the browser-local preference
+`moveout.browse-region.v1`; explicit URL selections win. Storage failure is
+recoverable, Clear filters retains the region, and browsing changes never PATCH
+a plan or account. Preferences are browser-wide, not account-synchronized.
+Direct public item links and the separate legacy `/api/gifts` collection/search
+remain usable without selecting a metro. New discovery requires paired frontend
+and backend support; older unscoped clients must supply the region and refresh
+old cursors. Missing/malformed service data is an error, never an empty count.
+
+Before any future hosted rollout, separately approve guarded preparation of
+`plan_metro_discovery` and any missing `pickup_messages_request_time` index on
+the verified target. Startup never creates indexes or seeds/migrates records.
+The existing GitHub staging preparation workflow supports this preview/apply
+sequence using its secure Environment; frontend origin is not a DB-preparation
+prerequisite. No remote preview, index change, deployment or hosted E2E was
+performed for this milestone.
+
+See the [architecture, source vintage, compatibility and review order](docs/milestone-6.3-discovery.md).

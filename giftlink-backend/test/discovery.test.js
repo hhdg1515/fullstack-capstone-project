@@ -14,7 +14,7 @@ describe('anonymous neighborhood discovery on verified isolated MongoDB', functi
     this.timeout(180000);
     let isolated, db, app, plan;
     const logger = pino({ level: 'silent' });
-    const get = query => request(app).get('/api/items').query(query || {});
+    const get = query => request(app).get('/api/items').query(Object.assign({ stateId: '06', metroId: '41860' }, query));
     function item(overrides = {}) {
         return Object.assign({ _id: new ObjectId(), planId: plan._id, ownerId: plan.ownerId, name: 'Kitchen chair',
             description: 'Comfortable reading seat', category: 'Household', status: 'available', availableFrom: null, availableUntil: null,
@@ -25,7 +25,7 @@ describe('anonymous neighborhood discovery on verified isolated MongoDB', functi
     beforeEach(async function () {
         await db.collection('items').deleteMany({}); await db.collection('moveOutPlans').deleteMany({});
         plan = { _id: new ObjectId(), ownerId: new ObjectId(), city: ' Oakland ', neighborhood: '  North   Temescal ',
-            status: 'active', moveOutDeadline: day(30), title: 'Private plan title', email: 'private-plan@example.test', address: 'private-street' };
+            status: 'active', stateId: '06', metroId: '41860', pickupTimeZone: 'UTC', moveOutDeadline: day(30), title: 'Private plan title', email: 'private-plan@example.test', address: 'private-street' };
         await db.collection('moveOutPlans').insertOne(plan);
         app = createApp({ connectToDatabase: async () => db, logger });
     });
@@ -171,8 +171,8 @@ describe('anonymous neighborhood discovery on verified isolated MongoDB', functi
         await db.collection('items').insertMany([item(), item()]);
         let time = new Date('2030-01-01T23:59:00.000Z');
         const service = createDiscoveryService({ connectToDatabase: async () => db, now: () => time });
-        const first = await service.browse({ limit: '1' }); time = new Date('2030-01-02T00:01:00.000Z');
-        await assert.rejects(service.browse({ limit: '1', cursor: first.page.nextCursor }), error => error.code === 'STALE_CURSOR');
+        const first = await service.browse({ stateId: '06', metroId: '41860', limit: '1' }); time = new Date('2030-01-02T00:01:00.000Z');
+        await assert.rejects(service.browse({ stateId: '06', metroId: '41860', limit: '1', cursor: first.page.nextCursor }), error => error.code === 'STALE_CURSOR');
     });
     it('never exposes hidden, inactive, expired, unpublished, orphaned or mismatched records through any public endpoint', async function () {
         const hiddenPlan = Object.assign({}, plan, { _id: new ObjectId(), status: 'completed', city: 'Hidden city', neighborhood: 'Hidden neighborhood' });
@@ -218,7 +218,7 @@ describe('anonymous neighborhood discovery on verified isolated MongoDB', functi
     });
     it('limits anonymous discovery requests with a safe retry response', async function () {
         const limited = createApp({ connectToDatabase: async () => db, logger, discoveryLimit: 2 });
-        await request(limited).get('/api/items').expect(200); await request(limited).get('/api/items/locations').expect(200);
+        await request(limited).get('/api/items?stateId=06&metroId=41860').expect(200); await request(limited).get('/api/items/locations').expect(200);
         const response = await request(limited).get('/api/items').expect(429);
         assert.equal(response.body.error.code, 'DISCOVERY_RATE_LIMIT'); assert.equal(response.headers['cache-control'], 'no-store');
     });
@@ -234,6 +234,6 @@ describe('anonymous neighborhood discovery on verified isolated MongoDB', functi
             assert.equal(options.maxTimeMS, 5000); assert.equal(options.allowDiskUse, false);
             return { toArray: async () => { const error = new Error('private-driver-secret'); error.code = 50; throw error; } };
         } }) }) });
-        await assert.rejects(service.browse({}), error => error.status === 503 && error.code === 'DISCOVERY_BUSY' && !error.message.includes('private-driver-secret'));
+        await assert.rejects(service.browse({ stateId: '06', metroId: '41860' }), error => error.status === 503 && error.code === 'DISCOVERY_BUSY' && !error.message.includes('private-driver-secret'));
     });
 });

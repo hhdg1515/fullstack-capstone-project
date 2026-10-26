@@ -74,7 +74,7 @@ describe('Vercel Express runtime using verified isolated MongoDB', function () {
     it('shares cold initialization across requests and returns JSON readiness without database identifiers', async function () {
         let factories = 0;
         const app = hosted({ databaseFactory: () => { factories++; return { connect: async () => isolated.db, close: async () => {} }; } });
-        const responses = await Promise.all([request(app).get('/api/health'), request(app).get('/api/health'), request(app).get('/api/items')]);
+        const responses = await Promise.all([request(app).get('/api/health'), request(app).get('/api/health'), request(app).get('/api/items?stateId=06&metroId=41860')]);
         responses.forEach(response => assert.equal(response.status, 200)); assert.equal(factories, 1);
         const body = responses[0].body;
         assert.deepEqual(Object.keys(body).sort(), ['databaseFingerprint', 'environment', 'status']);
@@ -84,7 +84,7 @@ describe('Vercel Express runtime using verified isolated MongoDB', function () {
     });
     it('keeps original paths, auth, CSRF and JSON API 404s intact', async function () {
         const app = hosted();
-        await request(app).get('/api/items').expect(200);
+        await request(app).get('/api/items?stateId=06&metroId=41860').expect(200);
         await request(app).get('/api/move-out-plans').expect(401);
         await request(app).post('/api/auth/register').set('Origin', 'https://wrong.example.invalid').set('X-CSRF-Protection', '1').send({}).expect(403);
         const missing = await request(app).get('/api/missing').expect(404);
