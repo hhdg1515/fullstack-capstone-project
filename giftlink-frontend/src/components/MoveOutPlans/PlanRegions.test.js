@@ -45,3 +45,19 @@ test('malformed catalog entries produce a recoverable service error instead of a
   mount(); expect(await screen.findByRole('alert')).toHaveTextContent('Region options are unavailable');
   fireEvent.click(screen.getByRole('button', { name: 'Retry region options' })); await ready();
 });
+test('a valid existing timezone is contextual, with an accessible correction control', async () => {
+  mount({ initialPlan: { id: 'plan', title: '', status: 'active', city: 'Oakland', neighborhood: 'Temescal', moveOutDeadline: '2099-01-01', pickupTimeZone: 'UTC' } });
+  await ready(); const field = screen.getByLabelText('Pickup timezone (needed to receive requests)');
+  expect(screen.getByText('Pickup timezone: UTC')).toBeVisible(); expect(field).not.toBeVisible();
+  fireEvent.click(screen.getByText('Change pickup timezone'));
+  // jsdom does not implement the native summary toggle; exercise its resulting state.
+  const details = field.closest('details'); details.open = true; fireEvent(details, new Event('toggle'));
+  expect(field).toBeVisible(); select('State', '06'); select('Metro area', '41860'); expect(field).toHaveValue('UTC');
+});
+test('server timezone validation opens the correction control and focuses its associated error', async () => {
+  const problem = Object.assign(new Error('Check timezone.'), { fields: [{ field: 'pickupTimeZone', message: 'Choose a valid IANA timezone.' }] });
+  mount({ onSave: jest.fn().mockRejectedValue(problem), initialPlan: { id: 'plan', title: '', status: 'active', city: 'Oakland', neighborhood: 'Temescal', moveOutDeadline: '2099-01-01', pickupTimeZone: 'UTC' } });
+  await ready(); fireEvent.submit(screen.getByRole('button', { name: 'Save changes' }).closest('form'));
+  const field = screen.getByLabelText('Pickup timezone (needed to receive requests)');
+  await waitFor(() => expect(field).toHaveFocus()); expect(field).toBeVisible(); expect(field).toHaveAccessibleDescription(/Choose a valid IANA timezone/);
+});

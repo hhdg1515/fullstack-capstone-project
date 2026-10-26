@@ -54,8 +54,8 @@ export function CreatePlan() {
     committed?.();
     navigate(`/app/plans/${data.plan.id}`, { replace: true, state: { message: 'Plan created.' } });
   };
-  return <main className="plans-page"><JourneyNav journey="give" />
-    <h1>Create move-out plan</h1><p>One plan for your move and the household items you’ll give away.</p>
+  return <main className="ui-page"><JourneyNav journey="give" />
+    <PageHeader title="Create move-out plan" description="One plan for your move and the items you’ll give away." />
     <PlanForm key={user.id} onSave={save} />
   </main>;
 }
@@ -96,7 +96,7 @@ export function EditPlan() {
     committed?.();
     navigate(`/app/plans/${data.plan.id}`, { replace: true, state: { message: 'Plan updated.' } });
   };
-  return <main className="plans-page"><JourneyNav journey="give" planId={plan?.id} /><h1>Edit move-out plan</h1>
+  return <main className="ui-page"><JourneyNav journey="give" planId={plan?.id} /><PageHeader title="Edit move-out plan" />
     <LoadState request={request} />
     {plan && <PlanForm key={plan.id} initialPlan={plan} onSave={save} focusPickupTimeZone={state?.focusPickupTimeZone === true} />}
   </main>;

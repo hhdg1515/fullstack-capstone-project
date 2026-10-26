@@ -23,3 +23,8 @@
 @media (max-width: 420px) { .plans-page { padding: 1rem; } .plan-details { grid-template-columns: 1fr; } .plan-details dd { margin-bottom: .5rem; } }
 
 .plans-page a:not(.btn) { color: #0056b3; }
+
+.ui-page .ui-plan-form { max-width: 42rem; }
+.ui-plan-form summary { cursor: pointer; min-height: var(--ui-control-height); display: list-item; padding-block: var(--ui-space-2); color: var(--ui-primary); }
+.ui-plan-form .plan-zone-summary { margin-block: var(--ui-space-6) var(--ui-space-2); }
+.ui-plan-form .ui-field small { display: block; margin-top: var(--ui-space-2); }
