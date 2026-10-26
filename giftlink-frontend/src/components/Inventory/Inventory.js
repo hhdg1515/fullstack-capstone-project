@@ -4,6 +4,7 @@ import { useAppContext } from '../../context/AuthContext';
 import { confirmPickupChanges } from '../../api/confirmPickupChanges';
 import usePlansData from '../MoveOutPlans/usePlansData';
 import ItemForm, { availabilityError } from './ItemForm';
+import ItemLabels from './ItemLabels';
 import '../MoveOutPlans/Plans.css';
 import './Inventory.css';
 import JourneyNav from '../Journeys/JourneyNav';
@@ -75,10 +76,11 @@ export default function Inventory() {
       <p>{data.plan.neighborhood}, {data.plan.city} · Move out by {data.plan.moveOutDeadline}</p>
       <p className="inventory-progress"><strong>{data.progress.cleared} of {data.progress.total} items cleared</strong></p>
       {data.plan.pickupTimeZone === null && <section aria-label="Pickup setup" role="status">
-        <p>Set a pickup timezone so people can request your published items. You can still save drafts and publish without it.</p>
+        <p>Set a pickup timezone so people can request your published items. You can still save drafts and publish without it. Metro discovery needs both a metro and a pickup timezone.</p>
         <Link to={`/app/plans/${planId}/edit`} state={{ focusPickupTimeZone: true }}>Set pickup timezone</Link>
       </section>}
       {data.plan.pickupTimeZone === undefined && <p>Check your plan’s pickup timezone before receiving requests. <Link to={`/app/plans/${planId}/edit`} state={{ focusPickupTimeZone: true }}>Check pickup setup</Link></p>}
+      {data.plan.metroId === null && <p>Assign a metro so people can find these items in regional discovery. <Link to={`/app/plans/${planId}/edit`}>Choose a metro</Link></p>}
       {data.plan.status !== 'active' && <p>This plan is inactive. <Link to={`/app/plans/${planId}/edit`}>Activate it</Link> before publishing.</p>}
       <section aria-label="Inventory items">
         {data.items.length > 0 && <div className="plan-page-header"><h2 ref={itemsHeading} tabIndex={-1}>Your items</h2>
@@ -90,7 +92,7 @@ export default function Inventory() {
         {!data.items.length && <p>No items yet. Add your first item below; the plan supplies its location and deadline.</p>}
         {data.items.length > 0 && !data.items.some(entry => filter === 'all' || entry.status === filter) && <p>No items match this status.</p>}
         <ul className="inventory-list">{data.items.filter(entry => filter === 'all' || entry.status === filter).map(entry => <li className="plan-panel" key={entry.id}>
-          <h2>{entry.name}</h2><p><span className="plan-status">{labels[entry.status]}</span> {entry.category}
+          <h2>{entry.name}</h2><ItemLabels item={entry} /><p><span className="plan-status">{labels[entry.status]}</span>
             {entry.isReserved === true && <> · <span className="plan-status">Pickup arranged</span></>}</p>
           <p>Pickup: {entry.availableFrom || 'Immediately'} through {entry.effectiveAvailableUntil}</p>
           {entry.status === 'available' && !entry.isPublic && <p>Hidden while the plan is inactive.</p>}

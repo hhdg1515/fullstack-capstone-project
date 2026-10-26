@@ -10,6 +10,10 @@ decisions and approval sequence](milestone-6.2-security-readiness.md#future-host
 The Phase 1 message index remains a rollout prerequisite. Existing remote E2E and
 cleanup do not verify or purge messages; expanding their budgets needs separate
 review. No remote procedure is authorized by the local Phase 4 results.
+For Milestone 6.3, also prepare the required `plan_metro_discovery` index only
+after a separately approved target preview/apply. The [region-discovery contract](milestone-6.3-discovery.md)
+documents legacy assignments, the paired frontend/backend query change and local
+verification. No live data is automatically assigned to regions or migrated.
 
 ## Resource boundaries and release evidence
 

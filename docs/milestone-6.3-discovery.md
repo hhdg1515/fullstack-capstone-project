@@ -132,9 +132,10 @@ legacy-category text matching remains. There is no external search or tag servic
 
 Public DTOs include only canonical region ID/label pairs and a session-validated
 owner boolean, never an owner/account ID. Scoped city/neighborhood options reuse
-the existing normalization and bounded metadata endpoint. The backend query PR
-temporarily retains the old unscoped feed for its unchanged frontend; the dependent
-region-first UI PR removes that compatibility path and requires region selection.
+the existing normalization and bounded metadata endpoint. Listing queries now
+require a state/metro pair (`400 REGION_REQUIRED` when missing); there is no
+unscoped fallback. Bounded legacy label-only metadata and individual public item
+links remain compatible without a selected browsing region.
 Older application cursors must refresh because the filter fingerprint expanded.
 
 The new index is an application definition only. Readiness fails without it;
@@ -143,3 +144,60 @@ remote dry-run and exact target/fingerprint-confirmed apply, covering this index
 and any missing Phase 1 message index. Local preparation tests preserve every
 record and never assign regions, seed gifts or rewrite accounts. No remote
 preview/apply is part of this milestone.
+
+## Browsing preference, UI and compatibility
+
+The discovery page first asks Where would you like to find free items? No listing
+query occurs until the directory validates State → Metro. Picking a metro loads
+it directly; Change region remains available and returns keyboard focus safely.
+The selected metro and exact filtered count form the page heading. Category,
+type, condition and existing date/city/neighborhood/sort controls remain under
+Filters. A type/condition label replaces redundant category badges on item cards;
+owner listings stay visible with Your listing and no self-request action.
+
+Browser-local `moveout.browse-region.v1` contains only `{ stateId, metroId }`.
+Explicit URL values override it, invalid/unsupported preferences are ignored,
+and blocked storage still permits URL-based browsing. This preference is shared
+by accounts using that browser, not synchronized to an account or a plan. Direct
+item views do not change it. Search/filter URLs preserve sharing and Back/Forward;
+Clear filters retains the region. Region changes drop incompatible city,
+neighborhood and cursor values while preserving applied search filters.
+
+The frontend rejects missing counts, reserved/misrouted region rows and malformed
+feed/catalog responses as service errors, never zero results. A changed total
+while loading another page starts a fresh first page instead of combining known
+inconsistent availability snapshots. Other errors keep an explicit retry; POSTs
+are not retried automatically. Location errors have an independent retry.
+
+Older plans keep their labels and direct links, and can be created/saved before
+metro assignment or timezone setup. Their owner sees clear setup actions. They
+enter regional discovery only after an explicit valid assignment and configured
+timezone. Browsing preference never edits those records. The 16 bundled demo
+gifts use their existing separate legacy collection/routes, so no synthetic region
+assignments, fixture rewrite or change to the guarded demo seed is necessary.
+
+Review/merge order: **#42 owner-facing state → #43 directory/plans → #44 taxonomy
+→ #45 regional query/counts → the dependent region-first UI PR**. Retarget each
+dependent PR to main after its prerequisite merges. Rollout must pair the new
+frontend/backend and prepare required indexes only after separate approval.
+Unscoped native-list clients receive 400 and old cursors need refresh. No schema
+migration, user preference expansion or remote operation accompanies a merge.
+
+## Verification boundary
+
+Local backend lint and **292 tests**, **261 frontend tests**, strict production
+build, **56 policy tests**, **22 local HTTPS browser scenarios**, actionlint and
+whitespace checks passed. Desktop and 320px mobile include automated WCAG A/AA
+checks. CI links and immutable heads are recorded in the PRs. Fixtures verify
+region selection/persistence, controlled creation, synonym search,
+counts/excluded reservations, filter empty/error recovery, plan-location
+independence and owner actions, alongside existing chat/rescheduling journeys.
+
+A separate default `db:prepare` preview on a verified disposable local replica
+set reported 12 definitions, zero conflicts and a valid fingerprint without
+creating collections. Required-index tests cover fail-closed startup and repeated
+local initialization without rewriting plans/accounts/messages/gifts. No remote
+dry-run/apply or hosted browser test was performed. Existing Vercel Git-linked
+preview statuses are not live staging verification. Real iOS/Safari keyboards,
+screen readers, provider capacity and production readiness remain unverified;
+the earlier Atlas/recovery/dependency/public-launch gates remain separate.
