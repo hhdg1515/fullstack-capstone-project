@@ -5,6 +5,12 @@ provider security changes and paid resources require separate owner approval.
 See the [readiness audit](production-readiness.md) for observed facts and unknowns.
 None of the procedures below was executed against Atlas by this milestone.
 
+For Phase 6.2 communication, also follow the [message-index readiness, retention
+decisions and approval sequence](milestone-6.2-security-readiness.md#future-hosted-sequence--none-executed-here).
+The Phase 1 message index remains a rollout prerequisite. Existing remote E2E and
+cleanup do not verify or purge messages; expanding their budgets needs separate
+review. No remote procedure is authorized by the local Phase 4 results.
+
 ## Resource boundaries and release evidence
 
 Keep a private release record containing the reviewed Git commit, CI run,
