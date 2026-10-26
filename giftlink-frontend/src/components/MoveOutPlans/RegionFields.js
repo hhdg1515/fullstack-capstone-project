@@ -6,7 +6,7 @@ export default function RegionFields({ directory, values, onChange, validation, 
   const changeState = event => onChange({ stateId: event.target.value, metroId: '' });
   return <>
     {directory.loading && <p role="status">Loading region options…</p>}
-    {directory.error && <p role="alert">Region options are unavailable. <button type="button" onClick={directory.retry}>Retry region options</button></p>}
+    {directory.error && <p role="alert">Region options are unavailable. <button type="button" className="ui-button ui-button--secondary" onClick={directory.retry}>Retry region options</button></p>}
     <div className={fieldClassName}><label htmlFor={`${prefix}-state`}>State</label>
       <select id={`${prefix}-state`} name="stateId" value={values.stateId} onChange={changeState} disabled={directory.loading || Boolean(directory.error)} {...validation?.fieldProps('stateId')}>
         <option value="">{browsing ? 'Choose a state' : 'Not assigned'}</option>{states.map(state => <option value={state.id} key={state.id}>{state.label}</option>)}

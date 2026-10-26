@@ -144,21 +144,25 @@ physical browser zoom certification).
 
 Additional samples: [768px tablet](assets/milestone-6.4c/after-reflow-tablet.png),
 [375px](assets/milestone-6.4c/after-reflow-mobile375.png),
-[200% text at 640px](assets/milestone-6.4c/after-reflow-zoom200.png).
+[200% text at 640px](assets/milestone-6.4c/after-reflow-zoom200.png),
+[catalog failure desktop](assets/milestone-6.4c/after-catalog-error-desktop.png),
+[catalog failure 320px](assets/milestone-6.4c/after-catalog-error-mobile.png).
 
 ## Verification and remaining limits
 
 Final local backend **303 tests**, frontend **291 tests / 17 suites**, **56 policy
 tests**, **28 isolated HTTPS browser scenarios**, backend lint, strict production
 build, actionlint and whitespace checks pass. All original 26 browser scenarios
-remain. Fifteen final screenshot/axe samples had zero A/AA violations, overflow
+remain. Seventeen final screenshot/axe samples had zero A/AA violations, overflow
 or server errors (12 before samples also had zero findings). Geographic source verification checks the pinned full-file
 hash and all 50 extracted properties. Existing integration coverage still checks
 exact counts, both sorts/cursors, reservations, owner privacy, legacy records,
 time windows, classifications and synonyms. The added strictly local browser
 scenario verifies new cross-state coverage, preferences/URL precedence, responsive
 controls, safe focus, owner-session changes, count changes, HTML/loading/errors,
-unsupported states and recovery. It adds no hosted fixtures or data allowances.
+unsupported states and recovery. Catalog loading/failure/retry is checked before
+any listing query, including a 44px retry target. It adds no hosted fixtures or
+data allowances.
 Full local browser/CI evidence and immutable heads are recorded in the PRs.
 
 No dependency/framework, collection/index, plan-location migration, transaction,

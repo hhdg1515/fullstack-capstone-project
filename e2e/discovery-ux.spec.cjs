@@ -41,7 +41,14 @@ test('expanded areas, responsive filters, truthful cards and recovery preserve s
     await post(giver, '/api/pickup-requests/' + request.id + '/actions', { action: 'accept', version: request.version });
     const page = await anonymous.newPage(); let gets = 0;
     page.on('request', req => { if (new URL(req.url()).pathname === '/api/items') gets++; });
-    await page.goto('/app/items');
+    let releaseCatalog;
+    const catalogGate = new Promise(resolve => { releaseCatalog = resolve; });
+    await page.route('**/api/regions', async route => { await catalogGate; await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: { message: 'Local catalog unavailable' } }) }); });
+    await page.goto('/app/items'); await expect(page.getByText('Loading region options…', { exact: true })).toBeVisible();
+    expect(gets).toBe(0); releaseCatalog();
+    await expect(page.getByRole('alert')).toContainText('Region options are unavailable');
+    await audit(page, 'region catalog error'); expect(gets).toBe(0);
+    await page.unroute('**/api/regions'); await page.getByRole('button', { name: 'Retry region options', exact: true }).click();
     await expect(page.getByRole('option', { name: 'Wyoming', exact: true })).toBeAttached();
     expect(gets).toBe(0);
     await page.evaluate(() => localStorage.setItem('moveout.browse-region.v1', JSON.stringify({ stateId: '06', metroId: 'unknown' })));
