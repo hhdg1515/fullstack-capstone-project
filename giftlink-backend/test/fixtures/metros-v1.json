@@ -1,0 +1,107 @@
+[
+  {
+    "id": "14460",
+    "label": "Boston-Cambridge-Newton, MA-NH",
+    "stateIds": [
+      "25",
+      "33"
+    ],
+    "suggestedTimeZone": "America/New_York"
+  },
+  {
+    "id": "16980",
+    "label": "Chicago-Naperville-Elgin, IL-IN-WI",
+    "stateIds": [
+      "17",
+      "18",
+      "55"
+    ],
+    "suggestedTimeZone": null
+  },
+  {
+    "id": "19100",
+    "label": "Dallas-Fort Worth-Arlington, TX",
+    "stateIds": [
+      "48"
+    ],
+    "suggestedTimeZone": null
+  },
+  {
+    "id": "19740",
+    "label": "Denver-Aurora-Lakewood, CO",
+    "stateIds": [
+      "08"
+    ],
+    "suggestedTimeZone": "America/Denver"
+  },
+  {
+    "id": "31080",
+    "label": "Los Angeles-Long Beach-Anaheim, CA",
+    "stateIds": [
+      "06"
+    ],
+    "suggestedTimeZone": "America/Los_Angeles"
+  },
+  {
+    "id": "35620",
+    "label": "New York-Newark-Jersey City, NY-NJ-PA",
+    "stateIds": [
+      "36",
+      "34",
+      "42"
+    ],
+    "suggestedTimeZone": "America/New_York"
+  },
+  {
+    "id": "38060",
+    "label": "Phoenix-Mesa-Chandler, AZ",
+    "stateIds": [
+      "04"
+    ],
+    "suggestedTimeZone": null
+  },
+  {
+    "id": "38900",
+    "label": "Portland-Vancouver-Hillsboro, OR-WA",
+    "stateIds": [
+      "41",
+      "53"
+    ],
+    "suggestedTimeZone": null
+  },
+  {
+    "id": "41740",
+    "label": "San Diego-Chula Vista-Carlsbad, CA",
+    "stateIds": [
+      "06"
+    ],
+    "suggestedTimeZone": "America/Los_Angeles"
+  },
+  {
+    "id": "41860",
+    "label": "San Francisco-Oakland-Berkeley, CA",
+    "stateIds": [
+      "06"
+    ],
+    "suggestedTimeZone": "America/Los_Angeles"
+  },
+  {
+    "id": "42660",
+    "label": "Seattle-Tacoma-Bellevue, WA",
+    "stateIds": [
+      "53"
+    ],
+    "suggestedTimeZone": "America/Los_Angeles"
+  },
+  {
+    "id": "47900",
+    "label": "Washington-Arlington-Alexandria, DC-VA-MD-WV",
+    "stateIds": [
+      "11",
+      "51",
+      "24",
+      "54"
+    ],
+    "suggestedTimeZone": "America/New_York"
+  }
+]
