@@ -61,7 +61,9 @@ Messages remain associated only with their original request. A later request for
 the same item has a separate, initially empty history; republishing an item does
 not restore sending on an older closed request. There is no deletion, moderation,
 retention TTL or export policy yet. Retention/deletion still needs an owner
-policy before a communication UI/public launch; read-only access is not erasure.
+policy before hosted communication rollout/public launch; read-only access is not erasure.
+See the [Phase 4 retention proposal and decision list](milestone-6.2-security-readiness.md#proposed-message-lifecycle--owner-approval-required);
+no proposed deletion is enabled by this documentation.
 
 Sends reuse the existing plan transaction, rechecking canonical references and
 state inside it. They serialize with cancellation, withdrawal, handoff and other

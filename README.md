@@ -595,3 +595,19 @@ retaining a valid confirmed appointment. Terminal requests cannot reschedule.
 The request detail distinguishes confirmed and proposed times, offers role-safe
 responses, and keeps the existing chat intact through canonical reloads.
 See the [state machine, API and rollout boundaries](docs/milestone-6.2-rescheduling.md).
+
+## Communication security and readiness (Milestone 6.2 Phase 4)
+
+Successful messages share MongoDB account quotas of 30 per minute and 300 per
+hour across conversations, sessions and instances. Windows start on the first
+send after expiry. Existing process-local attempt limits remain; they do not
+provide a global GET/auth/scheduling limit or stop mass account creation. Quota
+429s keep the draft and provide `Retry-After`; POSTs are never automatically retried.
+No new index, service, dependency, migration or message deletion is added.
+
+See the [prioritized audit, proposed privacy/retention policy, workload estimates
+and future approval checklist](docs/milestone-6.2-security-readiness.md).
+The proposed 90-day closed-message retention is **not implemented or approved**;
+currently no automatic message deletion occurs. The Phase 1 message index still
+requires separately approved remote preview/apply before deployment. Verification
+is local/CI only; hosted chat/rescheduling and public launch are not certified.
