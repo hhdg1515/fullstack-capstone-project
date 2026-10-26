@@ -8,6 +8,9 @@ import PublicItems from '../Inventory/PublicItems';
 import { RequestPickup, PickupDashboard, PickupDetail } from './Pickups';
 import { confirmPickupChanges } from '../../api/confirmPickupChanges';
 
+// Lifecycle tests isolate chat; PickupConversation.test.js and browser tests cover the real integration.
+jest.mock('./PickupConversation', () => () => null);
+
 const user = { id: 'receiver', firstName: 'Reader', lastName: 'Neighbor', email: 'reader@example.test' };
 const item = { id: '64a000000000000000000001', name: 'Kitchen box', description: 'One whole box.', city: 'Oakland', neighborhood: 'Temescal',
   pickupTimeZone: 'Asia/Kolkata', isReserved: false, availableFrom: '2030-07-01', effectiveAvailableUntil: '2030-07-03', availability: 'later' };

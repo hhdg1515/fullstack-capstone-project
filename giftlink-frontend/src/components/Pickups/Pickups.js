@@ -7,6 +7,7 @@ import './Pickups.css';
 import JourneyNav from '../Journeys/JourneyNav';
 import { useUnsavedForm } from '../../forms/UnsavedChanges';
 import useFormErrors from '../../forms/useFormErrors';
+import PickupConversation from './PickupConversation';
 
 export const pickupLabels = { pending: 'Awaiting giver decision', accepted: 'Accepted appointment', declined: 'Declined', cancelled: 'Cancelled', completed: 'Handed over', no_show: 'Receiver did not arrive' };
 const actionLabels = { accept: 'Accept pickup', decline: 'Decline request', cancel: 'Cancel request', complete: 'Confirm handoff', no_show: 'Record no-show' };
@@ -57,7 +58,7 @@ export function RequestPickup() {
             <small id="pickup-zone-help">Local time in <strong>{item.pickupTimeZone}</strong>, selected by the giver. Your browser timezone is not used. Times skipped or repeated by daylight saving must be avoided.</small></div>
           <div className="plan-field"><label htmlFor="pickup-note">Coordination note (optional, private)</label><textarea id="pickup-note" name="note" {...validation.fieldProps('note')} maxLength={500} value={note} onChange={event => { setNote(event.target.value); validation.clear('note'); }} />
             {errors.note && <p id="note-error" className="plan-field-error">{errors.note}</p>}</div>
-          <p>Only you and the giver see this note. Suggest a general public meeting point or brief handoff instructions. Keep phone numbers, email and residential addresses out of it. Messaging is not available yet.</p>
+          <p>Only you and the giver see this note. Suggest a general public meeting point or brief handoff instructions. Keep phone numbers, email and residential addresses out of it. After sending your request, use its pickup conversation to coordinate.</p>
           <button className="btn btn-primary">{busy ? 'Sending…' : 'Send pickup request'}</button>
         </fieldset>
       </form>}
@@ -96,8 +97,8 @@ export function PickupDashboard({ incoming = false }) {
   </main>;
 }
 export function PickupDetail() {
-  const { requestId } = useParams(); const data = usePlansData(`/api/pickup-requests/${encodeURIComponent(requestId)}`);
-  const request = data.data?.request; const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  const { requestId } = useParams(); const data = usePlansData(`/api/pickup-requests/${encodeURIComponent(requestId)}`, true);
+  const request = [403, 404].includes(data.error?.status) ? undefined : data.data?.request; const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   const action = async name => {
     const warning = name === 'complete' ? 'Confirm the entire item or group was actually handed over? This clears the item and cancels competing requests.' :
       name === 'no_show' ? 'Confirm the receiver did not arrive? This releases the reservation without clearing the item.' :
@@ -115,7 +116,7 @@ export function PickupDetail() {
   ] : [];
   return <main className="plans-page pickup-page">{request && <JourneyNav journey={request.role === 'giver' ? 'give' : 'find'} planId={request.plan?.id} />}<Link to={request?.role === 'giver' ? '/app/pickups/incoming' : '/app/pickups'}>Back to requests</Link>
     <h1>Pickup request</h1><LoadState data={data} />{error && <p role="alert">{error}</p>}
-    <button className="btn btn-outline-secondary" disabled={busy} onClick={data.retry}>Reload request</button>
+    <button className="btn btn-outline-secondary" disabled={busy || data.loading} onClick={data.retry}>Reload request</button>
     {request && <article className="plan-panel"><h2>{request.item?.name || 'Former listing'}</h2><p className="plan-status">{pickupLabels[request.status]}</p>
       <p>Applicant: {request.role === 'giver' ? request.counterpart.firstName : 'You'}</p>
       {request.role === 'receiver' && <p>Giver: {request.counterpart.firstName}</p>}<Appointment request={request} />
@@ -126,8 +127,9 @@ export function PickupDetail() {
       {request.plan && <p><Link to={`/app/plans/${request.plan.id}`}>{request.plan.title || 'Move-out plan'}</Link></p>}
       <h3>Private coordination note</h3><p className="pickup-note">{request.note || 'No note provided.'}</p>
       <details className="pickup-request-details"><summary>Request reference</summary><code>{request.id}</code></details>
-      <div className="plan-actions">{actions.map(name => <button key={name} className="btn btn-outline-primary" disabled={busy || (['complete', 'no_show'].includes(name) && Date.parse(request.proposedAt) > Date.now())} onClick={() => action(name)}>{actionLabels[name]}</button>)}</div>
+      <div className="plan-actions">{actions.map(name => <button key={name} className="btn btn-outline-primary" disabled={busy || data.loading || (['complete', 'no_show'].includes(name) && Date.parse(request.proposedAt) > Date.now())} onClick={() => action(name)}>{actionLabels[name]}</button>)}</div>
       {request.role === 'giver' && request.status === 'accepted' && <p>Record completion or no-show after the appointment time. Reload the request to update these controls.</p>}
+      <PickupConversation requestId={request.id} requestStatus={request.status} />
       <h3>Request history</h3><ul>{request.history.map((entry, index) => <li key={index}>{pickupLabels[entry.action]} — {entry.actor}, <time dateTime={entry.at}>{new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short', timeZone: request.timeZone }).format(new Date(entry.at))}</time> ({request.timeZone})</li>)}</ul>
     </article>}
   </main>;
