@@ -578,3 +578,18 @@ The existing recursive backend CI tests and `npm run test:integration` cover the
 new endpoints on isolated local replica sets. This does not verify hosted messaging. The panel uses manual refresh and bounded
 history pages, keeps drafts only in memory, and offers read-only history after
 closure. See the [Phase 2 behavior and local evidence](docs/milestone-6.2-communication.md#phase-2--embedded-pickup-conversation-ui).
+
+## Pickup rescheduling (Milestone 6.2 Phase 3)
+
+An accepted pickup can have one pending time-change proposal. Either original
+participant can propose; only the other can accept or decline. The existing
+confirmed appointment stays in effect until a valid acceptance. Every operation
+uses the pickup's current version and the existing plan transaction; new times
+reuse the explicit IANA/DST, local-window and UTC deadline rules. No separate
+calendar, new database index or chat-authored scheduling state is introduced.
+
+Current confirmed appointments must still be future to propose or accept a change.
+Cancellation/handoff/no-show and confirmed withdrawal/plan closure invalidate any
+pending proposal. Window edits that invalidate only the proposal clear it while
+retaining a valid confirmed appointment. Terminal requests cannot reschedule.
+See the [state machine, API and rollout boundaries](docs/milestone-6.2-rescheduling.md).

@@ -56,6 +56,9 @@ function createPlanService({ connectToDatabase }) {
                 else pickupConflicts += await invalidateRequests(db, session, item, next, ownerId, false, reason, true);
             }
             if (pickupConflicts) throw confirmationRequired(pickupConflicts);
+            // A changed window can invalidate only a proposed time while leaving
+            // the confirmed pickup intact; apply that cleanup after the preview.
+            if (confirmed !== true) for (const item of items) await invalidateRequests(db, session, item, next, ownerId, false, reason);
             // An extension must not silently republish previously expired items.
             const expiredIds = items.filter(item => effectiveStatus(item, previous) === 'expired').map(item => item._id);
             if (expiredIds.length) await db.collection('items').updateMany({ _id: { $in: expiredIds }, ownerId, planId: previous._id },
