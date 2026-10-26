@@ -54,7 +54,7 @@ describe('two-party pickup lifecycle on verified isolated MongoDB', function () 
             .send({ title: 'Private management title', city: 'Oakland', neighborhood: 'Temescal', moveOutDeadline: day(30), pickupTimeZone: 'UTC', stateId: '06', metroId: '41860' }).expect(201);
         plan = result.body.plan;
         item = (await write(request(app).post('/api/move-out-plans/' + plan.id + '/items')).set('Cookie', giver.cookie)
-            .send({ name: 'One box of household supplies', description: 'Whole box, one pickup.', publish: true }).expect(201)).body.item;
+            .send({ categoryId: "other-household", itemTypeId: "other", name: 'One box of household supplies', description: 'Whole box, one pickup.', publish: true }).expect(201)).body.item;
         await db.collection('users').updateOne({ _id: new ObjectId(giver.id) }, { $set: { phone: 'private phone', address: 'private address' } });
     });
     it('requires sessions and CSRF protection and refuses client-supplied identities or unsupported fields', async function () {
@@ -281,7 +281,7 @@ describe('two-party pickup lifecycle on verified isolated MongoDB', function () 
     });
     it('reports the total affected request count across every item before confirming a plan change', async function () {
         const first = (await submit()).body.request;
-        const second = (await write(request(app).post('/api/move-out-plans/' + plan.id + '/items')).set('Cookie', giver.cookie).send({ name: 'Another box', publish: true }).expect(201)).body.item;
+        const second = (await write(request(app).post('/api/move-out-plans/' + plan.id + '/items')).set('Cookie', giver.cookie).send({ categoryId: "other-household", itemTypeId: "other", description: "A household item for local pickup.", name: 'Another box', publish: true }).expect(201)).body.item;
         const next = (await submit({ itemId: second.id }).expect(201)).body.request;
         const response = await planEdit({ status: 'cancelled' }).expect(409);
         assert.equal(response.body.error.affectedRequests, 2);

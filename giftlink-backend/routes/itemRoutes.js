@@ -15,8 +15,8 @@ function itemRules(editing) {
     const rules = [name, text('description', 2000, false).optional(), text('category', 80, false).optional(),
         body(['availableFrom', 'availableUntil']).optional({ nullable: true }).custom(isCalendarDate).withMessage('Use a valid YYYY-MM-DD calendar date')];
     if (editing) rules.push(body('version').isInt({ min: 1 }).custom(value => typeof value === 'number'), body('confirmCancelRequests').optional().custom(value => typeof value === 'boolean'));
-    else rules.push(body('publish').optional().isBoolean().custom(value => typeof value === 'boolean'));
-    return validate(['name', 'description', 'category', 'categoryId', 'itemTypeId', 'condition', 'availableFrom', 'availableUntil', editing ? 'version' : 'publish'].concat(editing ? ['confirmCancelRequests'] : []), rules, editing);
+    rules.push(body('publish').optional().isBoolean().custom(value => typeof value === 'boolean'));
+    return validate(['name', 'description', 'category', 'categoryId', 'itemTypeId', 'condition', 'availableFrom', 'availableUntil', 'publish'].concat(editing ? ['version', 'confirmCancelRequests'] : []), rules, editing);
 }
 function createItemRoutes({ connectToDatabase, auth, discoveryLimit = 120 }) {
     const service = createInventoryService({ connectToDatabase });

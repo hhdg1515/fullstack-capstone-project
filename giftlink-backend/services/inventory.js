@@ -11,10 +11,23 @@ function dateConflicts(item, plan) {
     const end = endDate(item, plan);
     return end > plan.moveOutDeadline || Boolean(item.availableFrom && item.availableFrom > end);
 }
-function validateDates(item, plan, publishing = false) {
+function validateDates(item, plan, publishing = false, previous = null) {
+    if (item.availableFrom && item.availableFrom < todayUTC() && (!previous || item.availableFrom !== previous.availableFrom)) {
+        throw new InventoryError(400, 'INVALID_AVAILABILITY', 'Check the pickup start date.', {
+            fields: [{ field: 'availableFrom', message: 'Choose today or a later date (UTC), or keep the existing start date.' }]
+        });
+    }
     if (dateConflicts(item, plan) || (publishing && endDate(item, plan) < todayUTC())) {
         throw new InventoryError(400, 'INVALID_AVAILABILITY', 'Pickup dates must be in order and end by the plan deadline. Publication or reopening also needs an end date of today or later (UTC).');
     }
+}
+function validatePublication(item) {
+    const classification = classificationResponse(item), fields = [];
+    if (typeof item.name !== 'string' || !item.name.trim()) fields.push({ field: 'name', message: 'Enter an item name before publishing.' });
+    if (!classification.category) fields.push({ field: 'categoryId', message: 'Choose a category before publishing.' });
+    if (!classification.itemType) fields.push({ field: 'itemTypeId', message: 'Choose an item type in this category before publishing.' });
+    if (typeof item.description !== 'string' || !item.description.trim()) fields.push({ field: 'description', message: 'Describe the item before publishing.' });
+    if (fields.length) throw new InventoryError(400, 'PUBLICATION_DETAILS_REQUIRED', 'Complete the highlighted details before publishing. You can save a draft with just a name.', { fields });
 }
 function listingPolicy(item) {
     const text = item.name + '\n' + item.description + '\n' + item.category;
@@ -45,6 +58,7 @@ function itemResponse(item, plan, privateResponse = true, isReserved = null) {
         effectiveAvailableUntil: endDate(item, plan), city: plan.city, neighborhood: plan.neighborhood,
         moveOutDeadline: plan.moveOutDeadline, publishedAt: item.publishedAt ? item.publishedAt.toISOString() : null };
     if (privateResponse) Object.assign(result, { planId: plan._id.toString(), version: item.version,
+        requiresPublicationDetails: item.publicationRequirementsVersion === 1,
         createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString(),
         isPublic: effectiveStatus(item, plan) === 'available' && plan.status === 'active' && Boolean(item.publishedAt) });
     if (privateResponse && typeof isReserved === 'boolean') result.isReserved = isReserved;
@@ -79,7 +93,7 @@ function createInventoryService({ connectToDatabase }) {
             validateDates(item, plan, input.publish);
             if (input.publish) {
                 if (plan.status !== 'active') throw new InventoryError(409, 'PLAN_INACTIVE', 'Activate this plan before publishing items.');
-                listingPolicy(item);
+                validatePublication(item); listingPolicy(item); item.publicationRequirementsVersion = 1;
             }
             await db.collection('items').insertOne(item, { session });
             return { item: itemResponse(item, plan) };
@@ -93,24 +107,31 @@ function createInventoryService({ connectToDatabase }) {
             if (!existing) throw notFound();
             if (input.version !== existing.version) throw new InventoryError(409, 'ITEM_CHANGED', 'This item changed. Reload the inventory and review it before trying again.');
             const item = Object.assign({}, existing);
-            if (action) {
-                const status = effectiveStatus(existing, plan);
-                if (action === 'publish' && ['draft', 'unlisted', 'expired'].includes(status)) {
-                    if (plan.status !== 'active') throw new InventoryError(409, 'PLAN_INACTIVE', 'Activate this plan before publishing items.');
-                    validateDates(item, plan, true); listingPolicy(item);
-                    item.status = 'available'; item.publishedAt = item.publishedAt || new Date();
-                } else if (action === 'unlist' && ['available', 'expired'].includes(status)) item.status = 'unlisted';
-                else if (action === 'clear' && status !== 'cleared') item.status = 'cleared';
-                else if (action === 'reopen' && status === 'cleared') { validateDates(item, plan, true); item.status = 'draft'; }
-                else throw new InventoryError(409, 'INVALID_TRANSITION', 'This action is unavailable for the current item state. Reload the inventory.');
-            } else {
+            if (!action) {
                 for (const field of ['name', 'description', 'category', 'availableFrom', 'availableUntil']) {
                     if (Object.prototype.hasOwnProperty.call(input, field)) item[field] = input[field];
                 }
                 Object.assign(item, classificationChanges(existing, input));
-                validateDates(item, plan);
+                validateDates(item, plan, false, existing);
                 if (effectiveStatus(existing, plan) === 'expired' || (item.status === 'available' && endDate(item, plan) < todayUTC())) item.status = 'expired';
-                if (item.status === 'available') listingPolicy(item);
+            }
+            const transition = action || (input.publish === true ? 'publish' : null);
+            if (transition) {
+                const status = effectiveStatus(existing, plan);
+                if (transition === 'publish' && ['draft', 'unlisted', 'expired'].includes(status)) {
+                    if (plan.status !== 'active') throw new InventoryError(409, 'PLAN_INACTIVE', 'Activate this plan before publishing items.');
+                    validateDates(item, plan, true, existing); validatePublication(item); listingPolicy(item);
+                    item.publicationRequirementsVersion = 1;
+                    item.status = 'available'; item.publishedAt = item.publishedAt || new Date();
+                } else if (transition === 'unlist' && ['available', 'expired'].includes(status)) item.status = 'unlisted';
+                else if (transition === 'clear' && status !== 'cleared') item.status = 'cleared';
+                else if (transition === 'reopen' && status === 'cleared') { validateDates(item, plan, true, existing); item.status = 'draft'; }
+                else throw new InventoryError(409, 'INVALID_TRANSITION', 'This action is unavailable for the current item state. Reload the inventory.');
+            } else {
+                if (item.status === 'available') {
+                    if (existing.publicationRequirementsVersion === 1) validatePublication(item);
+                    listingPolicy(item);
+                }
             }
             await invalidateRequests(db, session, item, plan, ownerId, input.confirmCancelRequests,
                 ['unlist', 'clear'].includes(action) ? (action === 'clear' ? 'external_clearance' : 'item_unlisted') : null);

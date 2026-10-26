@@ -61,7 +61,7 @@ describe('private pickup communication on verified isolated MongoDB', function (
         plan = (await write(request(app).post('/api/move-out-plans')).set('Cookie', giver.cookie)
             .send({ title: 'Private plan title', city: 'Oakland', neighborhood: 'Temescal', moveOutDeadline: day(30), pickupTimeZone: 'UTC' }).expect(201)).body.plan;
         item = (await write(request(app).post('/api/move-out-plans/' + plan.id + '/items')).set('Cookie', giver.cookie)
-            .send({ name: 'Desk', description: 'One whole desk', publish: true }).expect(201)).body.item;
+            .send({ categoryId: "other-household", itemTypeId: "other", name: 'Desk', description: 'One whole desk', publish: true }).expect(201)).body.item;
         clock = new Date();
         pickup = (await write(request(app).post('/api/pickup-requests')).set('Cookie', receiver.cookie)
             .send({ itemId: item.id, localDateTime: day(1) + 'T12:00', timeZone: 'UTC' }).expect(result => assert.equal(result.status, 201, result.body.error && result.body.error.code))).body.request;
@@ -185,7 +185,7 @@ describe('private pickup communication on verified isolated MongoDB', function (
     });
     it('shares the account budget across conversations and sessions without blocking the other participant', async function () {
         const nextItem = (await write(request(app).post('/api/move-out-plans/' + plan.id + '/items')).set('Cookie', giver.cookie)
-            .send({ name: 'Chair', publish: true }).expect(201)).body.item;
+            .send({ categoryId: "other-household", itemTypeId: "other", description: "A household item for local pickup.", name: 'Chair', publish: true }).expect(201)).body.item;
         clock = new Date();
         const nextRequest = (await write(request(app).post('/api/pickup-requests')).set('Cookie', receiver.cookie)
             .send({ itemId: nextItem.id, localDateTime: day(1) + 'T13:00', timeZone: 'UTC' }).expect(201)).body.request;
@@ -218,7 +218,7 @@ describe('private pickup communication on verified isolated MongoDB', function (
         const nextPlan = (await write(request(app).post('/api/move-out-plans')).set('Cookie', giver.cookie)
             .send({ city: 'Oakland', neighborhood: 'Temescal', moveOutDeadline: day(30), pickupTimeZone: 'UTC' }).expect(201)).body.plan;
         const nextItem = (await write(request(app).post('/api/move-out-plans/' + nextPlan.id + '/items')).set('Cookie', giver.cookie)
-            .send({ name: 'Other plan chair', publish: true }).expect(201)).body.item;
+            .send({ categoryId: "other-household", itemTypeId: "other", description: "A household item for local pickup.", name: 'Other plan chair', publish: true }).expect(201)).body.item;
         clock = new Date();
         const nextRequest = (await write(request(app).post('/api/pickup-requests')).set('Cookie', receiver.cookie)
             .send({ itemId: nextItem.id, localDateTime: day(1) + 'T13:00', timeZone: 'UTC' }).expect(201)).body.request;

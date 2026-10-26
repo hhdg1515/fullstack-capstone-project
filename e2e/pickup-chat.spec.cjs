@@ -35,7 +35,7 @@ test('participants exchange private text, retain reading position and drafts, th
     let accept = true; a.on('dialog', dialog => accept ? dialog.accept() : dialog.dismiss());
     b.on('dialog', dialog => dialog.accept());
     const { plan } = await post(giver, '/api/move-out-plans', { city: 'Oakland', neighborhood: 'Temescal', pickupTimeZone: 'UTC', moveOutDeadline: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10) });
-    const { item } = await post(giver, '/api/move-out-plans/' + plan.id + '/items', { name: 'Local desk', publish: true });
+    const { item } = await post(giver, '/api/move-out-plans/' + plan.id + '/items', { categoryId: "other-household", itemTypeId: "other", description: "A household item for local pickup.", name: 'Local desk', publish: true });
     const { request } = await post(receiver, '/api/pickup-requests', { itemId: item.id, localDateTime: new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10) + 'T12:00', timeZone: 'UTC' });
     const endpoint = '/api/pickup-requests/' + request.id + '/conversation/messages';
     for (let i = 1; i <= 23; i++) await post(i % 2 ? giver : receiver, endpoint, {

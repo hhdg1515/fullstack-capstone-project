@@ -27,3 +27,10 @@
 .pickup-later { background: #eef0fa; color: #303d7b; }
 .discovery-more { margin: 1.5rem 0; }
 .discovery-page article > .btn { margin: .4rem .5rem .4rem 0; }
+
+.ui-page .inventory-form { max-width: 42rem; margin-block: var(--ui-space-6); padding: var(--ui-space-6); border-color: var(--ui-border); border-radius: var(--ui-radius-surface); }
+.inventory-form fieldset { min-width: 0; }
+.inventory-form-help { color: var(--ui-muted); margin-block: var(--ui-space-3); }
+.inventory-classification { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: 0 var(--ui-space-4); }
+.inventory-form .ui-field { margin-block: var(--ui-space-4); }
+@media (max-width: 420px) { .ui-page .inventory-form { padding: var(--ui-space-4); } }
