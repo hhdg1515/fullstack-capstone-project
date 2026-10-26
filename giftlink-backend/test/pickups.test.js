@@ -142,6 +142,19 @@ describe('two-party pickup lifecycle on verified isolated MongoDB', function () 
         await db.collection('items').updateOne({ _id: new ObjectId(item.id) }, { $set: { ownerId: new ObjectId(other.id) } }); await submit().expect(409);
         assert.equal(await db.collection('pickupRequests').countDocuments(), 0);
     });
+    it('reports only server-validated viewer ownership and rejects self-requests without changing inventory', async function () {
+        const before = await db.collection('moveOutPlans').findOne({ _id: new ObjectId(plan.id) });
+        const own = await request(app).get('/api/items/' + item.id).set('Cookie', giver.cookie).expect(200);
+        assert.equal(own.body.item.isOwner, true); assert.equal(own.headers['cache-control'], 'no-store');
+        assert.ok(!JSON.stringify(own.body).includes(giver.id));
+        for (const cookie of [receiver.cookie, '', 'giftlink_session=' + 'a'.repeat(64)]) {
+            assert.equal((await request(app).get('/api/items/' + item.id).set('Cookie', cookie).expect(200)).body.item.isOwner, false);
+        }
+        assert.equal((await submit({}, giver).expect(409)).body.error.code, 'OWN_ITEM');
+        assert.equal(await db.collection('pickupRequests').countDocuments(), 0);
+        assert.deepEqual(await db.collection('moveOutPlans').findOne({ _id: before._id }), before);
+        await submit({}, receiver).expect(201);
+    });
     it('accepts advance requests only inside the inclusive local availability window', async function () {
         await write(request(app).patch(itemPath())).set('Cookie', giver.cookie).send({ version: item.version, availableFrom: day(5), availableUntil: day(10) }).expect(200);
         await submit().expect(400); await submit({ localDateTime: day(11) + 'T00:00' }).expect(400);

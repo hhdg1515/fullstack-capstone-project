@@ -53,6 +53,13 @@ test('public details offer a real request action while browsing stays anonymous'
   await click(await screen.findByRole('link', { name: 'Request pickup' }));
   expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument();
 });
+test('the direct request form shows the server owner state instead of accepting appointment input', async () => {
+  fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { item: { ...item, isOwner: true } }));
+  mount();
+  expect(await screen.findByText('Your listing. You cannot request your own item. Manage it from My plans.')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Pickup date and time')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Send pickup request' })).not.toBeInTheDocument();
+});
 test('form uses the giver timezone explicitly, never prepopulates browser local time, and sends no identities', async () => {
   mount(); const control = await screen.findByLabelText('Pickup date and time');
   expect(control).toHaveValue(''); expect(screen.getByText('Asia/Kolkata')).toBeInTheDocument();

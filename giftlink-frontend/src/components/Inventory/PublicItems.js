@@ -5,6 +5,7 @@ import { formatDeadline, isCalendarDate, utcToday } from '../MoveOutPlans/dates'
 import '../MoveOutPlans/Plans.css';
 import './Inventory.css';
 import JourneyNav from '../Journeys/JourneyNav';
+import { useAppContext } from '../../context/AuthContext';
 
 const normalize = value => value.trim().replace(/\s+/g, ' ');
 const key = value => normalize(value).toLowerCase();
@@ -171,20 +172,23 @@ function Discovery() {
   </main>;
 }
 function PublicItemDetail({ itemId }) {
+  const auth = useAppContext();
+  const viewer = auth?.status === 'authenticated' ? auth.user.id : 'anonymous';
+  const scope = `${viewer}:${itemId}`;
   const location = useLocation();
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState({});
   const [message, setMessage] = useState('');
   useEffect(() => {
     let active = true;
-    setResult({ key: itemId, loading: true }); setMessage('');
-    apiRequest(`/api/items/${encodeURIComponent(itemId)}`).then(data => { if (active) setResult({ key: itemId, item: data.item }); })
-      .catch(error => { if (active) setResult({ key: itemId, error }); });
+    setResult({ key: scope, loading: true }); setMessage('');
+    apiRequest(`/api/items/${encodeURIComponent(itemId)}`).then(data => { if (active) setResult({ key: scope, item: data.item }); })
+      .catch(error => { if (active) setResult({ key: scope, error }); });
     const refresh = () => setAttempt(value => value + 1);
     window.addEventListener('focus', refresh);
     return () => { active = false; window.removeEventListener('focus', refresh); };
-  }, [itemId, attempt]);
-  const current = result.key === itemId ? result : { loading: true };
+  }, [itemId, scope, attempt]);
+  const current = result.key === scope ? result : { loading: true };
   const item = current.item;
   const previous = location.state?.discoverySearch;
   const shareUrl = `${window.location.origin}${location.pathname}`;
@@ -203,7 +207,7 @@ function PublicItemDetail({ itemId }) {
       {item.category && <p className="discovery-category">{item.category}</p>}
       <PickupWindow item={item} />
       <h2>Description</h2><p className="public-item-description">{item.description || 'No additional description provided.'}</p>
-      {item.isReserved === true ? <p role="status">This item has an accepted pickup. Check back if it becomes available.</p> : item.pickupTimeZone ? <><p>Pickup timezone: {item.pickupTimeZone}</p><Link className="btn btn-primary" to={`/app/items/${item.id}/request`} state={{ discoverySearch: previous }}>Request pickup</Link>
+      {item.isOwner === true ? <p role="status">Your listing. Manage this item from My plans.</p> : item.isReserved === true ? <p role="status">This item has an accepted pickup. Check back if it becomes available.</p> : item.pickupTimeZone ? <><p>Pickup timezone: {item.pickupTimeZone}</p><Link className="btn btn-primary" to={`/app/items/${item.id}/request`} state={{ discoverySearch: previous }}>Request pickup</Link>
         <p>A request does not reserve the item. The giver must accept an appointment.</p></> : <p>The giver needs to set a pickup timezone before this listing can receive requests.</p>}
       {typeof item.isReserved !== 'boolean' && <p>Current pickup availability will be checked when you send a request.</p>}
       {item.publishedAt && <p>First published: <time dateTime={item.publishedAt}>{formatDeadline(item.publishedAt.slice(0, 10))}</time>. Publication is separate from pickup dates.</p>}

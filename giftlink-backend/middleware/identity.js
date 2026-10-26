@@ -38,7 +38,14 @@ function createIdentityMiddleware({ identity, appOrigin, secureCookies = false, 
             next();
         } catch (error) { next(error); }
     }
-    return { requireAuth, protectWrites, readToken, setCookie, clearCookie, cookieName };
+    async function optionalAuth(req, res, next) {
+        try {
+            const authentication = await identity.authenticate(readToken(req));
+            if (authentication) req.user = authentication.user;
+            next();
+        } catch (error) { next(error); }
+    }
+    return { requireAuth, optionalAuth, protectWrites, readToken, setCookie, clearCookie, cookieName };
 }
 
 module.exports = { createIdentityMiddleware, errorResponse };

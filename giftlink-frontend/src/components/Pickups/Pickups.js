@@ -47,7 +47,7 @@ export function RequestPickup() {
   };
   return <main className="plans-page pickup-page"><JourneyNav journey="find" discoverySearch={discoverySearch} /><Link to={`/app/items/${itemId}`} state={{ discoverySearch }}>Back to listing</Link><h1>Request pickup</h1><LoadState data={data} />
     {item && <><h2>{item.name}</h2><p>{item.neighborhood}, {item.city}</p>
-      {item.isReserved === true ? <div role="status"><p>This item has an accepted pickup. Check back if it becomes available.</p>
+      {item.isOwner === true ? <p role="status">Your listing. You cannot request your own item. Manage it from My plans.</p> : item.isReserved === true ? <div role="status"><p>This item has an accepted pickup. Check back if it becomes available.</p>
         <button className="btn btn-outline-secondary" onClick={data.retry}>Check availability</button></div> : !item.pickupTimeZone ? <p role="alert">The giver must set a pickup timezone before requests can be submitted.</p> : <form ref={validation.formRef} noValidate className="plan-form" onSubmit={submit} aria-busy={busy}>
         <p>A request does not reserve the item. Wait for the giver to accept. Each listing is one pickup unit, including groups of items.</p>
         {typeof item.isReserved !== 'boolean' && <p>Current pickup availability will be checked when you send a request.</p>}
