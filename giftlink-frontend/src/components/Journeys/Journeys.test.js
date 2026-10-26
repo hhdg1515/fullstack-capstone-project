@@ -42,6 +42,8 @@ beforeEach(() => {
     if (path === '/api/move-out-plans') return reply({ plans: [plan] });
     if (path.startsWith('/api/move-out-plans/')) return reply({ plan });
     if (path.endsWith('/sent') || path.endsWith('/received')) return reply({ requests: [{ ...pickup, role: path.endsWith('/received') ? 'giver' : 'receiver', ...(path.endsWith('/received') ? { plan: { id: plan.id, title: plan.title } } : {}) }], nextCursor: null });
+    if (path.endsWith('/conversation')) return reply({ conversation: { id: pickup.id, requestId: pickup.id, role: detailRole, status: pickup.status, counterpart: pickup.counterpart } });
+    if (path.endsWith('/conversation/messages')) return reply({ messages: [], nextCursor: null });
     if (path.startsWith('/api/pickup-requests/')) return reply({ request: { ...pickup, role: detailRole, ...(detailRole === 'giver' ? { plan: { id: plan.id, title: plan.title } } : {}) } });
     if (path === '/api/gifts') return reply([{ id: 'legacy-one', name: 'Original chair', description: 'Demo', date_added: 1700000000, condition: 'New' }]);
     if (path.startsWith('/api/gifts/')) return reply({ id: 'legacy-one', name: 'Original chair', description: 'Demo' });
@@ -142,6 +144,7 @@ test('public details and browser Back/Forward preserve shared discovery filters'
 test.each([['giver', 'Give Away', 'Incoming requests'], ['receiver', 'Find Free Items', 'My pickup requests']])('direct private request links use the server-reported %s context', async (role, label, link) => {
   sessionUser = user; detailRole = role; mount('/app/pickups/' + pickup.id);
   await screen.findByRole('heading', { name: item.name });
+  await screen.findByText('Conversation loaded.');
   expect(context(label).getByRole('link', { name: link })).toHaveAttribute('aria-current', 'location');
   expect(screen.getByRole('link', { name: 'Back to requests' })).toHaveAttribute('href', role === 'giver' ? '/app/pickups/incoming' : '/app/pickups');
 });

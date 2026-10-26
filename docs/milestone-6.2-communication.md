@@ -93,8 +93,8 @@ message-write limiter bound requests per warm process; they are not a distribute
 Vercel quota. Stored messages are application-readable plaintext, not end-to-end
 encrypted; no automated contact-detail redaction or moderation is included.
 Repeated POSTs can create repeated messages: automatic retries,
-idempotency keys and realtime delivery are not included. No chat UI, attachments,
-notifications, scheduling changes or external infrastructure are introduced.
+idempotency keys and realtime delivery are not included. Phase 1 introduced no chat UI, attachments, notifications, scheduling changes or
+external infrastructure. The frontend panel added in Phase 2 is described below.
 
 ## Index preparation and rollout boundary
 
@@ -129,3 +129,50 @@ separately reviewed extension of synthetic-message cleanup; existing hosted E2E
 creates no messages and its scope/cleanup safeguards are unchanged. No Phase 1
 hosted messaging, Safari/real mobile keyboard or screen-reader verification is
 claimed, and existing production launch-readiness gates remain separate.
+
+## Phase 2 — Embedded pickup conversation UI
+
+The participant-only pickup detail now contains a compact conversation panel.
+No global inbox, new route or backend communication contract is introduced.
+The context endpoint supplies the counterpart's first name and the current user's
+sender role. Message attribution compares that role, never display names. Plain
+React text nodes render content with preserved line breaks and wrapping; neither
+HTML nor Markdown is interpreted. Message timestamps use the device timezone for
+display only and do not configure pickup timezones.
+
+The panel initially loads the latest 20 messages and offers manual Refresh and
+Load earlier messages. Bounded cursor ranges preserve already loaded history,
+deduplicate IDs and explicitly show a gap if a refresh skips more than a page of
+new messages. Loading older pages fills that gap and resumes the older cursor.
+It never automatically drains an entire history. A visible message anchor keeps
+reading position when pages are inserted; refresh/send only scroll the history
+to its end if the user was already there. History is not an ARIA live log: a short
+status announcement reports loading, sending and completion without rereading all
+private messages.
+
+The composer validates 1–2,000 trimmed Unicode code points and the backend's
+plain-text restrictions. A synchronous in-flight guard prevents rapid duplicate
+POSTs. No POST is automatically retried. Network/timeout/5xx uncertainty and 409
+conflicts retain the draft and require a successful manual refresh before another
+send; users must inspect recent messages before choosing to resend. There is
+still no server idempotency key. Validation/rate-limit errors are actionable and
+retain text; authentication/permission denials hide loaded private history.
+Closed requests show the backend-derived read-only state and cannot send. A draft
+already typed at closure stays copyable and can be discarded with confirmation.
+
+Request/account keys reset all chat state on a scope change. Mounted/generation
+checks discard late GET/POST results, including stale 401s, before they can affect
+a newer request/session. Current 401s use the existing unauthorized event/session
+flow. Parent request reloads retain the current chat draft/history while lifecycle
+controls wait for revalidation; definitive parent 403/404 responses remove it.
+All drafts/history stay in component memory. Existing unsaved-form protection
+warns before leaving; accepted discard, logout, session invalidation, reload or
+browser termination can lose drafts. Nothing is persisted to browser storage.
+
+[Local desktop/narrow-mobile evidence](assets/milestone-6.2/README.md) uses only
+synthetic data. New UI/browser tests stay local and do not enlarge hosted E2E
+account budgets or change remote cleanup. Normal CI discovers them automatically;
+no workflow/provider/Atlas setting changes are required. The Phase 1 remote index
+has **not** been prepared here: any future hosted deployment still needs separate
+approval and guarded index preparation. No realtime updates, notifications, read
+receipts, typing indicators, attachments or scheduling changes are included.

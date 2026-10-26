@@ -550,10 +550,10 @@ Database setup has its own [manual staging preparation workflow](docs/deployment
 
 For Milestone 5.7, follow [hosted staging integration](docs/hosted-staging-integration.md): a stable Preview alias on the existing frontend project, host-conditional proxy, dedicated staging API origin update, approved-fingerprint HTTPS preflight, bounded desktop/mobile E2E and owned cleanup. The optional deployment workflow defaults to **plan**; its management token stays in GitHub. The existing frontend Production hostname is forbidden as a staging/E2E target. API readiness and successful index preparation do not establish hosted frontend or live E2E success.
 
-## Private pickup communication foundation (Milestone 6.2 Phase 1)
+## Private pickup communication (Milestone 6.2)
 
 The backend associates one private context with each existing pickup request;
-there is no chat UI yet. Authenticated participants can retrieve
+the pickup request detail includes a private conversation panel. Authenticated participants can retrieve
 `GET /api/pickup-requests/:requestId/conversation`, read paginated
 `GET .../conversation/messages?limit=20&before=<cursor>`, and send
 `POST .../conversation/messages` with `{ "text": "..." }` using the existing
@@ -575,4 +575,6 @@ Prepare it on a separately approved target before any future deployment of this
 revision; startup checks indexes and will fail readiness until it exists.
 No remote index creation, migration, seeding or deployment is part of this change.
 The existing recursive backend CI tests and `npm run test:integration` cover the
-new endpoints on isolated local replica sets. This does not verify hosted messaging.
+new endpoints on isolated local replica sets. This does not verify hosted messaging. The panel uses manual refresh and bounded
+history pages, keeps drafts only in memory, and offers read-only history after
+closure. See the [Phase 2 behavior and local evidence](docs/milestone-6.2-communication.md#phase-2--embedded-pickup-conversation-ui).

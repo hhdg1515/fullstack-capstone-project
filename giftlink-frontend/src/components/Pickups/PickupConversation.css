@@ -1,0 +1,14 @@
+.pickup-conversation { border-top: 1px solid #707980; margin-top: 1.5rem; padding-top: 1rem; min-width: 0; }
+.pickup-conversation h3 { margin: 0; }
+.chat-history { max-height: 24rem; overflow-y: auto; overscroll-behavior: contain; overflow-anchor: none; margin: 1rem 0 .5rem; padding: .5rem; border: 1px solid #707980; border-radius: .25rem; }
+.chat-history ol { list-style: none; padding: 0; margin: 0; }
+.chat-message { width: fit-content; max-width: 90%; padding: .75rem; margin: .5rem 0; border: 1px solid #d6dce1; border-radius: .25rem; background: #f4f4f4; }
+.chat-message.chat-mine { margin-left: auto; background: #e8f1fa; border-color: #7b95ad; }
+.chat-message-heading { font-size: .875rem; margin: 0 0 .4rem; }
+.chat-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.chat-feedback { min-height: 1.5rem; margin: .5rem 0; }
+.chat-composer { max-width: none; }
+.chat-composer textarea { resize: vertical; min-height: 6rem; }
+.chat-gap { padding: .75rem; border-block: 1px dashed #707980; margin: .5rem 0; }
+.pickup-conversation :focus-visible { outline: 3px solid #0056b3; outline-offset: 3px; }
+@media (max-width: 420px) { .chat-message { max-width: 100%; } .pickup-conversation .plan-page-header { align-items: flex-start; } }
