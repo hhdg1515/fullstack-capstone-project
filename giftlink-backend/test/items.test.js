@@ -47,6 +47,28 @@ describe('transactional plan inventory on verified isolated MongoDB', function (
         assert.equal((await list().expect(200)).body.plan.pickupTimeZone, 'America/Los_Angeles');
         await list(plan, other).expect(404);
     });
+    it('stores validated optional classification separately from legacy category, title and description', async function () {
+        const first = (await create({ category: 'Legacy Furniture', categoryId: 'living-room', itemTypeId: 'sofa', condition: 'good', publish: true }).expect(201)).body.item;
+        assert.deepEqual(first.classification, { category: { id: 'living-room', label: 'Living Room' }, itemType: { id: 'sofa', label: 'Sofa' }, condition: { id: 'good', label: 'Good' } });
+        assert.equal((await publicGet(first).expect(200)).body.item.classification.itemType.id, 'sofa');
+        const before = await db.collection('items').findOne({ _id: new ObjectId(first.id) });
+        await edit(first, { categoryId: 'office-lighting' }).expect(400);
+        assert.deepEqual(await db.collection('items').findOne({ _id: before._id }), before);
+        const changed = (await edit(first, { categoryId: 'office-lighting', itemTypeId: 'desk', condition: 'fair' }).expect(200)).body.item;
+        assert.equal(changed.classification.itemType.label, 'Desk'); assert.equal(changed.category, 'Legacy Furniture');
+        assert.equal(changed.name, first.name); assert.equal(changed.description, first.description);
+        await edit(changed, { itemTypeId: 'sofa' }).expect(400);
+        await edit(changed, { condition: 'like-new' }, plan, other).expect(404);
+        for (const input of [{ categoryId: 'private-unknown' }, { itemTypeId: 'desk' }, { categoryId: 'bedroom', itemTypeId: 'desk' }, { condition: { $gt: '' } }]) {
+            const rejected = await create(input).expect(400); assert.ok(!JSON.stringify(rejected.body).includes('private-unknown'));
+        }
+        const legacy = (await create({ category: 'Existing craft category' }).expect(201)).body.item;
+        await edit(legacy, { name: 'Renamed legacy item' }).expect(200);
+        const preserved = await db.collection('items').findOne({ _id: new ObjectId(legacy.id) });
+        assert.equal(preserved.category, 'Existing craft category'); assert.equal(preserved.categoryId, undefined);
+        const catalog = await request(app).get('/api/item-taxonomy').expect(200);
+        assert.equal(catalog.body.categories.length, 6);
+    });
     it('adds multiple free-text/grouped items as private drafts without copying plan information', async function () {
         for (const name of ['Box of kitchen supplies', 'Three identical chairs', 'Miscellaneous craft supplies']) await create({ name }).expect(201);
         const response = await list().expect(200);

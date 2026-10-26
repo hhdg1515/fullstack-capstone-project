@@ -2,3 +2,8 @@ export const regions = { version: 'test', states: [{ id: '06', code: 'CA', label
   metros: [{ id: '41860', label: 'San Francisco-Oakland-Berkeley, CA', stateIds: ['06'], suggestedTimeZone: 'America/Los_Angeles' },
     { id: '31080', label: 'Los Angeles-Long Beach-Anaheim, CA', stateIds: ['06'], suggestedTimeZone: 'America/Los_Angeles' },
     { id: '38900', label: 'Portland-Vancouver-Hillsboro, OR-WA', stateIds: ['41', '53'], suggestedTimeZone: null }] };
+export const taxonomy = { categories: [
+  { id: 'living-room', label: 'Living Room', itemTypes: [{ id: 'sofa', label: 'Sofa' }, { id: 'coffee-table', label: 'Coffee Table' }] },
+  { id: 'office-lighting', label: 'Office & Lighting', itemTypes: [{ id: 'desk', label: 'Desk' }] },
+  { id: 'other-household', label: 'Other Household', itemTypes: [{ id: 'other', label: 'Other' }] }],
+  conditions: [{ id: 'good', label: 'Good' }, { id: 'fair', label: 'Fair' }] };

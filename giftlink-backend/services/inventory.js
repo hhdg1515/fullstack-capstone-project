@@ -3,6 +3,7 @@ const { todayUTC } = require('./calendar');
 const { InventoryError } = require('./inventory-error');
 const { invalidateRequests, pickupReservationStages } = require('./pickup-policy');
 const { regionResponse } = require('./regions');
+const { classificationResponse, classificationChanges } = require('./item-taxonomy');
 const notFound = () => new InventoryError(404, 'ITEM_NOT_FOUND', 'Item or plan not found');
 const endDate = (item, plan) => item.availableUntil || plan.moveOutDeadline;
 const effectiveStatus = (item, plan) => item.status === 'available' && endDate(item, plan) < todayUTC() ? 'expired' : item.status;
@@ -39,7 +40,7 @@ async function planTransaction(db, ownerId, planId, operation) {
     } finally { await session.endSession(); }
 }
 function itemResponse(item, plan, privateResponse = true, isReserved = null) {
-    const result = { id: item._id.toString(), name: item.name, description: item.description, category: item.category,
+    const result = { id: item._id.toString(), name: item.name, description: item.description, category: item.category, classification: classificationResponse(item),
         status: effectiveStatus(item, plan), availableFrom: item.availableFrom, availableUntil: item.availableUntil,
         effectiveAvailableUntil: endDate(item, plan), city: plan.city, neighborhood: plan.neighborhood,
         moveOutDeadline: plan.moveOutDeadline, publishedAt: item.publishedAt ? item.publishedAt.toISOString() : null };
@@ -74,6 +75,7 @@ function createInventoryService({ connectToDatabase }) {
                 description: input.description || '', category: input.category || '', availableFrom: input.availableFrom || null,
                 availableUntil: input.availableUntil || null, status: input.publish ? 'available' : 'draft',
                 version: 1, createdAt: now, updatedAt: now, publishedAt: input.publish ? now : null };
+            Object.assign(item, classificationChanges({}, input));
             validateDates(item, plan, input.publish);
             if (input.publish) {
                 if (plan.status !== 'active') throw new InventoryError(409, 'PLAN_INACTIVE', 'Activate this plan before publishing items.');
@@ -105,6 +107,7 @@ function createInventoryService({ connectToDatabase }) {
                 for (const field of ['name', 'description', 'category', 'availableFrom', 'availableUntil']) {
                     if (Object.prototype.hasOwnProperty.call(input, field)) item[field] = input[field];
                 }
+                Object.assign(item, classificationChanges(existing, input));
                 validateDates(item, plan);
                 if (effectiveStatus(existing, plan) === 'expired' || (item.status === 'available' && endDate(item, plan) < todayUTC())) item.status = 'expired';
                 if (item.status === 'available') listingPolicy(item);

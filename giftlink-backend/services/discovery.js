@@ -3,6 +3,7 @@ const { ObjectId } = require('mongodb');
 const { InventoryError } = require('./inventory');
 const { todayUTC, isCalendarDate } = require('./calendar');
 const { pickupReservationStages } = require('./pickup-policy');
+const { classificationResponse } = require('./item-taxonomy');
 
 const normalizeLabel = value => value.trim().replace(/\s+/g, ' ');
 const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -57,10 +58,10 @@ function readCursor(token, query, now) {
     if (now.getTime() - value.at > cursorLifetime || todayUTC(new Date(value.at)) !== todayUTC(now)) throw staleCursor();
     return value;
 }
-const projection = { name: 1, description: 1, category: 1, status: 1, availableFrom: 1, availableUntil: 1,
+const projection = { name: 1, description: 1, category: 1, categoryId: 1, itemTypeId: 1, condition: 1, status: 1, availableFrom: 1, availableUntil: 1,
     publishedAt: 1, effectiveAvailableUntil: 1, isReserved: 1, 'plan.city': 1, 'plan.neighborhood': 1, 'plan.moveOutDeadline': 1, 'plan.pickupTimeZone': 1 };
 function publicItem(row, today) {
-    return { id: row._id.toString(), name: row.name, description: row.description, category: row.category,
+    return { id: row._id.toString(), name: row.name, description: row.description, category: row.category, classification: classificationResponse(row),
         status: 'available', isReserved: row.isReserved, availability: row.availableFrom && row.availableFrom > today ? 'later' : 'now',
         availableFrom: row.availableFrom || null, availableUntil: row.availableUntil || null,
         effectiveAvailableUntil: row.effectiveAvailableUntil, city: normalizeLabel(row.plan.city),

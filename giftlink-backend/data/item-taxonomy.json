@@ -1,0 +1,46 @@
+{
+  "version": "household-v1",
+  "categories": [
+    {"id": "living-room", "label": "Living Room", "itemTypes": [
+      {"id": "sofa", "label": "Sofa", "searchTerms": ["sofa", "couch"]},
+      {"id": "loveseat", "label": "Loveseat", "searchTerms": ["loveseat"]},
+      {"id": "coffee-table", "label": "Coffee Table", "searchTerms": ["coffee table"]},
+      {"id": "tv-stand", "label": "TV Stand", "searchTerms": ["tv stand"]},
+      {"id": "bookshelf", "label": "Bookshelf", "searchTerms": ["bookshelf", "bookcase"]}
+    ]},
+    {"id": "bedroom", "label": "Bedroom", "itemTypes": [
+      {"id": "bed-frame", "label": "Bed Frame", "searchTerms": ["bed frame"]},
+      {"id": "mattress", "label": "Mattress", "searchTerms": ["mattress"]},
+      {"id": "dresser", "label": "Dresser", "searchTerms": ["dresser"]},
+      {"id": "nightstand", "label": "Nightstand", "searchTerms": ["nightstand", "bedside table"]}
+    ]},
+    {"id": "dining-kitchen", "label": "Dining & Kitchen", "itemTypes": [
+      {"id": "dining-table", "label": "Dining Table", "searchTerms": ["dining table"]},
+      {"id": "dining-chair", "label": "Dining Chair", "searchTerms": ["dining chair"]},
+      {"id": "bar-stool", "label": "Bar Stool", "searchTerms": ["bar stool"]},
+      {"id": "kitchenware", "label": "Kitchenware", "searchTerms": ["kitchenware", "cookware"]},
+      {"id": "small-appliance", "label": "Small Appliance", "searchTerms": ["small appliance"]}
+    ]},
+    {"id": "office-lighting", "label": "Office & Lighting", "itemTypes": [
+      {"id": "desk", "label": "Desk", "searchTerms": ["desk"]},
+      {"id": "office-chair", "label": "Office Chair", "searchTerms": ["office chair"]},
+      {"id": "desk-lamp", "label": "Desk Lamp", "searchTerms": ["desk lamp"]},
+      {"id": "floor-lamp", "label": "Floor Lamp", "searchTerms": ["floor lamp"]}
+    ]},
+    {"id": "storage-organization", "label": "Storage & Organization", "itemTypes": [
+      {"id": "cabinet", "label": "Cabinet", "searchTerms": ["cabinet"]},
+      {"id": "shelving", "label": "Shelving", "searchTerms": ["shelving"]},
+      {"id": "clothes-rack", "label": "Clothes Rack", "searchTerms": ["clothes rack", "clothing rack"]},
+      {"id": "hangers", "label": "Hangers", "searchTerms": ["hangers"]},
+      {"id": "storage-container", "label": "Storage Container", "searchTerms": ["storage container"]}
+    ]},
+    {"id": "other-household", "label": "Other Household", "itemTypes": [
+      {"id": "plant", "label": "Plant", "searchTerms": ["plant"]},
+      {"id": "home-decor", "label": "Home Decor", "searchTerms": ["home decor"]},
+      {"id": "books", "label": "Books", "searchTerms": ["books"]},
+      {"id": "childrens-items", "label": "Children's Items", "searchTerms": ["children's items"]},
+      {"id": "other", "label": "Other", "searchTerms": ["other"]}
+    ]}
+  ],
+  "conditions": [{"id": "like-new", "label": "Like New"}, {"id": "good", "label": "Good"}, {"id": "fair", "label": "Fair"}, {"id": "for-repair", "label": "For Parts / Repair"}]
+}

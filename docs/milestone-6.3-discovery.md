@@ -83,3 +83,23 @@ multi-timezone states. Existing explicit zones, including UTC, are preserved.
 Suggestions do not change server publication, IANA/DST or pickup validation rules.
 Review the timezone after changing region. Saving without a metro is supported,
 with a clear warning that the plan will not appear in regional discovery.
+
+## Structured classification
+
+`GET /api/item-taxonomy` supplies six household category groups, their controlled
+item types and four optional conditions. IDs are stable slugs; display labels and
+a small explicit search-term list live in backend `data/item-taxonomy.json`.
+Category and type are optional (Uncategorized / Not specified); Other Household
+→ Other is the explicit fallback. Condition is independently optional: Like New,
+Good, Fair, or For Parts / Repair. Only the item name remains required.
+
+Native items may store `categoryId`, `itemTypeId` and `condition`. The old
+`category` string is retained unchanged, including unmapped legacy values. The
+new form never sends an edit to that string and displays it on legacy records.
+Older API clients may still use the original bounded category field; this adds
+no new free-form tags. The server checks the full resulting category/type tuple
+inside the existing item transaction on partial edits; changing category must
+clear or replace an incompatible type. Public/private item DTOs add a
+`classification` with ID/label pairs, never private account or pickup details.
+Titles/descriptions, save-draft/publish, item versions and all date rules remain
+separate and unchanged. No collection, migration, dependency or index is added.

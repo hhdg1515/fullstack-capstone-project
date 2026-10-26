@@ -33,6 +33,7 @@ function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', sec
     app.use('/api', auth.protectWrites);
     app.use(express.json({ limit: '32kb' }));
     app.get('/api/regions', (req, res) => res.json(require('./services/regions').directory));
+    app.get('/api/item-taxonomy', (req, res) => res.json(require('./services/item-taxonomy').taxonomy));
     app.use('/api/gifts', createGiftRoutes({ connectToDatabase, logger, auth }));
     app.use('/api/search', createSearchRoutes({ connectToDatabase }));
     app.use('/api/auth', createAuthRoutes({ identity, auth, authLimit }));

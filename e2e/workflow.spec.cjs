@@ -100,7 +100,7 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     const itemIds = [];
     for (const [label, days] of [['desk', 3], ['chair', 5], ['lamp', 4]]) {
       await a.getByLabel('Item name', { exact: true }).fill(prefix + ' ' + label);
-      await a.getByText('Optional description, category and pickup dates', { exact: true }).click();
+      await a.getByText('Optional description, condition and pickup dates', { exact: true }).click();
       await a.getByLabel('Available until (optional)', { exact: true }).fill(day(deployment.now() + days * 86400000));
       await a.getByRole('button', { name: 'Publish & add another', exact: true }).click();
       const card = a.getByRole('heading', { name: prefix + ' ' + label, exact: true }).locator('..'); await card.getByRole('link', { name: 'Public listing', exact: true }).waitFor();

@@ -40,3 +40,8 @@ test('a failed catalog is recoverable and never invents empty coverage', async (
   fireEvent.click(screen.getByRole('button', { name: 'Retry region options' })); await ready();
   expect(screen.getByLabelText('State')).toBeEnabled();
 });
+test('malformed catalog entries produce a recoverable service error instead of a selector crash', async () => {
+  fetch.mockResolvedValueOnce(response({ states: [{}], metros: [{}] }));
+  mount(); expect(await screen.findByRole('alert')).toHaveTextContent('Region options are unavailable');
+  fireEvent.click(screen.getByRole('button', { name: 'Retry region options' })); await ready();
+});

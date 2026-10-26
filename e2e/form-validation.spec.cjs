@@ -24,9 +24,9 @@ test('field errors are linked, focusable and recoverable in real forms', async (
     await page.getByRole('button', { name: 'Save draft & add another', exact: true }).click();
     await expect(page.getByLabel('Item name', { exact: true })).toBeFocused();
     await page.getByLabel('Item name', { exact: true }).fill('Desk');
-    await page.getByText('Optional description, category and pickup dates', { exact: true }).click();
+    await page.getByText('Optional description, condition and pickup dates', { exact: true }).click();
     await page.getByLabel('Available until (optional)', { exact: true }).fill('2099-01-01');
-    await page.getByText('Optional description, category and pickup dates', { exact: true }).click();
+    await page.getByText('Optional description, condition and pickup dates', { exact: true }).click();
     await page.getByRole('button', { name: 'Save draft & add another', exact: true }).click();
     await expect(page.getByLabel('Available until (optional)', { exact: true })).toBeFocused();
     await expect(page.getByLabel('Available until (optional)', { exact: true })).toHaveAccessibleDescription('Choose an end date on or before the plan deadline.');
