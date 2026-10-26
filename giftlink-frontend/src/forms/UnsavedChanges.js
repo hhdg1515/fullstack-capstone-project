@@ -63,6 +63,12 @@ export function useUnsavedForm(values, initial) {
   return {
     dirty,
     markSaved: () => protection?.update(id.current, false),
-    confirmDiscard: () => protection?.confirmDiscard() ?? true,
+    confirmDiscard: () => {
+      if (!protection) return true;
+      if (dirty && !window.confirm(warning)) return false;
+      // Discarding one form must not release another form's draft guard.
+      protection.update(id.current, false);
+      return true;
+    },
   };
 }

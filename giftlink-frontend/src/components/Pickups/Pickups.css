@@ -2,4 +2,7 @@
 .pickup-note { white-space: pre-wrap; }
 .pickup-page input, .pickup-page textarea, .pickup-page select { max-width: 100%; }
 .pickup-page h3 { margin-top: 1.25rem; font-size: 1.15rem; }
+.pickup-scheduling { border-top: 1px solid #707980; margin-top: 1rem; padding-top: .25rem; }
 @media (max-width: 600px) { .pickup-page .plan-actions { flex-direction: column; align-items: stretch; } }
+.pickup-scheduling .plan-form { max-width: none; }
+.pickup-scheduling input { min-width: 0; }

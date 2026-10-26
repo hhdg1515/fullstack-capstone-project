@@ -8,12 +8,13 @@ import JourneyNav from '../Journeys/JourneyNav';
 import { useUnsavedForm } from '../../forms/UnsavedChanges';
 import useFormErrors from '../../forms/useFormErrors';
 import PickupConversation from './PickupConversation';
+import PickupScheduling, { PickupTime, SchedulingEvent } from './PickupScheduling';
 
 export const pickupLabels = { pending: 'Awaiting giver decision', accepted: 'Accepted appointment', declined: 'Declined', cancelled: 'Cancelled', completed: 'Handed over', no_show: 'Receiver did not arrive' };
 const actionLabels = { accept: 'Accept pickup', decline: 'Decline request', cancel: 'Cancel request', complete: 'Confirm handoff', no_show: 'Record no-show' };
 function Appointment({ request }) {
   const display = new Intl.DateTimeFormat('en', { dateStyle: 'full', timeStyle: 'short', timeZone: request.timeZone }).format(new Date(request.proposedAt));
-  return <p><b>{request.status === 'pending' ? 'Proposed pickup' : 'Pickup time'}:</b><br /><time dateTime={request.proposedAt}>{display}</time><br /><strong>{request.timeZone}</strong></p>;
+  return <p><b>{request.status === 'pending' ? 'Proposed pickup' : request.status === 'accepted' ? 'Confirmed pickup' : 'Pickup time'}:</b><br /><time dateTime={request.proposedAt}>{display}</time><br /><strong>{request.timeZone}</strong></p>;
 }
 function LoadState({ data }) {
   if (data.loading) return <p role="status">Loading pickup requests…</p>;
@@ -129,8 +130,12 @@ export function PickupDetail() {
       <details className="pickup-request-details"><summary>Request reference</summary><code>{request.id}</code></details>
       <div className="plan-actions">{actions.map(name => <button key={name} className="btn btn-outline-primary" disabled={busy || data.loading || (['complete', 'no_show'].includes(name) && Date.parse(request.proposedAt) > Date.now())} onClick={() => action(name)}>{actionLabels[name]}</button>)}</div>
       {request.role === 'giver' && request.status === 'accepted' && <p>Record completion or no-show after the appointment time. Reload the request to update these controls.</p>}
+      <PickupScheduling request={request} onRefresh={data.retry} disabled={busy || data.loading || Boolean(data.error)} />
       <PickupConversation requestId={request.id} requestStatus={request.status} />
-      <h3>Request history</h3><ul>{request.history.map((entry, index) => <li key={index}>{pickupLabels[entry.action]} — {entry.actor}, <time dateTime={entry.at}>{new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short', timeZone: request.timeZone }).format(new Date(entry.at))}</time> ({request.timeZone})</li>)}</ul>
+      <h3>Request history</h3><ul>{request.history.map((entry, index) => <li key={index}>
+        {entry.action.startsWith('reschedule_') ? <SchedulingEvent entry={entry} /> : pickupLabels[entry.action] || 'Request updated'}
+        {' — '}{entry.actor}, <PickupTime compact value={{ proposedAt: entry.at, timeZone: request.timeZone }} />
+      </li>)}</ul>
     </article>}
   </main>;
 }
