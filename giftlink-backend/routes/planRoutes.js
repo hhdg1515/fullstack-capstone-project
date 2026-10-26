@@ -16,7 +16,7 @@ function rules(editing) {
         .isLength({ max: 120 }).withMessage('Use at most 120 characters').bail()
         .not().matches(/[\u0000-\u001f\u007f]/).withMessage('Use a single line of text');
     const zone = body('pickupTimeZone').optional({ nullable: true }).custom(validTimeZone).withMessage('Choose an IANA timezone such as America/Los_Angeles, or leave unset');
-    return validate(['title', 'moveOutDeadline', 'city', 'neighborhood', 'pickupTimeZone'].concat(editing ? ['status', 'confirmCancelRequests'] : []),
+    return validate(['title', 'moveOutDeadline', 'city', 'neighborhood', 'pickupTimeZone', 'stateId', 'metroId'].concat(editing ? ['status', 'confirmCancelRequests'] : []),
         required.concat([title, zone], editing ? [body('confirmCancelRequests').optional().custom(value => typeof value === 'boolean'), body('status').optional().isString().bail().isIn(['active', 'completed', 'cancelled'])
             .withMessage('Choose active, completed, or cancelled')] : []), editing);
 }

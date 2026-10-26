@@ -2,12 +2,13 @@ const { ObjectId } = require('mongodb');
 const { todayUTC, isCalendarDate } = require('./calendar');
 const { planTransaction, dateConflicts, effectiveStatus, InventoryError } = require('./inventory');
 const { invalidateRequests, confirmationRequired } = require('./pickup-policy');
+const { regionChanges, regionResponse } = require('./regions');
 
-const planProjection = { title: 1, moveOutDeadline: 1, city: 1, neighborhood: 1, pickupTimeZone: 1, status: 1, createdAt: 1, updatedAt: 1 };
+const planProjection = { title: 1, moveOutDeadline: 1, city: 1, neighborhood: 1, stateId: 1, metroId: 1, pickupTimeZone: 1, status: 1, createdAt: 1, updatedAt: 1 };
 function privatePlan(plan) {
-    return { id: plan._id.toString(), title: plan.title, moveOutDeadline: plan.moveOutDeadline,
-        city: plan.city, neighborhood: plan.neighborhood, pickupTimeZone: plan.pickupTimeZone || null, status: plan.status,
-        createdAt: plan.createdAt.toISOString(), updatedAt: plan.updatedAt.toISOString() };
+    return Object.assign({ id: plan._id.toString(), title: plan.title, moveOutDeadline: plan.moveOutDeadline,
+        city: plan.city, neighborhood: plan.neighborhood, stateId: plan.stateId || null, metroId: plan.metroId || null, pickupTimeZone: plan.pickupTimeZone || null, status: plan.status,
+        createdAt: plan.createdAt.toISOString(), updatedAt: plan.updatedAt.toISOString() }, regionResponse(plan));
 }
 
 function createPlanService({ connectToDatabase }) {
@@ -17,6 +18,7 @@ function createPlanService({ connectToDatabase }) {
         const now = new Date();
         const plan = { ownerId, title: data.title || '', moveOutDeadline: data.moveOutDeadline,
             city: data.city, neighborhood: data.neighborhood, pickupTimeZone: data.pickupTimeZone || null, status: 'active', createdAt: now, updatedAt: now };
+        Object.assign(plan, regionChanges({}, data));
         const result = await db.collection('moveOutPlans').insertOne(plan);
         plan._id = result.insertedId;
         return privatePlan(plan);
@@ -38,7 +40,8 @@ function createPlanService({ connectToDatabase }) {
         const confirmed = changes.confirmCancelRequests;
         changes = Object.assign({}, changes); delete changes.confirmCancelRequests;
         return planTransaction(db, ownerId, id, async (previous, session) => {
-            const next = Object.assign({}, previous, changes);
+            const acceptedChanges = Object.assign({}, changes, regionChanges(previous, changes));
+            const next = Object.assign({}, previous, acceptedChanges);
             if (next.moveOutDeadline !== previous.moveOutDeadline && next.moveOutDeadline < todayUTC()) {
                 throw new InventoryError(400, 'VALIDATION_FAILED', 'Choose today or a later deadline (UTC).');
             }
@@ -49,7 +52,8 @@ function createPlanService({ connectToDatabase }) {
                     availableFrom: item.availableFrom, availableUntil: item.availableUntil }))
             });
             const reason = next.status !== 'active' ? 'plan_inactive' : next.pickupTimeZone !== previous.pickupTimeZone ? 'timezone_changed' :
-                (next.city !== previous.city || next.neighborhood !== previous.neighborhood) ? 'location_changed' : null;
+                (next.city !== previous.city || next.neighborhood !== previous.neighborhood ||
+                    (next.stateId || null) !== (previous.stateId || null) || (next.metroId || null) !== (previous.metroId || null)) ? 'location_changed' : null;
             let pickupConflicts = 0;
             for (const item of items) {
                 if (confirmed === true) await invalidateRequests(db, session, item, next, ownerId, true, reason);
@@ -64,7 +68,7 @@ function createPlanService({ connectToDatabase }) {
             if (expiredIds.length) await db.collection('items').updateMany({ _id: { $in: expiredIds }, ownerId, planId: previous._id },
                 { $set: { status: 'expired', updatedAt: new Date() }, $inc: { version: 1 } }, { session });
             const plan = await db.collection('moveOutPlans').findOneAndUpdate(owned(id, ownerId), {
-                $set: Object.assign({}, changes, { updatedAt: new Date() })
+                $set: Object.assign({}, acceptedChanges, { updatedAt: new Date() })
             }, { session, returnDocument: 'after', projection: planProjection });
             return privatePlan(plan);
         });

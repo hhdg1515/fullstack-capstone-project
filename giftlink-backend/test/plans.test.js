@@ -44,7 +44,7 @@ describe('move-out plans on verified isolated MongoDB', function () {
     it('creates an empty private plan with a server-derived owner, status and timestamps', async function () {
         const result = await create().expect(201);
         const plan = result.body.plan;
-        assert.deepEqual(Object.keys(plan).sort(), ['id', 'title', 'moveOutDeadline', 'city', 'neighborhood', 'pickupTimeZone', 'status', 'createdAt', 'updatedAt'].sort());
+        assert.deepEqual(Object.keys(plan).sort(), ['id', 'title', 'moveOutDeadline', 'city', 'neighborhood', 'stateId', 'metroId', 'stateLabel', 'metroLabel', 'pickupTimeZone', 'status', 'createdAt', 'updatedAt'].sort());
         assert.equal(plan.title, ''); assert.equal(plan.status, 'active');
         assert.equal(plan.createdAt, plan.updatedAt);
         assert.ok(!Number.isNaN(Date.parse(plan.createdAt)));
@@ -62,6 +62,27 @@ describe('move-out plans on verified isolated MongoDB', function () {
         assert.equal(result.body.plan.title, 'Moving home');
         assert.equal(result.body.plan.city, 'Montréal');
         assert.equal(result.body.plan.neighborhood, 'Côte-des-Neiges');
+    });
+    it('validates region tuples, keeps legacy locations unassigned, and permits uncovered states without guessing', async function () {
+        const legacy = (await create().expect(201)).body.plan;
+        assert.equal(legacy.stateId, null); assert.equal(legacy.metroId, null);
+        const stored = await db.collection('moveOutPlans').findOne({ _id: new ObjectId(legacy.id) });
+        assert.equal(stored.stateId, undefined); assert.equal(stored.metroId, undefined);
+        await patch(legacy.id, { title: 'Only title' }).expect(200);
+        assert.equal((await db.collection('moveOutPlans').findOne({ _id: stored._id })).metroId, undefined);
+        const assigned = (await patch(legacy.id, { stateId: '06', metroId: '41860' }).expect(200)).body.plan;
+        assert.equal(assigned.city, sample.city); assert.equal(assigned.neighborhood, sample.neighborhood); assert.equal(assigned.pickupTimeZone, null);
+        assert.equal((await get('/' + legacy.id).expect(200)).body.plan.metroId, '41860');
+        await patch(legacy.id, { stateId: '53' }).expect(400);
+        await patch(legacy.id, { stateId: '06', metroId: '31080' }, other).expect(404);
+        for (const values of [{ stateId: 'California' }, { stateId: '06', metroId: '47900' }, { stateId: { $ne: null } }, { metroId: ['41860'] }]) {
+            await create(Object.assign({}, sample, values)).expect(400);
+        }
+        const uncovered = (await create(Object.assign({}, sample, { stateId: '02', metroId: null })).expect(201)).body.plan;
+        assert.equal(uncovered.stateId, '02'); assert.equal(uncovered.metroId, null);
+        const crossState = (await create(Object.assign({}, sample, { stateId: '53', metroId: '38900', pickupTimeZone: 'UTC' })).expect(201)).body.plan;
+        assert.equal((await patch(crossState.id, { stateId: '41' }).expect(200)).body.plan.metroId, '38900');
+        assert.equal((await patch(crossState.id, { stateId: null, metroId: null }).expect(200)).body.plan.stateId, null);
     });
     it('supports multiple plans and lists only the current owner in deadline/id order', async function () {
         const later = (await create(Object.assign({}, sample, { title: 'Later', moveOutDeadline: day(30) }))).body.plan;
