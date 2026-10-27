@@ -73,3 +73,32 @@ geographic rerun, 279 frontend tests, strict build, backend lint, 56 policy test
 actionlint and whitespace checks passed. Baseline evidence includes 12 local
 browser/axe samples. Immutable PR heads and full CI/browser counts belong in the
 PRs; later stages add the final full-suite results here.
+
+## Discovery layout
+
+The page now uses PageHeader, Surface and existing tokens, with a stable Find free
+items heading and a compact area summary. The canonical full metro name stays in
+the selector. Category/type are visible; desktop also shows pickup/sort directly.
+At ≤600px pickup/sort join optional filters; item type appears after choosing
+a category or opening Filters. Reset/help are shown only when useful, and the
+selected-area summary avoids an extra padded surface.
+Condition and city/neighborhood remain collapsed, with keyboard Escape and safe
+focus return. Date errors reopen controls and focus the date; unsubmitted filters
+survive disclosure toggles. No modal, GPS or additional form submission is needed
+for region selection. Valid URL regions override browser preferences; invalid
+explicit URLs offer correction without silently browsing a saved/global region.
+Region changes drop city/neighborhood/cursor and retain compatible filters/sort.
+Clear filters retains region. Exact counts are separate from the page heading and
+are omitted during loading/failure rather than invented.
+
+Layout-stage verification: 283 frontend tests (final focused discovery rerun:
+46), strict build, four local discovery/accessibility browser scenarios, and
+12 final local screenshot/axe samples passed. All samples had no A/AA findings,
+overflow or server errors. Visual review prompted narrower-screen progressive
+filters rather than showing all controls at once. The six retained layout images
+show region, populated and expanded-filter states at desktop/320px; final card
+and error-state images follow in the next dependent change.
+
+CI initially caught the first card falling below the mobile viewport. The layout
+was corrected; the original viewport assertion and all workflow safeguards remain.
+This was a product reflow problem, not an excuse to scroll in the assertion.

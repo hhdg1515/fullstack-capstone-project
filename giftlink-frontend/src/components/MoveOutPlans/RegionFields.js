@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function RegionFields({ directory, values, onChange, validation, prefix = 'region', browsing = false, fieldClassName = 'plan-field' }) {
+export default function RegionFields({ directory, values, onChange, validation, prefix = 'region', browsing = false, fieldClassName = 'plan-field', showHelp = true }) {
   const states = directory.data?.states || [], metros = directory.data?.metros || [];
   const choices = metros.filter(metro => metro.stateIds.includes(values.stateId));
   const changeState = event => onChange({ stateId: event.target.value, metroId: '' });
@@ -16,7 +16,7 @@ export default function RegionFields({ directory, values, onChange, validation, 
         disabled={!values.stateId || directory.loading || Boolean(directory.error)} {...validation?.fieldProps('metroId')}>
         <option value="">{browsing ? 'Choose a listed metro' : 'Area not listed / not assigned'}</option>{choices.map(metro => <option value={metro.id} key={metro.id}>{metro.label}</option>)}
       </select>{validation?.errors.metroId && <p id="metroId-error" className="plan-field-error">{validation.errors.metroId}</p>}</div>
-    <small>Curated metro coverage uses {directory.data?.vintage?.metros || 'dated'} Census definitions. City and neighborhood labels stay separate; no address or browser location is collected.</small>
+    {showHelp && <small>Curated metro coverage uses {directory.data?.vintage?.metros || 'dated'} Census definitions. City and neighborhood labels stay separate; no address or browser location is collected.</small>}
     {values.stateId && !choices.length && directory.data && <p>No metros are listed for this state yet.</p>}
   </>;
 }

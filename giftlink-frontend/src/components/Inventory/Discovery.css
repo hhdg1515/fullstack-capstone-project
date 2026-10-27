@@ -1,0 +1,31 @@
+/* Discovery opts into the shared vocabulary without restyling plan/detail pages. */
+.discovery-feed .discovery-area { margin-bottom: var(--ui-space-4); }
+.discovery-area-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--ui-space-3); }
+.discovery-area-name { font-size: var(--ui-text-section); font-weight: 650; margin: 0; flex: 1 1 16rem; }
+.discovery-feed .discovery-help { color: var(--ui-muted); font-size: var(--ui-text-small); margin: var(--ui-space-3) 0 0; }
+.discovery-feed .discovery-region-fields, .discovery-feed .discovery-common-options, .discovery-feed .discovery-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: var(--ui-space-4); }
+.discovery-feed .discovery-region-fields > p { grid-column: 1 / -1; }
+.discovery-feed .ui-field { margin: 0; min-width: 0; }
+.discovery-feed .discovery-region-fields { margin-top: var(--ui-space-4); }
+.discovery-feed .discovery-filters { display: block; }
+.discovery-feed .discovery-search { margin-bottom: var(--ui-space-4); }
+.discovery-feed .discovery-search-heading { margin-bottom: var(--ui-space-2); }
+.discovery-feed .discovery-options { margin-top: var(--ui-space-4); padding-top: var(--ui-space-4); border-top: 1px solid var(--ui-border); }
+.discovery-feed [hidden] { display: none; }
+.discovery-feed .discovery-search-actions { display: flex; flex-wrap: wrap; gap: var(--ui-space-3); margin-top: var(--ui-space-4); margin-bottom: 0; }
+.discovery-feed .discovery-summary { margin-block: var(--ui-space-4); color: var(--ui-muted); font-size: var(--ui-text-small); }
+.discovery-feed .discovery-results-heading { margin-block: var(--ui-space-6) var(--ui-space-3); }
+@media (max-width: 420px) {
+  .discovery-feed .discovery-search-actions .ui-button { flex: 1 1 auto; }
+}
+/* Narrow screens keep category/type at hand; pickup/sort join optional filters. */
+@media (max-width: 600px) {
+  .discovery-feed .discovery-extra-option { display: none; }
+  .discovery-feed .discovery-filters--expanded .discovery-extra-option { display: block; }
+}
+@media (max-width: 600px) {
+  .discovery-feed .discovery-area--selected { background: transparent; border: 0; padding: 0; margin-bottom: var(--ui-space-6); }
+  .discovery-feed .discovery-type-option { display: none; }
+  .discovery-feed .discovery-filters--has-category .discovery-type-option,
+  .discovery-feed .discovery-filters--expanded .discovery-type-option { display: block; }
+}
