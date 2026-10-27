@@ -216,3 +216,22 @@ no workflow/provider/Atlas setting changes are required. The Phase 1 remote inde
 has **not** been prepared here: any future hosted deployment still needs separate
 approval and guarded index preparation. No realtime updates, notifications, read
 receipts, typing indicators, attachments or scheduling changes are included.
+
+
+## Milestone 6.4D presentation and navigation
+
+The [6.4D experience audit/evidence](milestone-6.4d-pickup-experience.md) modernizes
+this same panel with shared surfaces/feedback, request-level conversation anchors,
+item/counterpart context, literal message bubbles and full accessible timestamp
+labels. Message display remains device-local; pickup authority remains the stored
+request timezone. The existing quota error's bounded 1–3,600 second suggestion is
+shown without a timer or automatic retry. Chronology/range gaps, three-pixel
+reading-position checks, Unicode limits and memory-only draft/uncertainty guards
+remain covered. A new browser case proves that an actual committed send followed
+by a failed response does not cause an automatic duplicate or false success.
+
+Closed history is still participant-only/read-only under the policy above. The
+modernization does not add storage, deletion, retention, attachments, read receipts,
+polling or a global inbox. [Authoritative unread status](milestone-6.4d-pickup-experience.md#unread-assessment--explicitly-deferred)
+is an explicit future proposal requiring persistence/API/index review; no
+browser-derived unread indicator exists. Tests are local/CI, not a new hosted run.

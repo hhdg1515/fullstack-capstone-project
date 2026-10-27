@@ -107,6 +107,15 @@ feedback. The selected-area display alias is distinct from the canonical name;
 card availability and counts come from regional API responses. A text link with a
 44px target opens details; no fabricated imagery or self-request action is added.
 
+Milestone 6.4D adopts the same vocabulary for pickup request lists/detail/form,
+private conversation and formal time changes. Status, appointment and message
+history remain distinct. Item/counterpart context travels with the canonical
+conversation anchor; a pending proposal links back to arrangement. Sent/received
+bubbles retain text sender roles, and timestamp display never sets pickup zones.
+Native disclosures hold secondary reference/history; native forms, 44px controls,
+keyboard focus and independent draft guards remain. No sticky composer or unread
+badge is introduced. See [audit and evidence](milestone-6.4d-pickup-experience.md).
+
 ## Adoption and rollback
 
 Milestone 6.4B extends this vocabulary to plan create/edit, item forms and owner

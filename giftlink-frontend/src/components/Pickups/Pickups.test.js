@@ -287,3 +287,14 @@ test('a future accepted appointment leads with conversation rather than a disabl
   expect(screen.getByRole('button', { name: 'Confirm handoff' })).toBeDisabled();
   expect(screen.queryByText('Picked Up')).not.toBeInTheDocument();
 });
+
+test('a failed detail refresh labels retained information as last loaded and blocks lifecycle actions', async () => {
+  let fail = false;
+  fetch.mockImplementation(async url => url.endsWith('/api/me') ? response({ user }) : fail ? error('Reload failed', 'TEMPORARY', 503) : response({ request: { ...base, role: 'giver', status: 'accepted' } }));
+  mount('/app/pickups/' + base.id); await screen.findByText('Accepted'); fail = true;
+  await click(screen.getByRole('button', { name: 'Reload request' })); await screen.findByRole('alert');
+  expect(screen.getByText('Showing last loaded details. Reload to confirm current status and pickup time.')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Cancel request' })).toBeDisabled(); expect(screen.queryByText('No pickup requests here yet.')).not.toBeInTheDocument();
+  fail = false; await click(screen.getByRole('button', { name: 'Reload request' })); await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel request' })).toBeEnabled());
+  expect(screen.queryByText('Showing last loaded details. Reload to confirm current status and pickup time.')).not.toBeInTheDocument();
+});

@@ -3,7 +3,8 @@
 The B proposal below is superseded by the focused [6.4B implementation](milestone-6.4b-listing-inventory.md),
 including required publication details while name-only drafts remain supported.
 C is implemented in the focused [6.4C discovery stack](milestone-6.4c-discovery.md).
-D–E remain a reviewable backlog, **not implemented scope**. Each phase gets small
+D is implemented in the [pickup coordination stack](milestone-6.4d-pickup-experience.md).
+E remains a reviewable backlog, **not implemented scope**. Each phase gets small
 PRs and the existing CI; no remote operation follows automatically. Build on the
 [audit](milestone-6.4-design-audit.md) and [shared vocabulary](design-system.md).
 Do not change inventory/request state machines as a side effect of styling.
@@ -64,7 +65,7 @@ crosswalk, retired/changed boundaries and display-label compatibility strategy;
 do not mix vintages invisibly or infer membership from arbitrary user city text.
 No GPS, geocoder, mapping service, new infrastructure or remote migration.
 
-## D: messaging and pickup experience
+## D: messaging and pickup experience (implemented separately)
 
 1. Add a clear conversation anchor from each request's existing review/detail
    entry, retaining item/applicant/appointment/status. Use an explicit formal

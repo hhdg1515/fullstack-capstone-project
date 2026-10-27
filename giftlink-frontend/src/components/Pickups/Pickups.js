@@ -126,8 +126,8 @@ function RequestDetail({ requestId }) {
   useEffect(() => { if (request) { setBlocked(false); setError(''); } }, [request]);
   const loaded = Boolean(request);
   useEffect(() => {
-    if (loaded && location.hash === '#conversation') {
-      const target = document.getElementById('conversation-heading'); target?.focus({ preventScroll: true }); target?.scrollIntoView?.({ block: 'start' });
+    if (loaded && ['#conversation', '#pickup-arrangement-heading'].includes(location.hash)) {
+      const target = document.getElementById(location.hash === '#conversation' ? 'conversation-heading' : 'pickup-arrangement-heading'); target?.focus({ preventScroll: true }); target?.scrollIntoView?.({ block: 'start' });
     }
   }, [loaded, location.hash, location.key]);
   const actions = request ? [
@@ -155,7 +155,7 @@ function RequestDetail({ requestId }) {
   };
   const outcomeReady = Number.isFinite(Date.parse(request?.proposedAt)) && Date.parse(request.proposedAt) <= Date.now();
   const conversationPrimary = !actions.includes('accept') && !(actions.includes('complete') && outcomeReady);
-  const conversationLink = request && conversationAvailable(request) ? <Link className={`ui-button${conversationPrimary ? '' : ' ui-button--secondary'}`} to="#conversation" state={location.state}>Open conversation</Link> : null;
+  const conversationLink = request && conversationAvailable(request) ? <Link className={`ui-button${conversationPrimary ? '' : ' ui-button--secondary'}`} to={{ hash: '#conversation', search: location.search }} state={location.state}>Open conversation</Link> : null;
   const returnQuery = new URLSearchParams(typeof location.state?.returnSearch === 'string' ? location.state.returnSearch : '');
   const backQuery = new URLSearchParams(); for (const name of ['status', 'cursor']) if (returnQuery.get(name)) backQuery.set(name, returnQuery.get(name));
   const back = ((request ? request.role === 'giver' : location.state?.journey === 'give') ? '/app/pickups/incoming' : '/app/pickups') + (backQuery.toString() ? `?${backQuery}` : '');
@@ -164,6 +164,7 @@ function RequestDetail({ requestId }) {
     <PageHeader title="Pickup request" action={<button className="ui-button ui-button--secondary" disabled={busy || data.loading} onClick={data.retry}>Reload request</button>} />
     <LoadState data={data} />{error && <Feedback error><p>{error}</p><p>Reload the request and review its current state before trying again.</p></Feedback>}
     {request && <>
+      {(data.loading || data.error) && <Feedback>Showing last loaded details. Reload to confirm current status and pickup time.</Feedback>}
       <Surface as="article" className="pickup-summary" aria-label="Request summary">
         <div className="pickup-card-heading"><h2>{request.item?.name || 'Former listing'}</h2><span className="ui-status">{pickupLabels[request.status] || 'Status unavailable'}</span></div>
         <p>Applicant: {request.role === 'giver' ? request.counterpart.firstName : 'You'}</p>
@@ -177,12 +178,12 @@ function RequestDetail({ requestId }) {
           {!conversationPrimary && conversationLink}</div>
         {request.role === 'giver' && request.status === 'accepted' && <p className="pickup-help">Record completion or no-show after the appointment time. Reload the request to update these controls.</p>}
       </Surface>
-      <Surface aria-label="Pickup arrangement" className="pickup-arrangement">
-        <h2>Pickup arrangement</h2><Appointment request={request} />
+      <Surface aria-label="Pickup arrangement" className="pickup-arrangement" aria-busy={data.loading || false}>
+        <h2 id="pickup-arrangement-heading" tabIndex={-1}>Pickup arrangement</h2><Appointment request={request} />
         {request.item && <p className="pickup-help">Pickup window: {request.item.availableFrom || 'Now'} through {request.item.effectiveAvailableUntil} (UTC dates). No address is disclosed automatically.</p>}
         <PickupScheduling request={request} onRefresh={data.retry} disabled={busy || data.loading || Boolean(data.error) || blocked} />
       </Surface>
-      <PickupConversation requestId={request.id} requestStatus={request.status} />
+      <PickupConversation requestId={request.id} requestStatus={request.status} itemName={request.item?.name} hasTimeProposal={request.status === 'accepted' && Boolean(request.rescheduling?.proposal)} />
       <Surface className="pickup-secondary" aria-label="Request details and history">
         <details className="pickup-request-details"><summary>Request details</summary>
           <h3>Private coordination note</h3><p className="pickup-note">{request.note || 'No note provided.'}</p>
@@ -191,7 +192,7 @@ function RequestDetail({ requestId }) {
           <p>Request reference: <code>{request.id}</code></p>
         </details>
         <details className="pickup-request-details"><summary>Request history</summary><ul>{request.history.map((entry, index) => <li key={index}>
-          {entry.action.startsWith('reschedule_') ? <SchedulingEvent entry={entry} /> : pickupLabels[entry.action] || 'Request updated'}
+          {entry.action.startsWith('reschedule_') ? <SchedulingEvent entry={entry} /> : entry.action === 'pending' ? 'Request submitted' : pickupLabels[entry.action] || 'Request updated'}
           {' — '}{entry.actor === 'receiver' ? 'requester' : entry.actor}, <PickupTime compact value={{ proposedAt: entry.at, timeZone: request.timeZone }} />
         </li>)}</ul></details>
       </Surface>
