@@ -240,3 +240,22 @@ test('the real pickup detail keeps the chat draft on parent reload, then closes 
   await screen.findByText(/This request is closed/); expect(screen.getByDisplayValue('Do not lose this')).toHaveAttribute('readonly');
   expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
 });
+
+test('shared-quota feedback uses the server suggested wait and keeps manual retry and the draft', async () => {
+  let posts = 0;
+  handler = async (url, options) => {
+    if (options.method === 'POST') { posts++; return reply({ error: { code: 'MESSAGE_QUOTA_EXCEEDED', message: 'Message was not sent.', retryAfterSeconds: 61 } }, 429); }
+    return url.endsWith('/conversation') ? reply(context()) : reply({ messages: [], nextCursor: null });
+  };
+  mount(); await ready(); type('Keep this private draft'); submit();
+  expect(await screen.findByRole('alert')).toHaveTextContent('Suggested wait: 2 minutes.');
+  expect(screen.getByLabelText('Message', { exact: true })).toHaveValue('Keep this private draft'); expect(posts).toBe(1);
+  expect(screen.queryByText('Message sent.')).not.toBeInTheDocument();
+});
+test('message timestamps retain full accessible device-local dates, separate from pickup time', async () => {
+  handler = async url => url.endsWith('/conversation') ? reply(context()) : reply({ messages: [message(1)], nextCursor: null });
+  mount(); await ready(); const time = document.querySelector('.chat-message time');
+  expect(time).toHaveAttribute('datetime', message(1).createdAt); expect(time.getAttribute('aria-label')).toMatch(/2030/);
+  expect(screen.getByText(/Message times use your device timezone/)).toHaveTextContent('Pickup times use the giver’s timezone');
+  expect(screen.getByRole('region', { name: 'Message history' })).not.toHaveAttribute('aria-live');
+});

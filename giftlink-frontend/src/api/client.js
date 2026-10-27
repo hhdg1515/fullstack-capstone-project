@@ -1,12 +1,13 @@
 import { urlConfig } from '../config';
 
 export class ApiError extends Error {
-  constructor(message, status, code, fields, conflicts) {
+  constructor(message, status, code, fields, conflicts, retryAfterSeconds) {
     super(message);
     this.status = status;
     this.code = code;
     this.fields = fields;
     this.conflicts = conflicts;
+    this.retryAfterSeconds = Number.isSafeInteger(retryAfterSeconds) && retryAfterSeconds >= 1 && retryAfterSeconds <= 3600 ? retryAfterSeconds : undefined;
   }
 }
 
@@ -40,7 +41,7 @@ export async function apiRequest(path, { method = 'GET', body, notifyUnauthorize
     if (!response.ok) {
       if (response.status === 401 && notifyUnauthorized) window.dispatchEvent(new Event('giftlink:unauthorized'));
       throw new ApiError(typeof data?.error?.message === 'string' ? data.error.message : 'Request failed. Please try again.', response.status,
-        data?.error?.code, data?.error?.fields, data?.error?.conflicts);
+        data?.error?.code, data?.error?.fields, data?.error?.conflicts, response.status === 429 ? data?.error?.retryAfterSeconds : undefined);
     }
     if (validate && !validate(data)) throw unavailable();
     return data;

@@ -95,6 +95,7 @@ test('participants exchange private text, retain reading position and drafts, th
       a.getByRole('button', { name: 'Send message', exact: true }).click()]);
     expect(limited.status()).toBe(429); expect((await limited.json()).error.code).toBe('MESSAGE_QUOTA_EXCEEDED');
     expect(Number(limited.headers()['retry-after'])).toBeGreaterThan(60);
+    await expect(a.getByRole('alert')).toContainText(/Suggested wait: (?:[0-9]+ (?:minutes?|seconds?)|1 hour)\./);
     await expect(a.getByRole('alert').filter({ hasText: 'Message limit reached. Your text is kept. Try again later.' })).toBeVisible();
     await expect(input).toHaveValue('Do not lose this draft.'); expect(quotaPosts).toBe(1);
     expect(await deployment.db.collection('pickupMessages').countDocuments({ requestId: new ObjectId(request.id) })).toBe(25);

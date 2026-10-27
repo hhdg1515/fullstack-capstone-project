@@ -143,3 +143,36 @@ unchanged chat draft through acceptance, actual nonparticipant 404s, closed hist
 and same-item request review. The 14 navigation screenshot/axe samples have zero
 A/AA findings, overflow or server errors; eight relevant whole-page images are
 retained for this PR. Full immutable-head CI results are linked in its PR.
+
+
+## Conversation implementation
+
+The existing single panel now uses Surface/Feedback, token-based sent/received
+bubbles, explicit sender roles and a normal-flow composer. Same-year timestamps
+are concise; full device-local dates remain on `time` accessible labels/title and
+ISO attributes. The panel explicitly separates device display time from giver
+pickup time. No HTML interpretation, new storage or scheduling mutation exists.
+
+The cursor/range merge, gap handling, synchronous send guard, reading-position
+anchor and bounded manual refresh/load-earlier behavior are unchanged. Existing
+23-message browser tests still verify prepending/refresh reading position within
+three pixels, multiline Enter, Unicode limits, duplicate posts, closure and
+quota feedback. The extra recovery scenario actually commits one message before
+simulating a failed response: the draft is kept, send stays blocked until a
+successful explicit refresh, and there is no automatic duplicate or false success.
+It also verifies independent closure drafts and desktop/tablet/375/390/320px and
+200% text reflow with keyboard/focus/axe checks.
+
+The API client now retains only a validated integer 1–3,600 second suggested wait
+from existing 429 JSON. Shared quota feedback rounds that server delay up to a
+readable unit; absent/invalid values keep the existing fallback. It creates no
+retry timer or automatic POST. Shared quota values/limits and backend responses
+are unchanged. Nine client cases cover accepted/rejected delay metadata.
+
+Conversation verification: 313 frontend tests/17 suites, strict build and four
+focused local browser scenarios pass. The 14 screenshot/axe samples have zero
+A/AA findings, overflow or server errors. Six conversation/closed/quota images are
+retained; cropped panels use a taller real viewport so Chromium does not paint
+an offscreen fixed skip-link into a beyond-viewport capture. No masking or image
+editing is used. Navigation PR #55 passes all three CI jobs. Conversation branch
+CI and immutable heads are recorded in the PRs.
