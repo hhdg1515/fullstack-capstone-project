@@ -3,7 +3,7 @@ import { apiRequest } from './client';
 const named = entry => entry && typeof entry.id === 'string' && typeof entry.label === 'string';
 const validCatalog = (path, data) => path === '/api/regions' ?
   Array.isArray(data.states) && data.states.every(named) && Array.isArray(data.metros) && data.metros.every(entry => named(entry) &&
-    Array.isArray(entry.stateIds) && entry.stateIds.every(id => typeof id === 'string') && (entry.suggestedTimeZone == null || typeof entry.suggestedTimeZone === 'string')) :
+    (entry.shortLabel === undefined || typeof entry.shortLabel === 'string') && Array.isArray(entry.stateIds) && entry.stateIds.every(id => typeof id === 'string') && (entry.suggestedTimeZone == null || typeof entry.suggestedTimeZone === 'string')) :
   Array.isArray(data.categories) && data.categories.every(entry => named(entry) && Array.isArray(entry.itemTypes) && entry.itemTypes.every(named)) &&
   Array.isArray(data.conditions) && data.conditions.every(named);
 

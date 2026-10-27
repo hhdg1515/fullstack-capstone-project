@@ -216,7 +216,7 @@ test('failed saves retain drafts and expired sessions remove the private form', 
   expect(screen.queryByLabelText('Item name')).not.toBeInTheDocument();
 });
 test('public discovery searches published listings without requiring sign-in or displaying private owner data', async () => {
-  const visible = { ...item, status: 'available', stateId: '06', metroId: '41860', isOwner: false, isReserved: false, pickupTimeZone: 'UTC', city: plan.city, neighborhood: plan.neighborhood };
+  const visible = { ...item, status: 'available', availability: 'now', stateId: '06', metroId: '41860', isOwner: false, isReserved: false, pickupTimeZone: 'UTC', city: plan.city, neighborhood: plan.neighborhood };
   handler = async url => reply(200, url.includes('/api/items/locations') ? { locations: [{ city: plan.city, neighborhoods: [plan.neighborhood] }] } : url.includes(item.id) ? { item: visible } : { items: [visible], total: 1, page: { hasMore: false, nextCursor: null } });
   mount('/app/items?stateId=06&metroId=41860');
   expect(await screen.findByRole('link', { name: item.name })).toBeInTheDocument();

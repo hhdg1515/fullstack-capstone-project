@@ -382,7 +382,7 @@ Within the selected metro, city/neighborhood selectors are populated from curren
 
 Filters and sort order are stored in URL query parameters, so filtered pages can be shared and browser Back works normally. Changing filters restarts pagination, and late responses from an earlier query cannot replace new results. **Load more** appends the next server page and deduplicates IDs. Loading, empty, retry and expired-cursor states have explicit controls. Location-option failures have an independent retry and do not block general browsing. Focus/Refresh rechecks current publication visibility and restarts the first page while retaining filters.
 
-Cards show name, type (or category/legacy fallback), optional condition, general location, **Available Now** or **Available Later**, earliest pickup when specified, and effective latest pickup. Details include the full description, first publication date, and a read-only direct URL with Copy link/manual-copy fallback. Links work anonymously. Cards use text; no photos are fabricated and no fake reservation/pickup control is provided.
+Cards show name, type/category (or legacy fallback), optional condition, general location, **Available Now** or **Available Later**, earliest pickup when specified, and effective latest pickup. Details include the full description, first publication date, and a read-only direct URL with Copy link/manual-copy fallback. Links work anonymously. Cards use text; no photos are fabricated and no fake reservation/pickup control is provided.
 
 ### Query and availability contract
 
@@ -623,8 +623,8 @@ is local/CI only; hosted chat/rescheduling and public launch are not certified.
 
 ## Location-first discovery and classification (Milestone 6.3)
 
-The single backend catalog serves all 50 U.S. states plus DC and 12 curated
-metros using documented Census FIPS/CBSA identifiers. Metro membership is pinned
+The single backend catalog serves all 50 U.S. states plus DC and 50 curated
+metros (expanded additively in 6.4C) using documented Census FIPS/CBSA identifiers. Metro membership is pinned
 to **2021 Census geography**, with its source commit/hashes recorded; this is
 limited, dated coverage, not every city or current OMB boundaries. Unsupported
 areas can retain a state and city/neighborhood on a plan with no metro assignment.
@@ -677,3 +677,27 @@ CI and disposable local HTTPS checks cover this change; no hosted E2E, remote
 migration/index preparation, manual deployment or provider change is performed.
 New publication clients must supply complete details. Legacy stored posts remain
 readable/editable and no region/category/timezone is guessed or migrated.
+
+
+## Milestone 6.4C: geographic coverage and discovery
+
+[Source verification and the complete 50-metro selection](docs/geographic-directory.md)
+retain the existing 2021 Census geography and every original plan assignment.
+Coverage spans 41 states plus DC; unsupported states remain understandable.
+Compact display labels do not change official CBSA names or boundaries. New
+zone suggestions extend only the existing California policy, never explicit
+owner settings.
+
+Find Free Items now uses the shared design system. Category is immediately
+available; dependent item type appears on narrow screens when relevant, and
+Filters reveals pickup/sort/condition/city/neighborhood without a modal. Desktop
+shows common filters directly. Clear filters is offered when needed and retains
+the area. Cards show only actual metadata and a detail link; public owner labels
+remain server-derived. Counts disappear during failed/loading results, stale
+pages offer recovery, and changed pagination totals refresh the eligible set.
+No client-side download-all filtering, GPS, paid geography or image upload exists.
+
+[Audit, before/after evidence, dependency order and verification limits](docs/milestone-6.4c-discovery.md)
+distinguish isolated local/CI checks from hosted or production readiness. Review
+order is **#49 → #50 → #51 → #52 (coverage) → #53 (layout) → #54 (cards/states)**.
+Nothing is merged or deployed automatically.

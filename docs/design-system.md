@@ -101,6 +101,12 @@ Run axe plus keyboard and real-flow checks; automated success does not certify
 manual screen-reader or physical iOS/Safari behavior. Do not add brittle
 pixel-perfect snapshot tests with dates, IDs or dynamic font rendering.
 
+Milestone 6.4C adopts the same primitives for location-first discovery, compact
+metadata-only item cards, responsive filters and explicit loading/error/empty
+feedback. The selected-area display alias is distinct from the canonical name;
+card availability and counts come from regional API responses. A text link with a
+44px target opens details; no fabricated imagery or self-request action is added.
+
 ## Adoption and rollback
 
 Milestone 6.4B extends this vocabulary to plan create/edit, item forms and owner

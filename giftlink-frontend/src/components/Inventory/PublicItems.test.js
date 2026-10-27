@@ -1,3 +1,4 @@
+jest.mock('../../context/AuthContext', () => ({ useAppContext: () => mockAuth }));
 jest.mock('../../api/usePublicCatalog', () => ({ __esModule: true, default: path => ({ data: require('../../test-support/catalogs')[path === '/api/regions' ? 'regions' : 'taxonomy'] }) }));
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -13,6 +14,7 @@ const places = { locations: [{ city: 'Oakland', neighborhoods: ['Temescal', 'Roc
 const reply = (status, data) => ({ status, ok: status >= 200 && status < 300, json: async () => data });
 const feed = (items, cursor = null, total = items.length ? 2 : 0) => reply(200, { items, total, today: day(0), page: { limit: 12, hasMore: Boolean(cursor), nextCursor: cursor } });
 const pending = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
+let mockAuth;
 let handler;
 let locationHandler;
 function Navigation() {
@@ -32,7 +34,7 @@ function mount(path = '/app/items', unselected = false) {
   </MemoryRouter>);
 }
 beforeEach(() => {
-  localStorage.clear();
+  mockAuth = undefined; localStorage.clear();
   handler = async () => feed([a, b]); locationHandler = async () => reply(200, places);
   global.fetch = jest.fn(async (url, options) => url.includes('/api/items/locations') ? locationHandler(url, options) : handler(url, options));
 });
@@ -86,8 +88,8 @@ test('anonymous discovery uses the selected metro without an account and shows u
   expect(screen.getByLabelText('City')).toHaveValue(''); expect(screen.getByLabelText('Neighborhood')).toHaveValue('');
   const cards = screen.getByRole('list', { name: 'Available items' });
   expect(within(cards).getByText('Available Now')).toBeInTheDocument(); expect(within(cards).getByText('Available Later')).toBeInTheDocument();
-  expect(within(cards).getAllByText(a.category)).toHaveLength(2); expect(within(cards).getByText(/Pickup from: Immediately/)).toBeInTheDocument();
-  expect(within(cards).getByText('Temescal, Oakland · Free')).toBeInTheDocument();
+  expect(within(cards).getAllByText(a.category)).toHaveLength(2); expect(within(cards).getAllByText(/Pickup until/)).toHaveLength(2);
+  expect(within(cards).getByText('Temescal, Oakland, CA')).toBeInTheDocument();
   expect(fetch.mock.calls.every(([url]) => url.includes('/api/items'))).toBe(true);
   expect(screen.queryByRole('img')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /pickup request|reserve|login/i })).not.toBeInTheDocument();
@@ -265,7 +267,7 @@ test('shared URL conditions remain visible while controls are collapsed and reop
   expect(screen.getByLabelText('City')).toHaveValue('Oakland');
   expect(screen.getByLabelText('Pickup availability')).toHaveValue('later');
 });
-test('an incomplete date filter reopens with an actionable error and safe focus, then applies without hiding focus', async () => {
+test('an incomplete common date filter has an actionable error and retains visible focus after applying', async () => {
   mount(); await ready(); await click('Filters');
   fireEvent.change(screen.getByLabelText('Pickup availability'), { target: { value: 'date' } });
   await click('Filters'); const reads = apiCalls().length;
@@ -277,7 +279,7 @@ test('an incomplete date filter reopens with an actionable error and safe focus,
   fireEvent.change(screen.getByLabelText('Pickup date (UTC)'), { target: { value: day(2) } });
   await submit(); await ready();
   expect(screen.getByRole('button', { name: 'Filters (1)' })).toHaveFocus();
-  expect(screen.getByLabelText('Pickup date (UTC)')).not.toBeVisible();
+  expect(screen.getByLabelText('Pickup date (UTC)')).toBeVisible();
   expect(screen.getByLabelText('Applied filters')).toHaveTextContent(day(2));
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
@@ -357,6 +359,7 @@ test('a changed total during pagination refreshes the first page instead of appe
   mount(); await ready(); await click('Load more'); await screen.findByRole('link', { name: b.name });
   expect(screen.queryByRole('link', { name: a.name })).not.toBeInTheDocument(); expect(reads).toBe(3);
   expect(screen.getByRole('heading', { name: /1 available/ })).toBeInTheDocument();
+  expect(screen.getByText('Availability changed. Results have been refreshed.')).toBeVisible();
 });
 test.each([{ ...a, metroId: '31080' }, { ...a, isReserved: true }])('inconsistent regional response metadata cannot be advertised as available', async row => {
   handler = async () => feed([row]); mount();
@@ -369,5 +372,92 @@ test('missing counts are a service error instead of a fabricated empty or page-s
 });
 test('owner cards remain visible with compact authoritative type and condition labels', async () => {
   handler = async () => feed([{ ...a, isOwner: true, classification: { itemType: { id: 'sofa', label: 'Sofa' }, condition: { id: 'good', label: 'Good' } } }]);
-  mount(); await ready(); expect(screen.getByText('Your listing')).toBeInTheDocument(); expect(screen.getByText('Sofa · Good')).toBeInTheDocument();
+  mount(); await ready(); expect(screen.getByText('Your listing')).toBeInTheDocument(); expect(screen.getByText('Sofa · Kitchen & craft')).toBeInTheDocument(); expect(screen.getByText('Condition: Good')).toBeInTheDocument();
+});
+
+test('location-first hierarchy keeps the page title short, common controls visible and secondary controls collapsed', async () => {
+  mount(); await ready();
+  expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/^Find free items$/);
+  expect(screen.getByRole('region', { name: 'Browsing area' })).toHaveTextContent('San Francisco-Oakland-Berkeley · CA');
+  for (const name of ['Category', 'Item type', 'Pickup availability', 'Sort items']) expect(screen.getByLabelText(name)).toBeVisible();
+  expect(screen.getByLabelText('Item type')).toBeDisabled();
+  expect(screen.getByLabelText('Item type')).toHaveTextContent('Choose a category first');
+  for (const name of ['Condition', 'City', 'Neighborhood']) expect(screen.getByLabelText(name)).not.toBeVisible();
+  const reads = apiCalls().length;
+  await click('Change region'); expect(screen.getByLabelText('State')).toHaveFocus();
+  expect(screen.getByRole('button', { name: 'Change region' })).toHaveAttribute('aria-expanded', 'true');
+  await click('Change region'); expect(screen.getByLabelText('State')).not.toBeVisible(); expect(apiCalls()).toHaveLength(reads);
+});
+test('an invalid explicit URL never restores a different saved area or triggers a global query', () => {
+  localStorage.setItem('moveout.browse-region.v1', JSON.stringify({ stateId: '06', metroId: '41860' }));
+  mount('/app/items?stateId=06&metroId=unknown', true);
+  expect(screen.getByText('This area selection is not supported. Choose a listed state and metro.')).toBeVisible();
+  expect(apiCalls()).toHaveLength(0); expect(screen.queryByRole('heading', { name: /available/ })).not.toBeInTheDocument();
+});
+test('changing region removes the old cursor and local labels but retains shared classification and sort choices', async () => {
+  mount('/app/items?stateId=06&metroId=41860&cursor=old&city=Oakland&neighborhood=Temescal&categoryId=living-room&itemTypeId=sofa&sort=deadline'); await ready();
+  await click('Change region');
+  handler = async () => feed([{ ...a, metroId: '31080' }]);
+  await act(async () => fireEvent.change(screen.getByLabelText('Metro area'), { target: { value: '31080' } })); await ready();
+  const query = new URL(screen.getByLabelText('Current URL').textContent, 'http://localhost').searchParams;
+  for (const name of ['cursor', 'city', 'neighborhood']) expect(query.has(name)).toBe(false);
+  expect(query.get('sort')).toBe('deadline'); expect(query.get('itemTypeId')).toBe('sofa'); expect(query.get('categoryId')).toBe('living-room');
+  expect(screen.getByRole('button', { name: 'Change region' })).toHaveFocus();
+});
+test('closing optional filters from their contents returns focus and preserves unsubmitted selections', async () => {
+  mount(); await ready(); await click('Filters');
+  fireEvent.change(screen.getByLabelText('Condition'), { target: { value: 'fair' } }); screen.getByLabelText('Condition').focus();
+  fireEvent.keyDown(screen.getByLabelText('Condition'), { key: 'Escape' }); expect(screen.getByRole('button', { name: 'Filters' })).toHaveFocus();
+  expect(screen.getByLabelText('Condition')).not.toBeVisible();
+  await click('Filters'); expect(screen.getByLabelText('Condition')).toHaveValue('fair');
+});
+
+test('reset is offered only when useful and clears unsubmitted filters without losing the area', async () => {
+  mount(); await ready(); expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'living-room' } });
+  await click('Clear filters'); await ready();
+  expect(screen.getByLabelText('Category')).toHaveValue(''); expect(screen.getByLabelText('Current URL')).toHaveTextContent('metroId=41860');
+  expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument();
+});
+
+test.each([{ ...a, status: 'draft' }, { ...a, pickupTimeZone: 'not/a-zone' }, { ...a, effectiveAvailableUntil: '2026-02-30' }, { ...a, availability: 'reserved' }])('unsafe availability metadata produces a service error rather than a truthful-looking card', async row => {
+  handler = async () => feed([row]); mount();
+  expect(await screen.findByRole('alert')).toHaveTextContent(/unavailable/i);
+  expect(screen.queryByRole('link', { name: a.name })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: /\d+ available/ })).not.toBeInTheDocument();
+});
+test('cards expose real type/category, optional condition, location and UTC window without invented imagery', async () => {
+  handler = async () => feed([{ ...b, classification: { category: { id: 'office-lighting', label: 'Office & Lighting' }, itemType: { id: 'lamp', label: 'Lamp' }, condition: null } }]);
+  mount(); const link = await screen.findByRole('link', { name: b.name });
+  const card = within(link.closest('li'));
+  expect(card.getByRole('heading', { level: 3 })).toHaveTextContent(b.name);
+  expect(card.getByText('Lamp · Office & Lighting')).toBeVisible();
+  expect(card.getByText('Rockridge, Oakland, CA')).toBeVisible();
+  expect(card.getByText('Free')).toBeVisible(); expect(card.getByText('(UTC)')).toBeVisible();
+  expect(card.getByText(formatDate(b.availableFrom))).toHaveAttribute('datetime', b.availableFrom);
+  expect(card.queryByText(/Condition:/)).not.toBeInTheDocument();
+  expect(card.queryByRole('img')).not.toBeInTheDocument();
+});
+const formatDate = value => new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(new Date(value + 'T00:00:00Z'));
+test('next-page errors suppress current count claims and identify retained cards as previously loaded', async () => {
+  handler = async url => url.includes('cursor=') ? reply(503, { error: { message: 'Search is busy' } }) : feed([a], 'next', 24);
+  mount(); await ready(); await click('Load more');
+  expect(await screen.findByRole('alert')).toHaveTextContent('Previously loaded items are shown below. Refresh to confirm availability.');
+  expect(screen.queryByRole('heading', { name: /24 available/ })).not.toBeInTheDocument();
+  expect(screen.queryByText(/Showing 1 item/)).not.toBeInTheDocument();
+  expect(screen.getByRole('link', { name: a.name })).toBeVisible();
+});
+test('session changes clear owner-aware cards immediately and ignore an old account response', async () => {
+  const old = pending(); let calls = 0;
+  mockAuth = { status: 'authenticated', user: { id: 'account-a' } };
+  handler = async () => ++calls === 1 ? feed([{ ...a, isOwner: true }]) : calls === 2 ? old.promise : feed([{ ...b, isOwner: false }]);
+  mount(); await ready(); expect(screen.getByText('Your listing')).toBeVisible();
+  await act(async () => { fireEvent(window, new Event('focus')); });
+  mockAuth = { status: 'anonymous', user: null };
+  await click('Filters');
+  expect(screen.queryByText('Your listing')).not.toBeInTheDocument();
+  await screen.findByRole('link', { name: b.name });
+  await act(async () => old.resolve(feed([{ ...a, name: 'Stale owner listing', isOwner: true }])));
+  expect(screen.queryByRole('link', { name: 'Stale owner listing' })).not.toBeInTheDocument();
+  expect(screen.queryByText('Your listing')).not.toBeInTheDocument();
 });
