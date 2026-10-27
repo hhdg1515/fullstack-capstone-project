@@ -25,16 +25,17 @@ test('giver distinguishes requests for the same item and reviews the selected ap
     }
     const page = await giver.newPage(); await page.goto('/app/pickups/incoming');
     for (const [index, name] of ['Alex', 'Sam'].entries()) {
-      const card = page.locator('li.plan-panel').filter({ has: page.getByText('Applicant: ' + name, { exact: true }) });
+      const card = page.locator('li.pickup-request-card').filter({ has: page.getByText('Applicant: ' + name, { exact: true }) });
       await expect(card.getByRole('link', { name: 'Shared desk', exact: true })).toHaveAttribute('href', '/app/items/' + item.id);
-      await expect(card.getByText('Awaiting giver decision', { exact: true })).toBeVisible();
+      await expect(card.getByText('Pending', { exact: true })).toBeVisible();
       await expect(card.locator('time')).toHaveAttribute('datetime', requests[index].proposedAt);
       await card.getByText('Note and request reference', { exact: true }).click();
       await expect(card.getByText(requests[index].note, { exact: true })).toBeVisible(); await expect(card.locator('code')).toHaveText(requests[index].id);
-      await expect(card.getByRole('link', { name: 'Review request from ' + name + ' for Shared desk', exact: true })).toHaveAttribute('href', '/app/pickups/' + requests[index].id);
+      await expect(card.getByRole('link', { name: 'View request from ' + name + ' for Shared desk', exact: true })).toHaveAttribute('href', '/app/pickups/' + requests[index].id);
     }
-    await page.getByRole('link', { name: 'Review request from Sam for Shared desk', exact: true }).click();
+    await page.getByRole('link', { name: 'View request from Sam for Shared desk', exact: true }).click();
     await expect(page.getByText('Applicant: Sam', { exact: true })).toBeVisible();
+    await page.getByText('Request details', { exact: true }).click();
     await expect(page.getByText('Cafe entrance', { exact: true })).toBeVisible(); await expect(page.getByText('Library entrance', { exact: true })).toHaveCount(0);
     await page.getByRole('link', { name: 'Back to requests', exact: true }).click();
     await page.getByLabel('Request status', { exact: true }).selectOption('accepted');

@@ -1,19 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiRequest } from '../../api/client';
 import { useAppContext } from '../../context/AuthContext';
 
 export default function usePlansData(path, keepData = false) {
   const { user } = useAppContext();
   const key = `${user.id}:${path}`;
+  const currentKey = useRef(key); currentKey.current = key;
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState({});
   useEffect(() => {
     let active = true;
     setState(previous => ({ key, loading: true, data: keepData && previous.key === key ? previous.data : undefined }));
-    apiRequest(path).then(data => {
-      if (active) setState({ key, data, loading: false });
+    apiRequest(path, { notifyUnauthorized: false }).then(data => {
+      if (active && currentKey.current === key) setState({ key, data, loading: false });
     }).catch(error => {
-      if (active) setState(previous => ({ key, error, loading: false, data: keepData && previous.key === key ? previous.data : undefined }));
+      if (active && currentKey.current === key) {
+        setState(previous => ({ key, error, loading: false, data: keepData && previous.key === key ? previous.data : undefined }));
+        if (error.status === 401) window.dispatchEvent(new Event('giftlink:unauthorized'));
+      }
     });
     return () => { active = false; };
   }, [key, path, attempt, keepData]);

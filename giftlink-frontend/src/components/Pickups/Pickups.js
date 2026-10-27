@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { apiRequest } from '../../api/client';
 import usePlansData from '../MoveOutPlans/usePlansData';
 import '../MoveOutPlans/Plans.css';
@@ -9,17 +9,22 @@ import { useUnsavedForm } from '../../forms/UnsavedChanges';
 import useFormErrors from '../../forms/useFormErrors';
 import PickupConversation from './PickupConversation';
 import PickupScheduling, { PickupTime, SchedulingEvent } from './PickupScheduling';
+import { useAppContext } from '../../context/AuthContext';
+import { PageHeader, Surface, Feedback } from '../../design-system/primitives';
 import { pickupMinimum, pastPickupSelection } from '../../forms/pickupTime';
 
-export const pickupLabels = { pending: 'Awaiting giver decision', accepted: 'Accepted appointment', declined: 'Declined', cancelled: 'Cancelled', completed: 'Handed over', no_show: 'Receiver did not arrive' };
+export const pickupLabels = { pending: 'Pending', accepted: 'Accepted', declined: 'Declined', cancelled: 'Cancelled', completed: 'Completed', no_show: 'No-show' };
 const actionLabels = { accept: 'Accept pickup', decline: 'Decline request', cancel: 'Cancel request', complete: 'Confirm handoff', no_show: 'Record no-show' };
-function Appointment({ request }) {
-  const display = new Intl.DateTimeFormat('en', { dateStyle: 'full', timeStyle: 'short', timeZone: request.timeZone }).format(new Date(request.proposedAt));
-  return <p><b>{request.status === 'pending' ? 'Proposed pickup' : request.status === 'accepted' ? 'Confirmed pickup' : 'Pickup time'}:</b><br /><time dateTime={request.proposedAt}>{display}</time><br /><strong>{request.timeZone}</strong></p>;
+const participant = request => ['giver', 'receiver'].includes(request.role);
+const conversationAvailable = request => participant(request) && request.item && Boolean(pickupLabels[request.status]);
+function Appointment({ request, compact = false }) {
+  return <p className="pickup-appointment"><b>{request.status === 'pending' ? 'Proposed pickup' : request.status === 'accepted' ? 'Confirmed pickup' : 'Pickup time'}:</b><br />
+    <PickupTime value={request} compact={compact} /></p>;
 }
 function LoadState({ data }) {
-  if (data.loading) return <p role="status">Loading pickup requests…</p>;
-  if (data.error) return <div role="alert"><p>{data.error.status === 404 ? 'This pickup request is unavailable.' : data.error.message}</p><button onClick={data.retry}>Retry requests</button></div>;
+  if (data.loading) return <Feedback>Loading pickup requests…</Feedback>;
+  if (data.error) return <Feedback error><p>{data.error.status === 404 ? 'This pickup request is unavailable.' : data.error.message}</p>
+    <button className="ui-button ui-button--secondary" onClick={data.retry}>Retry requests</button></Feedback>;
   return null;
 }
 export function RequestPickup() {
@@ -47,97 +52,149 @@ export function RequestPickup() {
       else validation.failure(failure, ['localDateTime', 'note'], { proposedAt: 'localDateTime' }); }
     finally { setBusy(false); }
   };
-  return <main className="plans-page pickup-page"><JourneyNav journey="find" discoverySearch={discoverySearch} /><Link to={`/app/items/${itemId}`} state={{ discoverySearch }}>Back to listing</Link><h1>Request pickup</h1><LoadState data={data} />
+  return <main className="ui-page pickup-page"><JourneyNav journey="find" discoverySearch={discoverySearch} /><Link to={`/app/items/${itemId}`} state={{ discoverySearch }}>Back to listing</Link><PageHeader title="Request pickup" /><LoadState data={data} />
     {item && <><h2>{item.name}</h2><p>{item.neighborhood}, {item.city}</p>
       {item.isOwner === true ? <p role="status">Your listing. You cannot request your own item. Manage it from My plans.</p> : item.isReserved === true ? <div role="status"><p>This item has an accepted pickup. Check back if it becomes available.</p>
-        <button className="btn btn-outline-secondary" onClick={data.retry}>Check availability</button></div> : !item.pickupTimeZone ? <p role="alert">The giver must set a pickup timezone before requests can be submitted.</p> : <form ref={validation.formRef} noValidate className="plan-form" onSubmit={submit} aria-busy={busy}>
+        <button className="ui-button ui-button--secondary" onClick={data.retry}>Check availability</button></div> : !item.pickupTimeZone ? <p role="alert">The giver must set a pickup timezone before requests can be submitted.</p> : <Surface as="form" ref={validation.formRef} noValidate className="pickup-request-form" onSubmit={submit} aria-busy={busy}>
         <p>A request does not reserve the item. Wait for the giver to accept. Each listing is one pickup unit, including groups of items.</p>
         {typeof item.isReserved !== 'boolean' && <p>Current pickup availability will be checked when you send a request.</p>}
         <p>Choose a local date from {item.availableFrom || 'today'} through {item.effectiveAvailableUntil}. Listings still expire at the end of that UTC date; late local appointments beyond that cutoff cannot be booked.</p>
         <fieldset disabled={busy}><legend className="visually-hidden">Appointment details</legend>
-          <div className="plan-field"><label htmlFor="pickup-time">Pickup date and time</label>
+          <div className="ui-field"><label htmlFor="pickup-time">Pickup date and time</label>
             <input id="pickup-time" name="localDateTime" type="datetime-local" step="60" min={pickupMinimum(item.pickupTimeZone)} required value={localDateTime} onChange={event => { setTime(event.target.value); validation.clear('localDateTime'); }} {...validation.fieldProps('localDateTime', 'pickup-zone-help')} />
-            {errors.localDateTime && <p id="localDateTime-error" className="plan-field-error">{errors.localDateTime}</p>}
+            {errors.localDateTime && <p id="localDateTime-error" className="ui-field-error">{errors.localDateTime}</p>}
             <small id="pickup-zone-help">Local time in <strong>{item.pickupTimeZone}</strong>, selected by the giver. Your browser timezone is not used. Times skipped or repeated by daylight saving must be avoided.</small></div>
-          <div className="plan-field"><label htmlFor="pickup-note">Coordination note (optional, private)</label><textarea id="pickup-note" name="note" {...validation.fieldProps('note')} maxLength={500} value={note} onChange={event => { setNote(event.target.value); validation.clear('note'); }} />
-            {errors.note && <p id="note-error" className="plan-field-error">{errors.note}</p>}</div>
+          <div className="ui-field"><label htmlFor="pickup-note">Coordination note (optional, private)</label><textarea id="pickup-note" name="note" {...validation.fieldProps('note')} maxLength={500} value={note} onChange={event => { setNote(event.target.value); validation.clear('note'); }} />
+            {errors.note && <p id="note-error" className="ui-field-error">{errors.note}</p>}</div>
           <p>Only you and the giver see this note. Suggest a general public meeting point or brief handoff instructions. Keep phone numbers, email and residential addresses out of it. After sending your request, use its pickup conversation to coordinate.</p>
-          <button className="btn btn-primary">{busy ? 'Sending…' : 'Send pickup request'}</button>
+          <button className="ui-button">{busy ? 'Sending…' : 'Send pickup request'}</button>
         </fieldset>
-      </form>}
+      </Surface>}
       {error && <div ref={validation.summaryRef} tabIndex={-1} role="alert"><p>{error}</p><button onClick={data.retry}>Reload listing</button></div>}
     </>}
   </main>;
 }
 export function PickupDashboard({ incoming = false }) {
-  const [cursor, setCursor] = useState(''); const [status, setStatus] = useState('');
+  const [params, setParams] = useSearchParams();
+  const status = params.get('status') || '', cursor = params.get('cursor') || '';
   const query = new URLSearchParams(); if (cursor) query.set('cursor', cursor); if (status) query.set('status', status);
   const data = usePlansData(`/api/pickup-requests/${incoming ? 'received' : 'sent'}?${query}`);
-  return <main className="plans-page pickup-page"><JourneyNav journey={incoming ? 'give' : 'find'} /><h1>{incoming ? 'Incoming pickup requests' : 'My pickup requests'}</h1>
-    <p>Pending requests do not reserve items. Accepted appointments are arrangements; only a recorded handoff means the item was collected.</p>
-    <div className="plan-field"><label htmlFor="pickup-filter">Request status</label><select id="pickup-filter" value={status} onChange={event => { setStatus(event.target.value); setCursor(''); }}>
+  const setStatus = value => { const next = new URLSearchParams(); if (value) next.set('status', value); setParams(next); };
+  const setCursor = value => { const next = new URLSearchParams(query); if (value) next.set('cursor', value); else next.delete('cursor'); setParams(next); };
+  const state = { journey: incoming ? 'give' : 'find', returnSearch: query.toString() };
+  return <main className="ui-page pickup-page"><JourneyNav journey={incoming ? 'give' : 'find'} />
+    <PageHeader title={incoming ? 'Incoming pickup requests' : 'My pickup requests'} description={incoming ? 'Review requests and arrange pickup.' : 'Check your requests and pickup arrangements.'}
+      action={<button className="ui-button ui-button--secondary" disabled={data.loading} onClick={data.retry}>Refresh requests</button>} />
+    <div className="ui-field pickup-filter"><label htmlFor="pickup-filter">Request status</label><select id="pickup-filter" value={status} onChange={event => setStatus(event.target.value)}>
       <option value="">All requests</option>{Object.entries(pickupLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
     </select></div>
-    <button className="btn btn-outline-secondary" onClick={data.retry}>Refresh requests</button><LoadState data={data} />
+    <LoadState data={data} />
     {data.data && <>
-      {!data.data.requests.length && (status ? <div role="status"><p>No requests match this status.</p>
-        <button className="btn btn-outline-secondary" onClick={() => { setStatus(''); setCursor(''); }}>Clear status filter</button></div> : <p>No pickup requests here yet.</p>)}
-      <ul className="plans-grid">{data.data.requests.map(request => <li className="plan-panel" key={request.id}>
-        <h2>{request.item ? <Link to={`/app/items/${request.item.id}`}>{request.item.name}</Link> : 'Former listing'}</h2><p className="plan-status">{pickupLabels[request.status]}</p>
+      {!data.data.requests.length && <Surface className="ui-empty">{status ? <><h2>No requests match this status.</h2>
+        <button className="ui-button ui-button--secondary" onClick={() => setStatus('')}>Clear status filter</button></> : <><h2>No pickup requests here yet.</h2>
+          {!incoming && <Link className="ui-button" to="/app/items">Find free items</Link>}</>}</Surface>}
+      <ul className="pickup-cards" aria-label="Pickup requests">{data.data.requests.map(request => <Surface as="li" className="pickup-request-card" key={request.id}>
+        <div className="pickup-card-heading"><h2>{request.item ? <Link to={`/app/items/${request.item.id}`}>{request.item.name}</Link> : 'Former listing'}</h2>
+          <span className="ui-status">{pickupLabels[request.status] || 'Status unavailable'}</span></div>
         <p>Applicant: {incoming ? request.counterpart.firstName : 'You'}</p>
-        {!incoming && <p>Giver: {request.counterpart.firstName}</p>}<Appointment request={request} />
-        <Link className="btn btn-outline-primary" to={`/app/pickups/${request.id}`} state={{ journey: incoming ? 'give' : 'find' }}
-          aria-label={`Review request ${incoming ? 'from' : 'to'} ${request.counterpart.firstName} for ${request.item?.name || 'former listing'}`}>Review request</Link>
+        {!incoming && <p>Giver: {request.counterpart.firstName}</p>}<Appointment request={request} compact />
+        <div className="pickup-actions"><Link className="ui-button" to={`/app/pickups/${request.id}`} state={state}
+          aria-label={`View request ${incoming ? 'from' : 'to'} ${request.counterpart.firstName} for ${request.item?.name || 'former listing'}`}>View request</Link>
+          {conversationAvailable(request) && <Link className="ui-button ui-button--secondary" to={`/app/pickups/${request.id}#conversation`} state={state}
+            aria-label={`Open conversation with ${request.counterpart.firstName} for ${request.item.name}`}>Open conversation</Link>}</div>
         <details className="pickup-request-details"><summary>Note and request reference</summary>
           <p className="pickup-note">{request.note || 'No note provided.'}</p><p>Request reference: <code>{request.id}</code></p>
+          {incoming && request.plan && <p><Link to={`/app/plans/${request.plan.id}`}>{request.plan.title || 'Move-out plan'}</Link></p>}
         </details>
         {!request.item && <p>The listing is no longer available. You can still review the request.</p>}
-        {incoming && request.plan && <p><Link to={`/app/plans/${request.plan.id}`}>{request.plan.title || 'Move-out plan'}</Link></p>}
-      </li>)}</ul>
-      <div className="plan-actions">{cursor && <button onClick={() => setCursor('')}>First page</button>}
-        {data.data.nextCursor && <button className="btn btn-primary" onClick={() => setCursor(data.data.nextCursor)}>Next requests</button>}</div>
+      </Surface>)}</ul>
+      <div className="pickup-actions">{cursor && <button className="ui-button ui-button--secondary" onClick={() => setCursor('')}>First page</button>}
+        {data.data.nextCursor && <button className="ui-button" onClick={() => setCursor(data.data.nextCursor)}>Next requests</button>}</div>
     </>}
   </main>;
 }
 export function PickupDetail() {
-  const { requestId } = useParams(); const data = usePlansData(`/api/pickup-requests/${encodeURIComponent(requestId)}`, true);
-  const request = [403, 404].includes(data.error?.status) ? undefined : data.data?.request; const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  const { requestId } = useParams(); const { user } = useAppContext();
+  return <RequestDetail key={`${user.id}:${requestId}`} requestId={requestId} />;
+}
+function RequestDetail({ requestId }) {
+  const data = usePlansData(`/api/pickup-requests/${encodeURIComponent(requestId)}`, true);
+  const request = [403, 404].includes(data.error?.status) ? undefined : data.data?.request;
+  const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [blocked, setBlocked] = useState(false);
+  const flight = useRef(false), alive = useRef(false); const location = useLocation();
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  useEffect(() => { if (request) { setBlocked(false); setError(''); } }, [request]);
+  const loaded = Boolean(request);
+  useEffect(() => {
+    if (loaded && location.hash === '#conversation') {
+      const target = document.getElementById('conversation-heading'); target?.focus({ preventScroll: true }); target?.scrollIntoView?.({ block: 'start' });
+    }
+  }, [loaded, location.hash, location.key]);
+  const actions = request ? [
+    ...(request.role === 'giver' && request.status === 'pending' ? ['accept', 'decline'] : []),
+    ...(request.role === 'giver' && request.status === 'accepted' ? ['complete', 'no_show'] : []),
+    ...(participant(request) && ['pending', 'accepted'].includes(request.status) ? ['cancel'] : [])
+  ] : [];
   const action = async name => {
+    if (flight.current || blocked || data.loading || data.error || !actions.includes(name)) return;
     const warning = name === 'complete' ? 'Confirm the entire item or group was actually handed over? This clears the item and cancels competing requests.' :
       name === 'no_show' ? 'Confirm the receiver did not arrive? This releases the reservation without clearing the item.' :
       name === 'accept' ? 'Accept this appointment? Other requests will remain pending, and new requests will be blocked until it is released.' : `${actionLabels[name]}?`;
     if (!window.confirm(warning)) return;
-    setBusy(true); setError('');
-    try { await apiRequest(`/api/pickup-requests/${requestId}/actions`, { method: 'POST', body: { action: name, version: request.version } }); data.retry(); }
-    catch (failure) { setError(failure.message); }
-    finally { setBusy(false); }
+    flight.current = true; setBusy(true); setError('');
+    try {
+      await apiRequest(`/api/pickup-requests/${requestId}/actions`, { method: 'POST', notifyUnauthorized: false, body: { action: name, version: request.version },
+        validate: value => value?.request?.id === requestId && Number.isInteger(value.request.version) && value.request.version > request.version });
+      if (!alive.current) return;
+      setBlocked(true); data.retry();
+    } catch (failure) {
+      if (!alive.current) return;
+      setError(failure.message); setBlocked(true);
+      if (failure.status === 401) window.dispatchEvent(new Event('giftlink:unauthorized'));
+    } finally { if (alive.current) { flight.current = false; setBusy(false); } }
   };
-  const actions = request ? [
-    ...(request.role === 'giver' && request.status === 'pending' ? ['accept', 'decline'] : []),
-    ...(['pending', 'accepted'].includes(request.status) ? ['cancel'] : []),
-    ...(request.role === 'giver' && request.status === 'accepted' ? ['complete', 'no_show'] : [])
-  ] : [];
-  return <main className="plans-page pickup-page">{request && <JourneyNav journey={request.role === 'giver' ? 'give' : 'find'} planId={request.plan?.id} />}<Link to={request?.role === 'giver' ? '/app/pickups/incoming' : '/app/pickups'}>Back to requests</Link>
-    <h1>Pickup request</h1><LoadState data={data} />{error && <p role="alert">{error}</p>}
-    <button className="btn btn-outline-secondary" disabled={busy || data.loading} onClick={data.retry}>Reload request</button>
-    {request && <article className="plan-panel"><h2>{request.item?.name || 'Former listing'}</h2><p className="plan-status">{pickupLabels[request.status]}</p>
-      <p>Applicant: {request.role === 'giver' ? request.counterpart.firstName : 'You'}</p>
-      {request.role === 'receiver' && <p>Giver: {request.counterpart.firstName}</p>}<Appointment request={request} />
-      {request.status === 'pending' && <p>The item is not reserved. The giver must accept a future appointment.</p>}
-      {request.status === 'accepted' && <p>This appointment reserves one whole listing. It does not mean a handoff has occurred. No address is disclosed automatically.</p>}
-      {request.cancellationReason && <p>Cancellation reason: {request.cancellationReason.replace(/_/g, ' ')}.</p>}
-      {request.item && <><p>{request.item.neighborhood}, {request.item.city}</p><p className="pickup-note">{request.item.description}</p><Link to={`/app/items/${request.item.id}`}>Public listing (if still available)</Link></>}
-      {request.plan && <p><Link to={`/app/plans/${request.plan.id}`}>{request.plan.title || 'Move-out plan'}</Link></p>}
-      <h3>Private coordination note</h3><p className="pickup-note">{request.note || 'No note provided.'}</p>
-      <details className="pickup-request-details"><summary>Request reference</summary><code>{request.id}</code></details>
-      <div className="plan-actions">{actions.map(name => <button key={name} className="btn btn-outline-primary" disabled={busy || data.loading || (['complete', 'no_show'].includes(name) && Date.parse(request.proposedAt) > Date.now())} onClick={() => action(name)}>{actionLabels[name]}</button>)}</div>
-      {request.role === 'giver' && request.status === 'accepted' && <p>Record completion or no-show after the appointment time. Reload the request to update these controls.</p>}
-      <PickupScheduling request={request} onRefresh={data.retry} disabled={busy || data.loading || Boolean(data.error)} />
+  const outcomeReady = Number.isFinite(Date.parse(request?.proposedAt)) && Date.parse(request.proposedAt) <= Date.now();
+  const conversationPrimary = !actions.includes('accept') && !(actions.includes('complete') && outcomeReady);
+  const conversationLink = request && conversationAvailable(request) ? <Link className={`ui-button${conversationPrimary ? '' : ' ui-button--secondary'}`} to="#conversation" state={location.state}>Open conversation</Link> : null;
+  const returnQuery = new URLSearchParams(typeof location.state?.returnSearch === 'string' ? location.state.returnSearch : '');
+  const backQuery = new URLSearchParams(); for (const name of ['status', 'cursor']) if (returnQuery.get(name)) backQuery.set(name, returnQuery.get(name));
+  const back = ((request ? request.role === 'giver' : location.state?.journey === 'give') ? '/app/pickups/incoming' : '/app/pickups') + (backQuery.toString() ? `?${backQuery}` : '');
+  return <main className="ui-page pickup-page">{request && <JourneyNav journey={request.role === 'giver' ? 'give' : 'find'} planId={request.plan?.id} />}
+    <Link className="pickup-back" to={back}>Back to requests</Link>
+    <PageHeader title="Pickup request" action={<button className="ui-button ui-button--secondary" disabled={busy || data.loading} onClick={data.retry}>Reload request</button>} />
+    <LoadState data={data} />{error && <Feedback error><p>{error}</p><p>Reload the request and review its current state before trying again.</p></Feedback>}
+    {request && <>
+      <Surface as="article" className="pickup-summary" aria-label="Request summary">
+        <div className="pickup-card-heading"><h2>{request.item?.name || 'Former listing'}</h2><span className="ui-status">{pickupLabels[request.status] || 'Status unavailable'}</span></div>
+        <p>Applicant: {request.role === 'giver' ? request.counterpart.firstName : 'You'}</p>
+        {request.role === 'receiver' && <p>Giver: {request.counterpart.firstName}</p>}
+        {request.item && <p>{request.item.neighborhood}, {request.item.city}</p>}
+        {request.status === 'pending' && <p>Not reserved. Waiting for the giver to accept a pickup time.</p>}
+        {request.status === 'accepted' && <p>Pickup arranged. The item is reserved; handoff has not been recorded.</p>}
+        {request.cancellationReason && <p>Cancellation reason: {request.cancellationReason.replace(/_/g, ' ')}.</p>}
+        <div className="pickup-actions">{conversationPrimary && conversationLink}{actions.map(name => <button key={name} className={`ui-button${(name === 'accept' || (name === 'complete' && outcomeReady)) ? '' : ' ui-button--secondary'}`}
+          disabled={busy || blocked || data.loading || Boolean(data.error) || (['complete', 'no_show'].includes(name) && !outcomeReady)} onClick={() => action(name)}>{actionLabels[name]}</button>)}
+          {!conversationPrimary && conversationLink}</div>
+        {request.role === 'giver' && request.status === 'accepted' && <p className="pickup-help">Record completion or no-show after the appointment time. Reload the request to update these controls.</p>}
+      </Surface>
+      <Surface aria-label="Pickup arrangement" className="pickup-arrangement">
+        <h2>Pickup arrangement</h2><Appointment request={request} />
+        {request.item && <p className="pickup-help">Pickup window: {request.item.availableFrom || 'Now'} through {request.item.effectiveAvailableUntil} (UTC dates). No address is disclosed automatically.</p>}
+        <PickupScheduling request={request} onRefresh={data.retry} disabled={busy || data.loading || Boolean(data.error) || blocked} />
+      </Surface>
       <PickupConversation requestId={request.id} requestStatus={request.status} />
-      <h3>Request history</h3><ul>{request.history.map((entry, index) => <li key={index}>
-        {entry.action.startsWith('reschedule_') ? <SchedulingEvent entry={entry} /> : pickupLabels[entry.action] || 'Request updated'}
-        {' — '}{entry.actor}, <PickupTime compact value={{ proposedAt: entry.at, timeZone: request.timeZone }} />
-      </li>)}</ul>
-    </article>}
+      <Surface className="pickup-secondary" aria-label="Request details and history">
+        <details className="pickup-request-details"><summary>Request details</summary>
+          <h3>Private coordination note</h3><p className="pickup-note">{request.note || 'No note provided.'}</p>
+          {request.item && <><p className="pickup-note">{request.item.description}</p><Link to={`/app/items/${request.item.id}`}>Public listing (if still available)</Link></>}
+          {request.plan && <p><Link to={`/app/plans/${request.plan.id}`}>{request.plan.title || 'Move-out plan'}</Link></p>}
+          <p>Request reference: <code>{request.id}</code></p>
+        </details>
+        <details className="pickup-request-details"><summary>Request history</summary><ul>{request.history.map((entry, index) => <li key={index}>
+          {entry.action.startsWith('reschedule_') ? <SchedulingEvent entry={entry} /> : pickupLabels[entry.action] || 'Request updated'}
+          {' — '}{entry.actor === 'receiver' ? 'requester' : entry.actor}, <PickupTime compact value={{ proposedAt: entry.at, timeZone: request.timeZone }} />
+        </li>)}</ul></details>
+      </Surface>
+    </>}
   </main>;
 }

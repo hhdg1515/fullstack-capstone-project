@@ -225,7 +225,7 @@ test('plain text stays literal, multiline/long words stay in a scrollable region
 });
 test('the real pickup detail keeps the chat draft on parent reload, then closes sending on backend lifecycle state', async () => {
   let state = 'pending'; const reload = deferred(); let wait = false;
-  const pickup = () => ({ id, role: 'giver', status: state, version: 1, counterpart: { firstName: 'Alex' }, item: null, timeZone: 'UTC',
+  const pickup = () => ({ id, role: 'giver', status: state, version: state === 'pending' ? 1 : 2, counterpart: { firstName: 'Alex' }, item: null, timeZone: 'UTC',
     proposedAt: '2030-01-01T10:00:00Z', note: '', history: [], cancellationReason: null });
   handler = async (url, options) => {
     if (url === '/api/pickup-requests/' + id) return wait ? reload.promise : reply({ request: pickup() });

@@ -123,8 +123,8 @@ function Conversation({ requestId, requestStatus }) {
     }
   };
   const messages = view.ranges.flatMap(range => range.messages);
-  return <section className="pickup-conversation" aria-labelledby="conversation-heading">
-    <div className="plan-page-header"><h3 id="conversation-heading">Pickup conversation</h3>
+  return <section id="conversation" className="pickup-conversation" aria-labelledby="conversation-heading">
+    <div className="plan-page-header"><h3 id="conversation-heading" tabIndex={-1}>Pickup conversation</h3>
       <button type="button" className="btn btn-outline-secondary" disabled={Boolean(busy)} onClick={() => { validation.reset(); load(); }}>{context ? 'Refresh conversation' : 'Retry conversation'}</button></div>
     {context && <p>With {context.counterpart.firstName} ({roleLabel(context.role === 'giver' ? 'receiver' : 'giver')}). Only you and this participant can read these messages.</p>}
     <p role="status" className="chat-feedback">{busy === 'send' ? 'Sending message…' : busy ? (busy === 'earlier' ? 'Loading earlier messages…' : 'Loading conversation…') : notice}</p>

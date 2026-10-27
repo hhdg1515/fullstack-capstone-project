@@ -1,6 +1,6 @@
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { AuthProvider } from '../../context/AuthContext';
 import RequireAuth from '../RequireAuth';
 import LoginPage from '../LoginPage/LoginPage';
@@ -9,7 +9,7 @@ import { RequestPickup, PickupDashboard, PickupDetail } from './Pickups';
 import { confirmPickupChanges } from '../../api/confirmPickupChanges';
 
 // Lifecycle tests isolate chat; PickupConversation.test.js and browser tests cover the real integration.
-jest.mock('./PickupConversation', () => () => null);
+jest.mock('./PickupConversation', () => () => <section id="conversation"><h3 id="conversation-heading" tabIndex={-1}>Pickup conversation</h3></section>);
 
 const user = { id: 'receiver', firstName: 'Reader', lastName: 'Neighbor', email: 'reader@example.test' };
 const item = { id: '64a000000000000000000001', name: 'Kitchen box', description: 'One whole box.', city: 'Oakland', neighborhood: 'Temescal',
@@ -22,8 +22,9 @@ const error = (message, code, status = 409) => response({ error: { message, code
 const click = element => act(async () => { fireEvent.click(element); });
 const submit = element => act(async () => { fireEvent.submit(element); });
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { resolve, promise }; };
+function RequestSwitch() { const navigate = useNavigate(); return <button onClick={() => navigate('/app/pickups/64a000000000000000000003')}>Next request</button>; }
 function mount(path = '/app/items/' + item.id + '/request') {
-  return render(<MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AuthProvider><Routes>
+  return render(<MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AuthProvider><RequestSwitch /><Routes>
     <Route path="/app/items/:itemId/request" element={<RequireAuth><RequestPickup /></RequireAuth>} />
     <Route path="/app/items/:itemId" element={<PublicItems />} />
     <Route path="/app/pickups" element={<RequireAuth><PickupDashboard key="sent" /></RequireAuth>} />
@@ -118,7 +119,7 @@ test('giver dashboard displays appointment timezone and plan, and filters accept
   fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { requests: [{ ...base, role: 'giver', plan: { id: 'plan', title: 'Summer move' } }], nextCursor: base.id }));
   mount('/app/pickups/incoming'); expect(await screen.findByRole('link', { name: 'Kitchen box' })).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Summer move' })).toHaveAttribute('href', '/app/plans/plan');
-  expect(screen.getByText('Asia/Kolkata')).toBeInTheDocument(); expect(screen.getByText(/2:30 PM/)).toBeInTheDocument();
+  expect(screen.getByText(/Asia\/Kolkata/)).toBeInTheDocument(); expect(screen.getByText(/2:30 PM/)).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Request status'), { target: { value: 'accepted' } });
   await waitFor(() => expect(fetch.mock.calls.some(([url]) => url.includes('received?status=accepted'))).toBe(true));
   await click(await screen.findByRole('button', { name: 'Next requests' }));
@@ -138,12 +139,12 @@ test('giver accepts using the current version after confirmation and sees appoin
     return response(url.endsWith('/api/me') ? { user } : { request: current });
   });
   mount('/app/pickups/' + base.id); await click(await screen.findByRole('button', { name: 'Accept pickup' }));
-  expect(await screen.findByText('Accepted appointment')).toBeInTheDocument();
+  expect(await screen.findByText('Accepted')).toBeInTheDocument();
   const [, options] = fetch.mock.calls.find(([, options]) => options.method === 'POST'); expect(JSON.parse(options.body)).toEqual({ action: 'accept', version: 1 });
   expect(window.confirm).toHaveBeenCalled(); expect(screen.getByRole('button', { name: 'Record no-show' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Confirm handoff' })).toBeDisabled();
 });
-test.each([['complete', 'Confirm handoff', 'completed', 'Handed over'], ['no_show', 'Record no-show', 'no_show', 'Receiver did not arrive'], ['cancel', 'Cancel request', 'cancelled', 'Cancelled']])('accepted appointment supports %s after its time', async (action, label, status, statusText) => {
+test.each([['complete', 'Confirm handoff', 'completed', 'Completed'], ['no_show', 'Record no-show', 'no_show', 'No-show'], ['cancel', 'Cancel request', 'cancelled', 'Cancelled']])('accepted appointment supports %s after its time', async (action, label, status, statusText) => {
   let current = { ...base, role: 'giver', status: 'accepted', version: 2, proposedAt: '2020-01-01T00:00:00Z' };
   fetch.mockImplementation(async (url, options) => {
     if (options.method === 'POST') current = { ...current, status, version: 3 };
@@ -185,9 +186,9 @@ test('multiple requests for one item retain applicant, proposed time, status and
   for (const request of requests) {
     const card = screen.getByText('Applicant: ' + request.counterpart.firstName).closest('li');
     expect(within(card).getByRole('link', { name: 'Kitchen box' })).toHaveAttribute('href', '/app/items/' + item.id);
-    expect(within(card).getByRole('link', { name: 'Review request from ' + request.counterpart.firstName + ' for Kitchen box' })).toHaveAttribute('href', '/app/pickups/' + request.id);
+    expect(within(card).getByRole('link', { name: 'View request from ' + request.counterpart.firstName + ' for Kitchen box' })).toHaveAttribute('href', '/app/pickups/' + request.id);
     expect(card.querySelector('time')).toHaveAttribute('datetime', request.proposedAt);
-    expect(within(card).getByText(request.status === 'pending' ? 'Awaiting giver decision' : 'Declined')).toBeInTheDocument();
+    expect(within(card).getByText(request.status === 'pending' ? 'Pending' : 'Declined')).toBeInTheDocument();
     expect(within(card).getByText(request.note)).toBeInTheDocument(); expect(within(card).getByText(request.id)).toBeInTheDocument();
     expect(card.textContent).not.toContain(user.email);
   }
@@ -196,7 +197,7 @@ test('identically named applicants have separate exact references and review tar
   const requests = [base, { ...base, id: '64a000000000000000000003' }];
   fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { requests, nextCursor: null }));
   mount('/app/pickups/incoming'); await screen.findAllByText('Applicant: Giver');
-  const links = screen.getAllByRole('link', { name: 'Review request from Giver for Kitchen box' });
+  const links = screen.getAllByRole('link', { name: 'View request from Giver for Kitchen box' });
   expect(links.map(link => link.getAttribute('href'))).toEqual(requests.map(request => '/app/pickups/' + request.id));
   for (const request of requests) expect(screen.getByText(request.id)).toBeInTheDocument();
 });
@@ -214,5 +215,75 @@ test('sent cards identify the current user as applicant and keep the giver and m
   mount('/app/pickups'); expect(await screen.findByText('Applicant: You')).toBeInTheDocument();
   expect(screen.getByText('Giver: Giver')).toBeInTheDocument();
   expect(screen.getByText('The listing is no longer available. You can still review the request.')).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Review request to Giver for former listing' })).toHaveAttribute('href', '/app/pickups/' + base.id);
+  expect(screen.getByRole('link', { name: 'View request to Giver for former listing' })).toHaveAttribute('href', '/app/pickups/' + base.id);
+});
+
+test.each([false, true])('participant list has canonical conversation links for pending and closed history (incoming=%s)', async incoming => {
+  const requests = ['pending', 'completed', 'cancelled', 'declined', 'no_show'].map((status, index) => ({ ...base, id: base.id.slice(0, -1) + index, status, role: incoming ? 'giver' : 'receiver' }));
+  fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { requests, nextCursor: null }));
+  mount(incoming ? '/app/pickups/incoming' : '/app/pickups');
+  const links = await screen.findAllByRole('link', { name: 'Open conversation with Giver for Kitchen box' });
+  expect(links.map(link => link.getAttribute('href'))).toEqual(requests.map(row => '/app/pickups/' + row.id + '#conversation'));
+  expect(screen.queryByText(/unread/i)).not.toBeInTheDocument();
+});
+test('broken listing references keep request review without offering a conversation shortcut', async () => {
+  fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { requests: [{ ...base, item: null }], nextCursor: null }));
+  mount('/app/pickups'); await screen.findByText('Former listing');
+  expect(screen.queryByRole('link', { name: /Open conversation/ })).not.toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'View request to Giver for former listing' })).toBeInTheDocument();
+});
+test('direct conversation deep link focuses the section after asynchronous request loading and keeps the filtered return', async () => {
+  const pending = deferred(); fetch.mockImplementation(url => url.endsWith('/api/me') ? Promise.resolve(response({ user })) : pending.promise);
+  render(<MemoryRouter initialEntries={[{ pathname: '/app/pickups/' + base.id, hash: '#conversation', state: { journey: 'give', returnSearch: 'status=accepted&cursor=64a000000000000000000003' } }]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <AuthProvider><Routes><Route path="/app/pickups/:requestId" element={<RequireAuth><PickupDetail /></RequireAuth>} /></Routes></AuthProvider></MemoryRouter>);
+  await screen.findByText('Loading pickup requests…');
+  await act(async () => pending.resolve(response({ request: base })));
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Pickup conversation' })).toHaveFocus());
+  expect(screen.getByRole('link', { name: 'Back to requests' })).toHaveAttribute('href', '/app/pickups?status=accepted&cursor=64a000000000000000000003');
+});
+test('lifecycle decisions block rapid duplicates and uncertain resubmission until canonical reload', async () => {
+  const pending = deferred(); let postCount = 0;
+  fetch.mockImplementation(async (url, options) => {
+    if (options.method === 'POST') { postCount++; return pending.promise; }
+    return response(url.endsWith('/api/me') ? { user } : { request: { ...base, role: 'giver' } });
+  });
+  mount('/app/pickups/' + base.id); const accept = await screen.findByRole('button', { name: 'Accept pickup' });
+  await act(async () => { fireEvent.click(accept); fireEvent.click(accept); }); expect(postCount).toBe(1);
+  await act(async () => pending.resolve(error('Sending could not be confirmed.', 'UNAVAILABLE', 503)));
+  await screen.findByRole('alert'); expect(accept).toBeDisabled();
+  await click(screen.getByRole('button', { name: 'Reload request' })); await waitFor(() => expect(accept).toBeEnabled()); expect(postCount).toBe(1);
+});
+test('a late action from another request cannot invalidate the new request session', async () => {
+  const pending = deferred();
+  fetch.mockImplementation(async (url, options) => options.method === 'POST' ? pending.promise : response(url.endsWith('/api/me') ? { user } : { request: { ...base, id: url.split('/').pop(), role: 'giver' } }));
+  mount('/app/pickups/' + base.id); await click(await screen.findByRole('button', { name: 'Accept pickup' }));
+  await click(screen.getByRole('button', { name: 'Next request' })); await screen.findByRole('button', { name: 'Accept pickup' });
+  await act(async () => pending.resolve(error('Old expired session', 'SESSION_EXPIRED', 401)));
+  expect(screen.queryByRole('heading', { name: 'Login' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Accept pickup' })).toBeEnabled(); expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+test.each([403, 404])('definitive %s detail revalidation removes private content and conversation entry', async status => {
+  let deny = false;
+  fetch.mockImplementation(async url => url.endsWith('/api/me') ? response({ user }) : deny ? error('Private request unavailable', 'PICKUP_NOT_FOUND', status) : response({ request: base }));
+  mount('/app/pickups/' + base.id); await screen.findByText('Applicant: You'); deny = true;
+  await click(screen.getByRole('button', { name: 'Reload request' })); await screen.findByRole('alert');
+  expect(screen.queryByText('Applicant: You')).not.toBeInTheDocument(); expect(screen.queryByRole('link', { name: 'Open conversation' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Pickup conversation' })).not.toBeInTheDocument();
+});
+
+test.each([200, 401])('late %s request-load responses cannot replace or expire the next request', async status => {
+  const pending = deferred();
+  fetch.mockImplementation(async url => url.endsWith('/api/me') ? response({ user }) : url.endsWith(base.id) ? pending.promise : response({ request: { ...base, id: '64a000000000000000000003', counterpart: { firstName: 'New participant' } } }));
+  mount('/app/pickups/' + base.id); await screen.findByText('Loading pickup requests…');
+  await click(screen.getByRole('button', { name: 'Next request' })); await screen.findByText('Giver: New participant');
+  await act(async () => pending.resolve(status === 401 ? error('Old session ended', 'SESSION_EXPIRED', 401) : response({ request: base })));
+  expect(screen.getByText('Giver: New participant')).toBeInTheDocument(); expect(screen.queryByRole('heading', { name: 'Login' })).not.toBeInTheDocument();
+});
+
+test('a future accepted appointment leads with conversation rather than a disabled handoff action', async () => {
+  fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { request: { ...base, role: 'giver', status: 'accepted' } }));
+  mount('/app/pickups/' + base.id); const summary = await screen.findByRole('article', { name: 'Request summary' });
+  expect(summary.querySelector('.pickup-actions').firstElementChild).toHaveTextContent('Open conversation');
+  expect(screen.getByRole('button', { name: 'Confirm handoff' })).toBeDisabled();
+  expect(screen.queryByText('Picked Up')).not.toBeInTheDocument();
 });
