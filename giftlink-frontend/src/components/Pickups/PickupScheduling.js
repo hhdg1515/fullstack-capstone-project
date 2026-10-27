@@ -3,6 +3,7 @@ import { apiRequest } from '../../api/client';
 import { useAppContext } from '../../context/AuthContext';
 import { useUnsavedForm } from '../../forms/UnsavedChanges';
 import useFormErrors from '../../forms/useFormErrors';
+import { pickupMinimum, pastPickupSelection } from '../../forms/pickupTime';
 
 export function PickupTime({ value, compact = false }) {
   let display;
@@ -55,6 +56,7 @@ function TimeChange({ request, onRefresh, disabled = false }) {
     if (inFlight.current || locked || !(action === 'propose' ? canPropose : action === 'accept' ? canAccept : canDecline)) return;
     validation.reset(); setNotice('');
     if (action === 'propose' && !localDateTime) { validation.show({ localDateTime: 'Choose a new pickup date and time.' }); return; }
+    if (action === 'propose' && pastPickupSelection(localDateTime, request.timeZone)) { validation.show({ localDateTime: 'Choose a future pickup time in the giver’s timezone.' }); return; }
     if (action === 'accept' && !window.confirm('Confirm this proposed pickup time? It will replace the current confirmed appointment.')) return;
     inFlight.current = true; setBusy(true);
     const root = `/api/pickup-requests/${encodeURIComponent(request.id)}/reschedule-proposals`;
@@ -102,7 +104,7 @@ function TimeChange({ request, onRefresh, disabled = false }) {
     {canPropose && !editing && <button type="button" className="btn btn-outline-primary" disabled={locked} onClick={() => setEditing(true)}>Propose new time</button>}
     {editing && <form ref={validation.formRef} className="plan-form" noValidate aria-busy={busy} onSubmit={event => { event.preventDefault(); mutate('propose'); }}>
       <div className="plan-field"><label htmlFor="reschedule-time">New pickup date and time</label>
-        <input ref={input} id="reschedule-time" name="localDateTime" type="datetime-local" step="60" required value={localDateTime}
+        <input ref={input} id="reschedule-time" name="localDateTime" type="datetime-local" step="60" min={pickupMinimum(request.timeZone)} required value={localDateTime}
           readOnly={!canPropose || locked} {...validation.fieldProps('localDateTime', 'reschedule-zone-help')}
           onChange={event => { setTime(event.target.value); validation.clear('localDateTime'); }} />
         {validation.errors.localDateTime && <p id="localDateTime-error" className="plan-field-error">{validation.errors.localDateTime}</p>}

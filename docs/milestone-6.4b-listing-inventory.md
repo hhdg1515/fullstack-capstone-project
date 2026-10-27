@@ -119,3 +119,24 @@ Backend tests also cover atomic failures, legacy posts, required-detail removal,
 past/today/unchanged historical dates and competing publish versions. Screenshot
 audits before/after each sampled 12 views with no axe violations/overflow.
 Exact verification and immutable CI heads are recorded per PR.
+
+## Plan timezone and appointment input implementation
+
+Create/Edit Plan now reuse PageHeader, Surface, Feedback and shared control tokens.
+A valid zone is shown as one plan-level contextual setting. Change pickup timezone
+opens the native correction disclosure; missing/ambiguous settings remain open,
+and setup links/server errors open and focus that same labeled input. Curated
+suggestions still fill only a blank value; assigning a different metro never
+overwrites an explicit zone. No per-item timezone is introduced.
+
+New appointment/proposal minimums use the next minute of an explicit instant
+formatted in the pickup IANA timezone. They never parse browser-local midnight
+as an appointment. Submit-time hints are recalculated; server Temporal validation
+remains authoritative for the actual instant, DST gaps/folds, UTC end cutoff and
+stale proposals. The browser hint cannot prove DST validity and does not replace
+any server check. No server pickup or rescheduling rule changes in this PR.
+
+Plan screenshots: [desktop before](assets/milestone-6.4b/before-plan-timezone-desktop.png)
+and [after](assets/milestone-6.4b/timezone-plan-timezone-desktop.png);
+[320px before](assets/milestone-6.4b/before-plan-timezone-mobile.png) and
+[after](assets/milestone-6.4b/timezone-plan-timezone-mobile.png).

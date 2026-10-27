@@ -5,6 +5,8 @@ import { useUnsavedForm } from '../../forms/UnsavedChanges';
 import useFormErrors from '../../forms/useFormErrors';
 import usePublicCatalog from '../../api/usePublicCatalog';
 import RegionFields from './RegionFields';
+import { Feedback, Surface } from '../../design-system/primitives';
+import { validPickupTimeZone } from '../../forms/pickupTime';
 
 export const statusLabels = { active: 'Active', completed: 'Completed', cancelled: 'Cancelled' };
 const hasControlCharacters = value => Array.from(value).some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127);
@@ -13,6 +15,7 @@ export default function PlanForm({ initialPlan, onSave, focusPickupTimeZone = fa
   const timezoneInput = useRef();
   useEffect(() => { if (focusPickupTimeZone) timezoneInput.current?.focus(); }, [focusPickupTimeZone]);
   const editing = Boolean(initialPlan);
+  const [zoneExpanded, setZoneExpanded] = useState(focusPickupTimeZone || !validPickupTimeZone(initialPlan?.pickupTimeZone));
   const directory = usePublicCatalog('/api/regions');
   const [values, setValues] = useState(() => initialPlan ? {
     moveOutDeadline: initialPlan.moveOutDeadline, city: initialPlan.city, neighborhood: initialPlan.neighborhood,
@@ -26,8 +29,9 @@ export default function PlanForm({ initialPlan, onSave, focusPickupTimeZone = fa
   const { errors, error } = validation;
   const [conflicts, setConflicts] = useState([]);
   const changeRegion = change => {
+    const suggestion = directory.data?.metros.find(metro => metro.id === change.metroId)?.suggestedTimeZone;
+    if (!values.pickupTimeZone && suggestion) setZoneExpanded(false);
     setValues(previous => {
-      const suggestion = directory.data?.metros.find(metro => metro.id === change.metroId)?.suggestedTimeZone;
       return { ...previous, ...change, ...(!previous.pickupTimeZone && suggestion ? { pickupTimeZone: suggestion } : {}) };
     });
     validation.clear('stateId'); validation.clear('metroId');
@@ -72,13 +76,13 @@ export default function PlanForm({ initialPlan, onSave, focusPickupTimeZone = fa
     { name: 'neighborhood', label: 'Neighborhood', maximum: 100, required: true },
     { name: 'title', label: 'Plan title (optional)', maximum: 120 },
   ];
-  return <form ref={validation.formRef} onSubmit={submit} noValidate className="plan-form" aria-busy={busy}>
+  return <Surface as="form" ref={validation.formRef} onSubmit={submit} noValidate className="plan-form ui-plan-form" aria-busy={busy}>
     <p id="plan-privacy">Only you can see this plan. Use city and neighborhood names; keep street addresses private.</p>
     <fieldset disabled={busy} aria-describedby="plan-privacy">
       <legend className="visually-hidden">Plan details</legend>
-      <RegionFields directory={directory} values={values} onChange={changeRegion} validation={validation} prefix="plan-region" />
+      <RegionFields directory={directory} values={values} onChange={changeRegion} validation={validation} prefix="plan-region" fieldClassName="ui-field" />
       {!values.metroId && <p>This plan's items will not appear in metro discovery until you assign a listed metro. You can still save a plan and share its public item links.</p>}
-      {fields.map(field => <div className="plan-field" key={field.name}>
+      {fields.map(field => <div className="ui-field" key={field.name}>
         <label htmlFor={`plan-${field.name}`}>{field.label}</label>
         <input id={`plan-${field.name}`} name={field.name} type={field.type || 'text'} required={field.required}
           maxLength={field.maximum} value={values[field.name]} onChange={change}
@@ -88,7 +92,7 @@ export default function PlanForm({ initialPlan, onSave, focusPickupTimeZone = fa
         {field.type === 'date' && <small id="plan-date-help">A calendar date, with no pickup time. New dates must be today or later, checked in UTC.</small>}
         {errors[field.name] && <p className="plan-field-error" id={`plan-${field.name}-error`}>{errors[field.name]}</p>}
       </div>)}
-      {editing && <div className="plan-field">
+      {editing && <div className="ui-field">
         <label htmlFor="plan-status">Plan status</label>
         <select id="plan-status" name="status" value={values.status} onChange={change} aria-invalid={Boolean(errors.status)}
           aria-describedby={errors.status ? 'plan-status-error' : undefined}>
@@ -96,14 +100,19 @@ export default function PlanForm({ initialPlan, onSave, focusPickupTimeZone = fa
         </select>
         {errors.status && <p className="plan-field-error" id="plan-status-error">{errors.status}</p>}
       </div>}
-      <div className="plan-field"><label htmlFor="plan-timezone">Pickup timezone (needed to receive requests)</label>
+      <p className="plan-zone-summary"><strong>Pickup timezone: {validPickupTimeZone(values.pickupTimeZone) ? values.pickupTimeZone : 'Not set'}</strong>
+        <br />One setting for every item. Review before saving and after changing region.</p>
+      <details open={zoneExpanded || Boolean(errors.pickupTimeZone)} onToggle={event => setZoneExpanded(event.currentTarget.open)}>
+      <summary>{validPickupTimeZone(values.pickupTimeZone) ? 'Change pickup timezone' : 'Set pickup timezone'}</summary>
+      <div className="ui-field"><label htmlFor="plan-timezone">Pickup timezone (needed to receive requests)</label>
         <input id="plan-timezone" ref={timezoneInput} name="pickupTimeZone" list="pickup-timezones" maxLength={100} value={values.pickupTimeZone} onChange={change} {...validation.fieldProps('pickupTimeZone', 'plan-timezone-help')} placeholder="America/Los_Angeles" />
         <datalist id="pickup-timezones">{['UTC', ...(Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : ['America/Los_Angeles', 'America/New_York', 'Europe/London', 'Asia/Kolkata'])].map(zone => <option value={zone} key={zone} />)}</datalist>
-        <small id="plan-timezone-help">Choose the timezone at the pickup location. A curated metro suggestion fills only an empty field; explicit timezones are preserved. We never use your browser or guess from a multi-timezone state. Review this field after changing region. Changing timezone or location cancels outstanding requests after confirmation.</small>
+        <small id="plan-timezone-help">Use the pickup location's IANA timezone. Metro suggestions fill only an empty setting. Changing timezone or location cancels affected requests after confirmation.</small>
         {errors.pickupTimeZone && <p className="plan-field-error" id="pickupTimeZone-error">{errors.pickupTimeZone}</p>}
       </div>
+      </details>
     </fieldset>
-    {error && <p ref={validation.summaryRef} tabIndex={-1} role="alert" className="plan-field-error">{error}</p>}
+    {error && <Feedback ref={validation.summaryRef} tabIndex={-1} error>{error}</Feedback>}
     {conflicts.length > 0 && <section aria-label="Items needing date changes" className="plan-panel">
       <h2>Resolve item dates first</h2>
       <p>Your plan and item dates have not changed. Open the affected items in a new tab, edit or clear their pickup date overrides, then retry this form. Your draft stays here.</p>
@@ -113,8 +122,8 @@ export default function PlanForm({ initialPlan, onSave, focusPickupTimeZone = fa
       </li>)}</ul>
     </section>}
     <div className="plan-actions">
-      <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Create plan'}</button>
+      <button type="submit" className="ui-button" disabled={busy}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Create plan'}</button>
       <Link to={editing ? `/app/plans/${initialPlan.id}` : '/app/plans'}>Cancel</Link>
     </div>
-  </form>;
+  </Surface>;
 }

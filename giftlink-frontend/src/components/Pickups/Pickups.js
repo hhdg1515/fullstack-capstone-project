@@ -9,6 +9,7 @@ import { useUnsavedForm } from '../../forms/UnsavedChanges';
 import useFormErrors from '../../forms/useFormErrors';
 import PickupConversation from './PickupConversation';
 import PickupScheduling, { PickupTime, SchedulingEvent } from './PickupScheduling';
+import { pickupMinimum, pastPickupSelection } from '../../forms/pickupTime';
 
 export const pickupLabels = { pending: 'Awaiting giver decision', accepted: 'Accepted appointment', declined: 'Declined', cancelled: 'Cancelled', completed: 'Handed over', no_show: 'Receiver did not arrive' };
 const actionLabels = { accept: 'Accept pickup', decline: 'Decline request', cancel: 'Cancel request', complete: 'Confirm handoff', no_show: 'Record no-show' };
@@ -34,6 +35,7 @@ export function RequestPickup() {
     event.preventDefault(); if (busy) return; validation.reset();
     const issues = {};
     if (!localDateTime) issues.localDateTime = 'Choose a pickup date and time in the giver’s timezone.';
+    else if (pastPickupSelection(localDateTime, item.pickupTimeZone)) issues.localDateTime = 'Choose a future pickup time in the giver’s timezone.';
     if (Array.from(note.trim()).length > 500) issues.note = 'Use at most 500 characters.';
     if (Object.keys(issues).length) { validation.show(issues); return; }
     setBusy(true);
@@ -54,7 +56,7 @@ export function RequestPickup() {
         <p>Choose a local date from {item.availableFrom || 'today'} through {item.effectiveAvailableUntil}. Listings still expire at the end of that UTC date; late local appointments beyond that cutoff cannot be booked.</p>
         <fieldset disabled={busy}><legend className="visually-hidden">Appointment details</legend>
           <div className="plan-field"><label htmlFor="pickup-time">Pickup date and time</label>
-            <input id="pickup-time" name="localDateTime" type="datetime-local" step="60" required value={localDateTime} onChange={event => { setTime(event.target.value); validation.clear('localDateTime'); }} {...validation.fieldProps('localDateTime', 'pickup-zone-help')} />
+            <input id="pickup-time" name="localDateTime" type="datetime-local" step="60" min={pickupMinimum(item.pickupTimeZone)} required value={localDateTime} onChange={event => { setTime(event.target.value); validation.clear('localDateTime'); }} {...validation.fieldProps('localDateTime', 'pickup-zone-help')} />
             {errors.localDateTime && <p id="localDateTime-error" className="plan-field-error">{errors.localDateTime}</p>}
             <small id="pickup-zone-help">Local time in <strong>{item.pickupTimeZone}</strong>, selected by the giver. Your browser timezone is not used. Times skipped or repeated by daylight saving must be avoided.</small></div>
           <div className="plan-field"><label htmlFor="pickup-note">Coordination note (optional, private)</label><textarea id="pickup-note" name="note" {...validation.fieldProps('note')} maxLength={500} value={note} onChange={event => { setNote(event.target.value); validation.clear('note'); }} />
