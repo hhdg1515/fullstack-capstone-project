@@ -731,3 +731,14 @@ badge/read receipt, polling, new conversation entity, persistent draft, message
 attachment or retention change is implemented. Review/merge prerequisites remain
 **#49 → #50 → #51 → #52 → #53 → #54 → #55 → #56 → #57**;
 nothing is merged or deployed automatically.
+
+## Milestone 6.4E: integrated MVP acceptance
+
+The [acceptance report and actual desktop/mobile evidence](docs/milestone-6.4e-acceptance.md)
+review merged 6.4A–6.4D with independent giver/requester sessions, real local APIs,
+disposable replica sets and the production frontend build. The
+[human testing checklist](docs/milestone-6.4e-human-checklist.md) gives local startup
+and two-session steps. Known validation/form-layout debt and public-launch gates
+remain explicit; local/normal CI success is not hosted or production readiness.
+No feature, dependency, schema, provider configuration or remote data change is
+part of this acceptance package.

@@ -1,0 +1,13 @@
+{
+  "scope": "production (--omit=dev)",
+  "result": "completed",
+  "vulnerabilities": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "note": "Read-only npm audit snapshot. Counts are time/service-sensitive package-tree advisories, not validated exploitable browser vulnerabilities. No dependencies were changed."
+}

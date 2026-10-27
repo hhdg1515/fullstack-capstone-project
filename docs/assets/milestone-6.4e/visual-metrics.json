@@ -1,0 +1,30 @@
+[
+  {
+    "width": 1440,
+    "route": "/app/register",
+    "formWidth": 279.984375,
+    "inputHeight": 38,
+    "buttonHeight": 40
+  },
+  {
+    "width": 1440,
+    "route": "/app/login",
+    "formWidth": 432,
+    "inputHeight": 44,
+    "buttonHeight": 44
+  },
+  {
+    "width": 320,
+    "route": "/app/register",
+    "formWidth": 224,
+    "inputHeight": 38,
+    "buttonHeight": 40
+  },
+  {
+    "width": 320,
+    "route": "/app/login",
+    "formWidth": 288,
+    "inputHeight": 44,
+    "buttonHeight": 44
+  }
+]

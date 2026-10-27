@@ -1,0 +1,111 @@
+{
+  "project": "desktop",
+  "browser": "154.0.8037.57",
+  "views": [
+    {
+      "view": "landing",
+      "width": 1440,
+      "violations": []
+    },
+    {
+      "view": "region-selection",
+      "width": 1440,
+      "violations": []
+    },
+    {
+      "view": "empty-region",
+      "width": 1440,
+      "violations": []
+    },
+    {
+      "view": "login",
+      "width": 1440,
+      "violations": []
+    },
+    {
+      "view": "registration",
+      "width": 1440,
+      "violations": []
+    },
+    {
+      "view": "plan-setup",
+      "width": 1440,
+      "violations": []
+    },
+    {
+      "view": "publication-validation",
+      "width": 1440,
+      "violations": []
+    },
+    {
+      "view": "inventory",
+      "width": 1440,
+      "violations": []
+    },
+    {
+      "view": "discovery",
+      "width": 1440,
+      "violations": []
+    },
+    {
+      "view": "filtered-discovery",
+      "width": 1440,
+      "violations": []
+    },
+    {
+      "view": "listing-detail",
+      "width": 1440,
+      "violations": []
+    },
+    {
+      "view": "pending-request",
+      "width": 1440,
+      "violations": []
+    },
+    {
+      "view": "accepted-request",
+      "width": 1440,
+      "violations": []
+    },
+    {
+      "view": "conversation",
+      "width": 1440,
+      "violations": []
+    },
+    {
+      "view": "time-proposal",
+      "width": 1440,
+      "violations": []
+    },
+    {
+      "view": "closed-history",
+      "width": 1440,
+      "violations": []
+    },
+    {
+      "view": "recoverable-error",
+      "width": 1440,
+      "violations": []
+    },
+    {
+      "view": "reflow-tablet",
+      "width": 768,
+      "violations": []
+    },
+    {
+      "view": "reflow-mobile390",
+      "width": 390,
+      "violations": []
+    },
+    {
+      "view": "reflow-mobile375",
+      "width": 375,
+      "violations": []
+    },
+    {
+      "view": "reflow-text200",
+      "width": 640,
+      "violations": []
+    }
+  ]
+}
