@@ -10,6 +10,23 @@ PRs. New branches stack navigation/status → conversation → scheduling/regres
 each targeting its direct predecessor. Retarget to main only after prerequisites
 merge; no merge or deployment is authorized by this work.
 
+| PR | Branch | Review base | Scope |
+| --- | --- | --- | --- |
+| [#49](https://github.com/hhdg1515/fullstack-capstone-project/pull/49) | `codex/m64b-publication-form` | `main` | Publication and item creation |
+| [#50](https://github.com/hhdg1515/fullstack-capstone-project/pull/50) | `codex/m64b-plan-timezone` | #49 | Plan timezone |
+| [#51](https://github.com/hhdg1515/fullstack-capstone-project/pull/51) | `codex/m64b-inventory-status` | #50 | Inventory cards and statuses |
+| [#52](https://github.com/hhdg1515/fullstack-capstone-project/pull/52) | `codex/m64c-geographic-coverage` | #51 | Geographic coverage |
+| [#53](https://github.com/hhdg1515/fullstack-capstone-project/pull/53) | `codex/m64c-discovery-layout` | #52 | Location-first discovery |
+| [#54](https://github.com/hhdg1515/fullstack-capstone-project/pull/54) | `codex/m64c-discovery-cards` | #53 | Public cards and recovery |
+| [#55](https://github.com/hhdg1515/fullstack-capstone-project/pull/55) | `codex/m64d-pickup-navigation` | #54 | Request navigation and status |
+| [#56](https://github.com/hhdg1515/fullstack-capstone-project/pull/56) | `codex/m64d-conversation-ui` | #55 | Conversation presentation and recovery |
+| [#57](https://github.com/hhdg1515/fullstack-capstone-project/pull/57) | `codex/m64d-scheduling-ux` | #56 | Scheduling integration and final regression |
+
+Eventual merge order is **#49 → #50 → #51 → #52 → #53 → #54 → #55 → #56 → #57**.
+Confirm each prerequisite is merged, retarget the next PR to `main`, and review its
+remaining diff and CI before owner-approved merging. No prerequisite PR was edited
+by 6.4D. Immutable-head normal CI results are linked from each 6.4D PR.
+
 ## Architecture and running-app audit (before implementation)
 
 Read design-system, 6.4 audit/roadmap, communication and rescheduling contracts,
@@ -234,9 +251,10 @@ relabeled. Intermediate navigation/conversation evidence remains in their PRs.
 ## Verification, limits and rollback
 
 Backend **303 tests**, frontend **322 tests / 17 suites**, backend lint, strict
-production build and **56 policy tests** pass. Full browser and immutable-head CI
-results are recorded in the PRs; the final suite includes all original 28 and six
-additional local desktop/mobile scenarios. actionlint/whitespace and relative
+production build and **56 policy tests** pass. The final isolated local HTTPS
+browser suite passes **34/34 scenarios**, including all original 28 and six
+additional desktop/mobile scenarios. Immutable-head normal CI results are linked
+from the PRs. actionlint/whitespace and relative
 document links are checked. No backend service/router/DTO, index definition,
 identity/CSRF, geography/taxonomy, inventory transaction, hosted policy/cleanup,
 provider or workflow configuration changed. All 16 gifts are byte-identical.

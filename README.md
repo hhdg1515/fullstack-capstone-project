@@ -729,5 +729,5 @@ Chat and scheduling drafts remain independent through conflicts and closure.
 also documents the explicitly deferred server-backed unread design. No unread
 badge/read receipt, polling, new conversation entity, persistent draft, message
 attachment or retention change is implemented. Review/merge prerequisites remain
-**#49 → #50 → #51 → #52 → #53 → #54 → #55 → #56 → scheduling/regression PR**;
+**#49 → #50 → #51 → #52 → #53 → #54 → #55 → #56 → #57**;
 nothing is merged or deployed automatically.
