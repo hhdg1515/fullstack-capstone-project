@@ -325,28 +325,32 @@ Each plan can now have any number of incremental items, including zero. Plan edi
 
 ## Inventory workflow and item API
 
-From plan detail choose **Manage items** (`/app/plans/:id/items`). Enter only an item name, then **Save draft & add another** or **Publish & add another**. The name resets and regains focus for quick repeated entry. Optional category and item-type selectors use the household catalog. Description (2,000 characters), optional condition and pickup dates remain collapsed initially. Names allow 1–160 characters and may describe grouped belongings or multiple identical objects. Only name is required; legacy category text is preserved and never overwritten by the new form.
+From plan detail choose **Manage items** (`/app/plans/:id/items`). **Save Draft** needs only an item name. **Publish** requires a name, canonical category, matching item type and nonblank description (at most 2,000 characters), enforced on the server. Condition is optional. Names allow 1–160 characters and may describe a group. New items inherit the plan deadline; Available from remains optional. Existing item end overrides are preserved and editable under **Pickup end override**; there is no creation-time end field or reset button. After creation the blank form stays ready for another item and refocuses its name. Existing items remain above it.
 
-The inventory shows each state, effective date window, status filtering, and cleared/total progress. Progress counts item records/groups, rather than the number of physical objects inside a group. Unlisting does not count as clearing. Actions use confirmation prompts; editing a live listing confirms its immediate public change. A failed save retains the draft. Stale versions request an inventory reload rather than overwriting another tab's change. Refreshing an open edit asks for confirmation and replaces outdated values with current saved details before adopting a newer version. No normal action deletes records. Clearance reasons are not collected in this milestone.
+Cards use Draft, Posted, Reserved, Hidden, Expired and Cleared. **Picked Up** requires a verified completed handoff for this clearance; accepted appointments and manual clearance cannot claim collection. Old ambiguous clearance remains Cleared. These presentation labels do not change stored states. Incomplete drafts offer **Complete listing**; edits can publish atomically. **Hide listing** withdraws without clearance progress. Manual **Mark as cleared** and **Reopen as draft** are under labeled More actions, with confirmations; no records are deleted. Clearance progress still counts item records/groups, including verified completed pickups, rather than objects inside a group.
+
+Failed saves preserve drafts; stale versions require review/reload. Existing unsaved-draft protection, competing-write prevention and reservation-cancellation confirmations remain. Configured pickup timezone is shown once at plan level, with an accessible correction disclosure in Edit Plan. No per-item timezone is entered.
 
 | Item field | Meaning |
 | --- | --- |
 | `_id`, `planId`, `ownerId` | ObjectIds; server derives the owner and verifies the owned parent for every management operation. Items cannot be moved between plans through the API. |
-| `categoryId`, `itemTypeId`, `condition` | Optional controlled classification IDs, separate from legacy category text. Partial edits validate the resulting category/type relationship. |
-| `name`, `description`, `category` | Required free-text name and optional plain-text description/tag. Unknown fields, markup, control characters, and ownership/location/price spoofing are rejected. |
+| `categoryId`, `itemTypeId`, `condition` | Category and matching type are required to publish; condition stays optional. Drafts/legacy edits may remain unclassified. Original category text is preserved; partial edits validate the resulting tuple. |
+| `name`, `description`, `category` | Name required; description required for new publication; legacy category text preserved. Unknown fields, markup, control characters and ownership/location/price spoofing are rejected. |
 | `availableFrom`, `availableUntil` | Optional `YYYY-MM-DD` strings or `null`. Empty fields become `null`; shared location/deadline are never duplicated. |
 | `status` | Stored lifecycle state; the API additionally derives expiry from the effective latest pickup date on every read. |
 | `createdAt`, `updatedAt`, `publishedAt` | Server timestamps. `publishedAt` starts as `null` and records the first explicit publication; relisting retains it. It is separate from pickup dates. |
 | `version` | Owner-facing optimistic concurrency version, required for edits/actions. Not exposed in public DTOs. |
+| `publicationRequirementsVersion` | Server-only version set on successful publication; private responses expose only `requiresPublicationDetails`. Existing unmarked posts remain ordinarily editable; explicit republication adopts current requirements. |
+| `clearedByPickupRequestId` | Server-only provenance set by new existing handoff completions and removed on reopen/manual clearance. Private inventory returns only verified `isPickedUp`; no request/participant references enter public APIs. |
 
-Effective earliest pickup is the explicit `availableFrom`, or **immediately** when omitted. Effective latest pickup is `availableUntil`, or the current plan deadline when omitted. Validate an explicit start against the effective end, and require `end <= plan deadline`. Publishing/reopening additionally requires `end >= today (UTC)`. The end date is inclusive. Historical drafts, withdrawn items and cleared items can retain past dates for recordkeeping. All date inputs remain calendar strings and use the existing UTC comparison policy.
+Effective earliest pickup is the explicit `availableFrom`, or **immediately** when omitted. Effective latest pickup is `availableUntil`, or the current plan deadline when omitted. Validate an explicit start against the effective end, and require `end <= plan deadline`. Publishing/reopening additionally requires `end >= today (UTC)`. The end date is inclusive. Historical drafts, withdrawn items and cleared items can retain past dates for recordkeeping. All date inputs remain calendar strings and use the existing UTC comparison policy. New start selections cannot be past dates; unchanged historical starts remain editable/publishable while the effective end remains valid. Today is allowed even after midnight; an omitted start means immediately. These dates are not pickup instants.
 
 Future pickup starts do not delay publication: a published listing is offered now, with its future pickup window clearly displayed. `publishedAt` means first public visibility, not a pickup appointment. Date-only discovery retains UTC comparisons; explicit appointment timezones are described below.
 
 | State/action | Behavior |
 | --- | --- |
 | Create draft | Private; defaults to `draft`. Can be edited or cleared. |
-| Publish/relist | Draft, unlisted, or expired → `available`, after date/policy checks and verification that the plan is active. |
+| Publish/relist | Draft, unlisted, or expired → `available`, after required-detail/date/policy checks and verification that the plan is active. |
 | Unlist | Available/expired → `unlisted` immediately; no reason required, no progress increment. |
 | Mark cleared | Any non-cleared state → `cleared`; public visibility ends and clearance progress increases. Any external clearance channel is allowed. |
 | Reopen as draft | Cleared → private `draft`, after valid-current-date checks. Progress decreases; publish separately when ready. |
@@ -358,7 +362,7 @@ Editing an expired item's dates keeps it expired until explicit publication. A p
 | --- | --- |
 | `GET /api/move-out-plans/:planId/items` | Private plan context, items and `{ total, cleared }` progress. |
 | `POST /api/move-out-plans/:planId/items` | `{ name, description?, category?, categoryId?, itemTypeId?, condition?, availableFrom?, availableUntil?, publish? }` → `201 { item }`. `publish` is an explicit boolean intent; default false. |
-| `PATCH /api/move-out-plans/:planId/items/:id` | Partial item details plus numeric `version` → `{ item }`. No ownership, status, price or shared-location changes. |
+| `PATCH /api/move-out-plans/:planId/items/:id` | Partial item details plus numeric `version` and optional boolean `publish` → `{ item }`. `publish:true` completes details and publishes an eligible draft/hidden/expired item atomically. No ownership, arbitrary status, price or shared-location changes. |
 | `POST /api/move-out-plans/:planId/items/:id/actions` | `{ action: "publish" | "unlist" | "clear" | "reopen", version }` → `{ item }`. |
 | `GET /api/items` | Anonymous filtered, sorted and cursor-paginated discovery; see below. |
 | `GET /api/items/locations` | Public city/neighborhood options, derived exclusively from visible listings. |
@@ -663,3 +667,13 @@ and My Plans in a dependent PR; remaining screens and business rules are preserv
 [Before/after evidence and verification](docs/milestone-6.4a-verification.md) use
 disposable local data. No hosted verification,
 deployment or provider/database preparation is authorized by these changes.
+
+
+## Milestone 6.4B: listing and inventory refinement
+
+See the [behavior audit, publication compatibility, timezone/status model and
+actual desktop/mobile evidence](docs/milestone-6.4b-listing-inventory.md). Normal
+CI and disposable local HTTPS checks cover this change; no hosted E2E, remote
+migration/index preparation, manual deployment or provider change is performed.
+New publication clients must supply complete details. Legacy stored posts remain
+readable/editable and no region/category/timezone is guessed or migrated.

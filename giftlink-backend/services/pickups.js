@@ -128,7 +128,7 @@ function createPickupService({ connectToDatabase, now = () => new Date() }) {
                 row.history.push({ action: state, actorId: userId, actorRole: giver ? 'giver' : 'receiver', at });
                 await db.collection('pickupRequests').replaceOne({ _id: row._id }, row, { session });
                 if (action === 'complete') {
-                    await db.collection('items').updateOne({ _id: item._id }, { $set: { status: 'cleared', updatedAt: at }, $inc: { version: 1 } }, { session });
+                    await db.collection('items').updateOne({ _id: item._id }, { $set: { status: 'cleared', updatedAt: at, clearedByPickupRequestId: row._id }, $inc: { version: 1 } }, { session });
                     await db.collection('pickupRequests').updateMany({ itemId: item._id, active: true }, {
                         $set: { status: 'cancelled', active: false, cancelledAt: at, updatedAt: at, cancellationReason: 'item_handed_over' },
                         $unset: { rescheduleProposal: '' },

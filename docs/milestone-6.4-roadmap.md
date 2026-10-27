@@ -1,6 +1,8 @@
 # Milestone 6.4B–6.4E proposal
 
-This is a reviewable backlog, **not implemented scope**. Each phase gets small
+The B proposal below is superseded by the focused [6.4B implementation](milestone-6.4b-listing-inventory.md),
+including required publication details while name-only drafts remain supported.
+C–E remain a reviewable backlog, **not implemented scope**. Each phase gets small
 PRs and the existing CI; no remote operation follows automatically. Build on the
 [audit](milestone-6.4-design-audit.md) and [shared vocabulary](design-system.md).
 Do not change inventory/request state machines as a side effect of styling.
