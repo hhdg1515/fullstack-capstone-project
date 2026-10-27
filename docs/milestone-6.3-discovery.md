@@ -52,7 +52,8 @@ deployed, remotely seeded/prepared or verified through hosted E2E in this task.
 `GET /api/regions` serves the one canonical static catalog in backend
 `data/us-regions.json`; React consumes it rather than maintaining another region
 list. It contains all 50 states and DC (two-digit Census/state FIPS IDs, USPS codes
-and separate display labels) and 12 explicitly curated five-digit CBSA metro IDs.
+and separate display labels) and initially 12 curated five-digit CBSA metro IDs; the additive
+[6.4C directory expansion](geographic-directory.md) supplies 50 at the same vintage.
 Membership comes from the official Census CitySDK snapshot, not guessed city
 names: [2021 metros](https://github.com/uscensusbureau/citysdk/blob/fc5d7880529fedcde181269fc5d518767221281e/v2/GeoJSON/20m/2021/metropolitan-statistical-area!micropolitan-statistical-area.json)
 and [2022 states](https://github.com/uscensusbureau/citysdk/blob/fc5d7880529fedcde181269fc5d518767221281e/v2/GeoJSON/20m/2022/state.json).
@@ -89,9 +90,10 @@ with a clear warning that the plan will not appear in regional discovery.
 `GET /api/item-taxonomy` supplies six household category groups, their controlled
 item types and four optional conditions. IDs are stable slugs; display labels and
 a small explicit search-term list live in backend `data/item-taxonomy.json`.
-Category and type are optional (Uncategorized / Not specified); Other Household
+Category and type are optional on drafts and historical posts; 6.4B requires
+complete classification/description on explicit publication. Other Household
 → Other is the explicit fallback. Condition is independently optional: Like New,
-Good, Fair, or For Parts / Repair. Only the item name remains required.
+Good, Fair, or For Parts / Repair. Name-only draft creation remains supported.
 
 Native items may store `categoryId`, `itemTypeId` and `condition`. The old
 `category` string is retained unchanged, including unmapped legacy values. The

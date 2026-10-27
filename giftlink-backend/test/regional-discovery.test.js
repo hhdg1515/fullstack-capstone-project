@@ -51,6 +51,23 @@ describe('region-first discovery on verified disposable MongoDB', function () {
         for (const stateId of ['41', '53']) assert.equal((await get({ stateId, metroId: '38900' }).expect(200)).body.total, 2);
         await get({ stateId: '06', metroId: '38900' }).expect(400);
     });
+    it('discovers new cross-state metros through every member with exact combined-filter counts and private DTOs', async function () {
+        for (const [metroId, states] of [['37980', ['42', '34', '10', '24']], ['28140', ['29', '20']], ['17140', ['39', '21', '18']]]) {
+            const original = parent;
+            const plans = states.map(stateId => Object.assign({}, original, { _id: new ObjectId(), stateId, metroId }));
+            await db.collection('moveOutPlans').insertMany(plans);
+            await db.collection('items').insertMany(plans.map(plan => item({ planId: plan._id })));
+            for (const stateId of states) {
+                const body = (await get({ stateId, metroId, q: 'couch', categoryId: 'living-room', itemTypeId: 'sofa', condition: 'good', limit: '1' }).expect(200)).body;
+                assert.equal(body.total, states.length); assert.equal(body.items.length, 1); assert.equal(body.page.hasMore, true);
+                assert.equal(body.items[0].metroId, metroId); assert.ok(states.includes(body.items[0].stateId));
+                for (const field of ['ownerId', 'accountId', 'planId', 'email']) assert.equal(body.items[0][field], undefined);
+            }
+        }
+        assert.deepEqual(await db.collection('moveOutPlans').findOne({ _id: parent._id }), parent);
+        assert.equal((await get({ stateId: '15', metroId: '46520' }).expect(200)).body.total, 0);
+        await get({ stateId: '06', metroId: '37980' }).expect(400);
+    });
     it('combines category, type, condition, literal text and explicit sofa/couch synonyms', async function () {
         await db.collection('items').insertMany([item(), item({ name: 'Office table', categoryId: 'office-lighting', itemTypeId: 'desk', condition: 'fair' }),
             item({ name: 'Couch for reading', categoryId: null, itemTypeId: null }), item({ name: 'Box [kitchen]', description: '', categoryId: null, itemTypeId: null })]);
