@@ -38,7 +38,7 @@ describe('transactional pickup rescheduling on verified disposable MongoDB', fun
         for (const collection of ['pickupMessages', 'pickupRequests', 'items', 'moveOutPlans']) await db.collection(collection).deleteMany({});
         plan = (await write(request(app).post('/api/move-out-plans')).set('Cookie', giver.cookie)
             .send({ moveOutDeadline: day(30), city: 'Oakland', neighborhood: 'Temescal', pickupTimeZone: 'UTC' }).expect(201)).body.plan;
-        item = (await write(request(app).post('/api/move-out-plans/' + plan.id + '/items')).set('Cookie', giver.cookie).send({ name: 'Local desk', publish: true }).expect(201)).body.item;
+        item = (await write(request(app).post('/api/move-out-plans/' + plan.id + '/items')).set('Cookie', giver.cookie).send({ categoryId: "other-household", itemTypeId: "other", description: "A household item for local pickup.", name: 'Local desk', publish: true }).expect(201)).body.item;
         clock = new Date();
         const create = async user => (await write(request(app).post('/api/pickup-requests')).set('Cookie', user.cookie)
             .send({ itemId: item.id, localDateTime: day(2) + 'T12:00', timeZone: 'UTC' }).expect(201)).body.request;
@@ -100,7 +100,7 @@ describe('transactional pickup rescheduling on verified disposable MongoDB', fun
         clock = new Date('2030-03-01T00:00:00Z');
         const zonePlan = (await write(request(app).post('/api/move-out-plans')).set('Cookie', giver.cookie)
             .send({ moveOutDeadline: '2030-12-01', city: 'Oakland', neighborhood: 'Temescal', pickupTimeZone: 'America/Los_Angeles' }).expect(201)).body.plan;
-        const zoneItem = (await write(request(app).post('/api/move-out-plans/' + zonePlan.id + '/items')).set('Cookie', giver.cookie).send({ name: 'DST desk', publish: true }).expect(201)).body.item;
+        const zoneItem = (await write(request(app).post('/api/move-out-plans/' + zonePlan.id + '/items')).set('Cookie', giver.cookie).send({ categoryId: "other-household", itemTypeId: "other", description: "A household item for local pickup.", name: 'DST desk', publish: true }).expect(201)).body.item;
         let row = (await write(request(app).post('/api/pickup-requests')).set('Cookie', receiver.cookie)
             .send({ itemId: zoneItem.id, localDateTime: '2030-03-15T12:00', timeZone: 'America/Los_Angeles' }).expect(201)).body.request;
         row = (await act(row, 'accept').expect(200)).body.request;

@@ -36,7 +36,7 @@ test('participants negotiate confirmed pickup times without losing chat or bypas
     a.on('dialog', dialog => { dialogs++; return accept ? dialog.accept() : dialog.dismiss(); }); b.on('dialog', dialog => dialog.accept());
     if (testInfo.project.name === 'mobile') { await a.setViewportSize({ width: 320, height: 800 }); await b.setViewportSize({ width: 320, height: 800 }); }
     const { plan } = await post(giver, '/api/move-out-plans', { city: 'Oakland', neighborhood: 'Temescal', pickupTimeZone: 'UTC', moveOutDeadline: day(14) });
-    const { item } = await post(giver, '/api/move-out-plans/' + plan.id + '/items', { name: 'Scheduling desk', publish: true });
+    const { item } = await post(giver, '/api/move-out-plans/' + plan.id + '/items', { categoryId: "other-household", itemTypeId: "other", description: "A household item for local pickup.", name: 'Scheduling desk', publish: true });
     let { request } = await post(receiver, '/api/pickup-requests', { itemId: item.id, localDateTime: day(2) + 'T12:00', timeZone: 'UTC' });
     request = (await post(giver, '/api/pickup-requests/' + request.id + '/actions', { action: 'accept', version: request.version })).request;
     const initial = request.proposedAt, root = '/api/pickup-requests/' + request.id;

@@ -39,7 +39,7 @@ export default function Inventory() {
     setBusy(true);
     try {
       await confirmPickupChanges(item ? `${root}/${item.id}` : root, { method: item ? 'PATCH' : 'POST',
-        body: item ? { ...details, version: item.version } : { ...details, publish } });
+        body: item ? { ...details, version: item.version, publish } : { ...details, publish } });
       committed?.();
       setMessage(item ? 'Item saved.' : publish ? 'Item published. Add another below.' : 'Draft saved. Add another below.');
       setAdding(!item); setEditor(null); setSequence(value => value + 1); request.retry();
@@ -58,7 +58,7 @@ export default function Inventory() {
     } catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
   };
-  return <main className="plans-page inventory-page">
+  return <main className="plans-page ui-page inventory-page">
     <JourneyNav journey="give" planId={planId} />
     <Link to={`/app/plans/${planId}`}>Back to plan</Link><h1>Plan inventory</h1>
     <button className="btn btn-outline-secondary" disabled={busy || request.loading} onClick={() => {

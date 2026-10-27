@@ -17,7 +17,7 @@ test('giver distinguishes requests for the same item and reviews the selected ap
   try {
     const giver = await account('Giver'); const alex = await account('Alex'); const sam = await account('Sam');
     const { plan } = await post(giver, '/api/move-out-plans', { city: 'Oakland', neighborhood: 'Temescal', pickupTimeZone: 'UTC', moveOutDeadline: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10) });
-    const { item } = await post(giver, '/api/move-out-plans/' + plan.id + '/items', { name: 'Shared desk', publish: true });
+    const { item } = await post(giver, '/api/move-out-plans/' + plan.id + '/items', { categoryId: "other-household", itemTypeId: "other", description: "A household item for local pickup.", name: 'Shared desk', publish: true });
     const date = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
     const requests = [];
     for (const [context, time, note] of [[alex, '11:00', 'Library entrance'], [sam, '12:00', 'Cafe entrance']]) {

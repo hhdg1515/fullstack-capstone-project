@@ -42,14 +42,14 @@ const formReady = async () => {
   return input;
 };
 const name = value => fireEvent.change(screen.getByLabelText('Item name'), { target: { value } });
-const submitDraft = () => fireEvent.submit(screen.getByRole('button', { name: 'Save draft & add another' }).closest('form'));
+const submitDraft = () => fireEvent.submit(screen.getByRole('button', { name: 'Save Draft' }).closest('form'));
 
 test('inventory loads an empty plan with inherited location/deadline and a name-only quick entry', async () => {
   mount(); await formReady();
   expect(screen.getByText(/No items yet/)).toBeInTheDocument();
   expect(screen.getByText('0 of 0 items cleared')).toBeInTheDocument();
   expect(screen.getByText(/Temescal, Oakland/)).toBeInTheDocument();
-  expect(screen.getByLabelText('Category (optional)')).not.toBeRequired();
+  expect(screen.getByLabelText('Category')).not.toBeRequired();
   expect(screen.queryByLabelText('City')).not.toBeInTheDocument();
   expect(screen.queryByLabelText(/price|address|dimensions|brand/i)).not.toBeInTheDocument();
 });
@@ -70,7 +70,7 @@ test.each([null, 'UTC', undefined])('pickup setup uses the server value %s witho
   if (zone === null) {
     expect(screen.getByRole('link', { name: 'Set pickup timezone' })).toHaveAttribute('href', `/app/plans/${plan.id}/edit`);
     expect(screen.getByText(/still save drafts and publish/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Publish & add another' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled();
   } else if (zone === undefined) expect(screen.getByRole('link', { name: 'Check pickup setup' })).toBeInTheDocument();
   else expect(screen.queryByRole('link', { name: /pickup (timezone|setup)/ })).not.toBeInTheDocument();
 });
@@ -99,7 +99,10 @@ test('publish entry sends explicit publication intent and does not confuse it wi
   };
   mount(); await formReady(); name(item.name);
   fireEvent.change(screen.getByLabelText('Available from (optional)'), { target: { value: date(5) } });
-  fireEvent.click(screen.getByRole('button', { name: 'Publish & add another' }));
+  fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'living-room' } });
+  fireEvent.change(screen.getByLabelText('Item type'), { target: { value: 'sofa' } });
+  fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'A comfortable sofa.' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
   expect(await screen.findByText('Item published. Add another below.')).toBeInTheDocument();
   expect(await screen.findByRole('link', { name: 'Public listing' })).toBeInTheDocument();
 });
@@ -109,8 +112,7 @@ test('client rejects invalid availability ranges and empty names without sending
   expect(screen.getByText('Give this item or group a name of 1–160 characters.')).toBeInTheDocument();
   expect(screen.getByLabelText('Item name')).toHaveFocus();
   name('Chairs');
-  fireEvent.change(screen.getByLabelText('Available from (optional)'), { target: { value: date(10) } });
-  fireEvent.change(screen.getByLabelText('Available until (optional)'), { target: { value: date(5) } });
+  fireEvent.change(screen.getByLabelText('Available from (optional)'), { target: { value: date(21) } });
   submitDraft(); expect(screen.getByLabelText('Available from (optional)')).toHaveFocus();
   expect(screen.getByText('Choose a start date on or before the end date.')).toBeInTheDocument();
   expect(screen.getByLabelText('Available from (optional)')).toHaveAccessibleDescription('Choose a start date on or before the end date.');
@@ -167,9 +169,11 @@ test('editing and clearing date overrides uses PATCH and preserves the plan asso
     expect(body.planId).toBeUndefined(); expect(body.ownerId).toBeUndefined();
     const updated = { ...item, name: body.name, version: 2 }; data = inventory([updated]); return reply(200, { item: updated });
   };
-  mount(`${root.replace('/api/move-out-plans', '/app/plans')}?edit=${item.id}`); await screen.findByRole('button', { name: 'Save changes' });
-  name('Two boxes'); fireEvent.click(screen.getByRole('button', { name: 'Use plan availability' }));
-  fireEvent.submit(screen.getByRole('button', { name: 'Save changes' }).closest('form'));
+  mount(`${root.replace('/api/move-out-plans', '/app/plans')}?edit=${item.id}`); await screen.findByRole('button', { name: 'Save Draft' });
+  name('Two boxes');
+  fireEvent.change(screen.getByLabelText('Available from (optional)'), { target: { value: '' } });
+  fireEvent.change(screen.getByLabelText('Available until (optional)'), { target: { value: '' } });
+  fireEvent.submit(screen.getByRole('button', { name: 'Save Draft' }).closest('form'));
   expect(await screen.findByRole('heading', { name: 'Two boxes' })).toBeInTheDocument();
 });
 test('stale actions show an error and let the owner reload authoritative state', async () => {
@@ -182,7 +186,7 @@ test('stale actions show an error and let the owner reload authoritative state',
 });
 test('refreshing an outdated edit replaces its values before adopting the new version', async () => {
   data = inventory([item]);
-  mount(`/app/plans/${plan.id}/items?edit=${item.id}`); await screen.findByRole('button', { name: 'Save changes' });
+  mount(`/app/plans/${plan.id}/items?edit=${item.id}`); await screen.findByRole('button', { name: 'Save Draft' });
   name('Outdated unsaved draft');
   data = inventory([{ ...item, name: 'Changed in another tab', version: 2 }]);
   fireEvent.click(screen.getByRole('button', { name: 'Refresh inventory' }));
@@ -237,11 +241,11 @@ test('date validation keeps calendar boundaries and does not treat publication t
   expect(availabilityError({ availableFrom: '2027-02-29', availableUntil: '' }, plan)).toMatch(/real calendar/);
 });
 
-test('server validation opens optional item details and focuses the affected control after the failed save', async () => {
+test('server validation focuses the affected control after the failed save', async () => {
   handler = async () => reply(400, { error: { message: 'Check item details', fields: [{ field: 'condition', message: 'Choose a listed condition.' }] } });
   mount(); await formReady(); name('Desk'); submitDraft();
   await waitFor(() => expect(screen.getByLabelText('Condition (optional)')).toHaveFocus());
-  expect(screen.getByLabelText('Condition (optional)').closest('details')).toHaveAttribute('open');
+  expect(screen.getByLabelText('Condition (optional)')).toBeVisible();
   expect(screen.getByLabelText('Condition (optional)')).toHaveAccessibleDescription('Choose a listed condition.');
   expect(screen.getByLabelText('Item name')).toHaveValue('Desk');
   expect(screen.getByRole('alert')).not.toHaveTextContent('condition:');

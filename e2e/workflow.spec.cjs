@@ -98,15 +98,19 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     await a.getByLabel('State', { exact: true }).selectOption('06');
     await a.getByLabel('Metro area', { exact: true }).selectOption('41860');
     await a.getByRole('button', { name: 'Create plan', exact: true }).click(); await a.getByRole('link', { name: 'Manage items', exact: true }).click();
+    const planId = new URL(a.url()).pathname.split('/')[3];
     await test.step('Giver login and plan creation verified', async () => {});
     const itemIds = [];
     for (const [label, days] of [['desk', 3], ['chair', 5], ['lamp', 4]]) {
       await a.getByLabel('Item name', { exact: true }).fill(prefix + ' ' + label);
-      await a.getByText('Optional description, condition and pickup dates', { exact: true }).click();
-      await a.getByLabel('Available until (optional)', { exact: true }).fill(day(deployment.now() + days * 86400000));
-      await a.getByRole('button', { name: 'Publish & add another', exact: true }).click();
-      const card = a.getByRole('heading', { name: prefix + ' ' + label, exact: true }).locator('..'); await card.getByRole('link', { name: 'Public listing', exact: true }).waitFor();
+      await a.getByLabel('Category', { exact: true }).selectOption('other-household');
+      await a.getByLabel('Item type', { exact: true }).selectOption('other');
+      await a.getByLabel('Description', { exact: true }).fill(prefix + ' household item for pickup.');
+      await a.getByRole('button', { name: 'Publish', exact: true }).click();
+      const card = a.getByRole('heading', { name: prefix + ' ' + label, exact: true }).locator('xpath=ancestor::li[1]'); await card.getByRole('link', { name: 'Public listing', exact: true }).waitFor();
       itemIds.push((await card.getByRole('link', { name: 'Public listing', exact: true }).getAttribute('href')).split('/').pop());
+      const bounded = await giver.request.patch('/api/move-out-plans/' + planId + '/items/' + itemIds[itemIds.length - 1], { maxRedirects: 0, headers: { Origin: deployment.origin, 'X-CSRF-Protection': '1' }, data: { version: 1, availableUntil: day(deployment.now() + days * 86400000) } });
+      must(bounded.ok(), 'Owned fixture pickup override failed');
     }
     await expect(a.getByText('0 of 3 items cleared', { exact: true })).toBeVisible();
     // Existing public limit/cursor parameters exercise real UI pagination with

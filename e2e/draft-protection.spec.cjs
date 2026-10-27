@@ -29,7 +29,7 @@ test('dirty forms survive declined navigation, native reload and local editor ca
     accept = false; await page.getByRole('button', { name: 'Edit Desk', exact: true }).click(); await expect(name).toHaveValue('Unfinished box');
     accept = true; await page.getByRole('button', { name: 'Edit Desk', exact: true }).click(); await expect(name).toHaveValue('Desk');
     await name.fill('Edited desk'); accept = false; await page.getByRole('button', { name: 'Cancel edit', exact: true }).click(); await expect(name).toHaveValue('Edited desk');
-    accept = true; await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+    accept = true; await page.getByRole('button', { name: 'Save Draft', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Edited desk', exact: true })).toBeVisible();
     const count = dialogs.length; await page.getByRole('link', { name: 'Back to plan', exact: true }).click();
     await expect(page.getByRole('link', { name: 'Manage items', exact: true })).toBeVisible(); expect(dialogs.length).toBe(count);
