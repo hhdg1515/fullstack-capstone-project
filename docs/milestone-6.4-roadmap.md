@@ -4,7 +4,8 @@ The B proposal below is superseded by the focused [6.4B implementation](mileston
 including required publication details while name-only drafts remain supported.
 C is implemented in the focused [6.4C discovery stack](milestone-6.4c-discovery.md).
 D is implemented in the [pickup coordination stack](milestone-6.4d-pickup-experience.md).
-E remains a reviewable backlog, **not implemented scope**. Each phase gets small
+E has a [local acceptance package and human checklist](milestone-6.4e-acceptance.md),
+including known UX debt and unresolved public-launch gates. Each phase gets small
 PRs and the existing CI; no remote operation follows automatically. Build on the
 [audit](milestone-6.4-design-audit.md) and [shared vocabulary](design-system.md).
 Do not change inventory/request state machines as a side effect of styling.

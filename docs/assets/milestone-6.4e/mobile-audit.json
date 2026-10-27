@@ -1,0 +1,91 @@
+{
+  "project": "mobile",
+  "browser": "154.0.8037.57",
+  "views": [
+    {
+      "view": "landing",
+      "width": 320,
+      "violations": []
+    },
+    {
+      "view": "region-selection",
+      "width": 320,
+      "violations": []
+    },
+    {
+      "view": "empty-region",
+      "width": 320,
+      "violations": []
+    },
+    {
+      "view": "login",
+      "width": 320,
+      "violations": []
+    },
+    {
+      "view": "registration",
+      "width": 320,
+      "violations": []
+    },
+    {
+      "view": "plan-setup",
+      "width": 320,
+      "violations": []
+    },
+    {
+      "view": "publication-validation",
+      "width": 320,
+      "violations": []
+    },
+    {
+      "view": "inventory",
+      "width": 320,
+      "violations": []
+    },
+    {
+      "view": "discovery",
+      "width": 320,
+      "violations": []
+    },
+    {
+      "view": "filtered-discovery",
+      "width": 320,
+      "violations": []
+    },
+    {
+      "view": "listing-detail",
+      "width": 320,
+      "violations": []
+    },
+    {
+      "view": "pending-request",
+      "width": 320,
+      "violations": []
+    },
+    {
+      "view": "accepted-request",
+      "width": 320,
+      "violations": []
+    },
+    {
+      "view": "conversation",
+      "width": 320,
+      "violations": []
+    },
+    {
+      "view": "time-proposal",
+      "width": 320,
+      "violations": []
+    },
+    {
+      "view": "closed-history",
+      "width": 320,
+      "violations": []
+    },
+    {
+      "view": "recoverable-error",
+      "width": 320,
+      "violations": []
+    }
+  ]
+}

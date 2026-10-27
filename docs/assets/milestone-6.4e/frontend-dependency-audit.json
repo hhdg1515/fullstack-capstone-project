@@ -1,0 +1,13 @@
+{
+  "scope": "full package tree",
+  "result": "completed",
+  "vulnerabilities": {
+    "info": 0,
+    "low": 112,
+    "moderate": 170,
+    "high": 93,
+    "critical": 11,
+    "total": 386
+  },
+  "note": "Read-only npm audit snapshot. Counts are time/service-sensitive package-tree advisories, not validated exploitable browser vulnerabilities. No dependencies were changed."
+}
