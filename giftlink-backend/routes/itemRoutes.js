@@ -18,7 +18,7 @@ function itemRules(editing) {
     rules.push(body('publish').optional().isBoolean().custom(value => typeof value === 'boolean'));
     return validate(['name', 'description', 'category', 'categoryId', 'itemTypeId', 'condition', 'availableFrom', 'availableUntil', 'publish'].concat(editing ? ['version', 'confirmCancelRequests'] : []), rules, editing);
 }
-function createItemRoutes({ connectToDatabase, auth, discoveryLimit = 120 }) {
+function createItemRoutes({ connectToDatabase, auth, discoveryLimit = 120, imageMetadata = null, imageControlLimit = 20 }) {
     const service = createInventoryService({ connectToDatabase });
     const discovery = createDiscoveryService({ connectToDatabase });
     const privateRouter = express.Router({ mergeParams: true });
@@ -27,6 +27,8 @@ function createItemRoutes({ connectToDatabase, auth, discoveryLimit = 120 }) {
         next();
     });
     privateRouter.param('itemId', (req, res, next, value) => id(value) ? next() : errorResponse(res, 404, 'ITEM_NOT_FOUND', 'Item or plan not found'));
+    if (imageMetadata) privateRouter.use('/:itemId/images', require('./itemImageRoutes')({ connectToDatabase,
+        configuration: imageMetadata, controlLimit: imageControlLimit }));
     privateRouter.get('/', async (req, res, next) => {
         try { res.json(await service.list(req.user._id, req.params.planId)); } catch (error) { next(error); }
     });

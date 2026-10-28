@@ -174,6 +174,7 @@ The tool rechecks the live target and accounts before creating:
 - Non-unique `items` indexes on `{ planId: 1, ownerId: 1, createdAt: 1, _id: 1 }` and `{ status: 1, publishedAt: -1, _id: -1 }` for management and public discovery.
 - Non-unique `items_pickup_start` on `{ status: 1, availableFrom: 1, publishedAt: -1, _id: -1 }` for pickup-start filtering during discovery.
 - Four `pickupRequests` indexes: `pickup_received` on `{ giverId: 1, _id: -1 }`, `pickup_sent` on `{ receiverId: 1, _id: -1 }`, unique `pickup_one_accepted` on `{ itemId: 1 }` **only where `status: "accepted"`**, and unique `pickup_active_receiver` on `{ itemId: 1, receiverId: 1 }` **only where `active: true`**. Exact partial predicates and binary collation are checked on startup/preparation; a broader/different predicate is incompatible.
+- Four `itemImages` indexes listed in the [B2 preparation notes](docs/milestone-6.5b2-photo-metadata.md#configuration-and-guarded-preparation). Explicit preparation includes these regardless of runtime configuration; startup requires them only when metadata is explicitly enabled. Disabled startup still requires every pre-B2 index above and needs no photo schema change.
 
 Equivalent existing indexes, including ones with different names, are retained. Repeated initialization is safe. Incompatible names, keys, uniqueness, sparse/partial/collation settings, or TTL values block preparation; the command never drops indexes or changes them with `collMod`. It never normalizes, deletes, merges, or claims accounts. Resolve email/index conflicts through a separately reviewed migration with backups and authorized access; the report intentionally does not identify private accounts. A missing/blank/non-string email is an invalid-email conflict. Other existing email syntax is not automatically revalidated or repaired.
 
@@ -750,3 +751,29 @@ use an official, digest-pinned **SeaweedFS** fixture; MinIO is banned. Future
 production storage remains private **Cloudflare R2**, with no remote activation.
 See [B1 setup, isolation and verification status](docs/milestone-6.5b1-storage.md)
 and the [artifact/security review](docs/milestone-6.5b1-seaweedfs-review.md).
+
+## Owner photo metadata and quotas (6.5B2)
+
+[B2 API, schema, quota and rollout notes](docs/milestone-6.5b2-photo-metadata.md)
+describe the metadata-only foundation. Owner endpoints default **off** behind
+`ITEM_IMAGE_METADATA_ENABLED=false`. Reservations never upload/process files or
+make images ready; no photo UI or public/binary image endpoint exists.
+
+**Safe disabled rollout:** when `ITEM_IMAGE_METADATA_ENABLED` is unset or `false`,
+startup checks all 12 previously required application indexes and does not inspect
+`itemImages` indexes. Existing databases need no photo schema change to run with
+metadata disabled. Startup remains read-only; metadata routes and storage stay off.
+
+**Before enabling metadata:** prepare all four compatible `itemImages` indexes
+using the existing `db:prepare` dry-run and exact database/environment/fingerprint
+approval. Explicit preparation always checks the complete registry, regardless of
+the feature flag. Enabled startup fails closed on missing/incompatible photo
+indexes. Remote preparation requires separate owner approval; this change performs
+no Atlas or R2 operations. Enabling metadata never enables binary uploads.
+
+`npm --prefix giftlink-backend run test:images` runs owner authorization,
+idempotency, quotas, expiry, ordering and two-instance transaction tests on an
+owned disposable local replica set. Normal `npm test` and CI include them and the
+unchanged B1 real SeaweedFS contracts. Pilot quotas are provisional ceilings,
+not approved production limits; B3 processing and B4 physical cleanup remain
+deferred.
