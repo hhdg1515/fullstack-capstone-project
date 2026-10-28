@@ -5,7 +5,10 @@
 and [implementation/test roadmap](milestone-6.5-implementation-roadmap.md).
 All thresholds except the approved five-photo maximum are proposed starting
 values, to be reviewed with implementation/measurement. R2 remains private;
-Docker MinIO remains disposable/local with its maintenance gate.
+The owner-approved B1 amendment replaces local MinIO with **disposable
+SeaweedFS for local development/CI only**. MinIO remains banned; private R2
+remains the future production provider. The [restricted artifact profile](milestone-6.5b1-seaweedfs-review.md)
+does not change any image authorization, quota, processing or deletion rule.
 
 ## Authorization policy
 

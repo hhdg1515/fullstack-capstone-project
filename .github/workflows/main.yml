@@ -35,10 +35,10 @@ jobs:
       - name: Lint backend
         run: npm run lint
 
-      - name: Verify Docker is available for isolated MongoDB tests
+      - name: Verify Docker is available for isolated MongoDB and SeaweedFS tests
         run: docker info
 
-      - name: Run backend API, identity, plan, inventory, discovery, pickups, and database preparation tests
+      - name: Run backend API, private storage contracts, and database preparation tests
         run: npm test
 
   client_build:

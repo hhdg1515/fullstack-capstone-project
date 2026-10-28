@@ -5,7 +5,7 @@
 [Architecture/API/schema/references](milestone-6.5-photo-architecture.md) and
 [privacy/quota/cleanup rules](milestone-6.5-security-and-lifecycle.md) are the
 implementation contract proposed for review, not shipped functionality. The
-approved R2/MinIO/five-photo/optional-publication/WebP/ordering decisions are not
+approved R2/SeaweedFS/five-photo/optional-publication/WebP/ordering decisions are not
 reopened. No item photos are uploaded, stored or displayed in 6.5A.
 
 ## Verification boundary and prerequisites
@@ -14,22 +14,25 @@ Repository audit located the existing native-driver plan transaction, item and
 public DTO boundaries, JSON-only CSRF middleware, hosted handler, quotas and local
 test/cleanup guards. Official publisher sources at pinned commits validate the
 4.5 MB Vercel server-upload constraint, Sharp orientation/metadata/timeout APIs,
-R2 S3 limitations/consistency/presigning/pricing and MinIO maintenance status.
+R2 S3 limitations/consistency/presigning/pricing and the original MinIO maintenance blocker.
 The architecture reference appendix distinguishes accessible official source from
 unavailable live documentation sites. Exact host memory/duration/concurrency/
 response limits and native processing performance are **not verified**.
 
-No Sharp/S3 dependency was installed; no MinIO container was created; no R2
+In the original 6.5A design PR, no Sharp/S3 dependency was installed; no local
+storage container was created; no R2
 request, upload benchmark, decoded-image/EXIF test or cloud compatibility test is
 claimed. Those are mandatory implementation acceptance gates below. Existing
 application regression CI does not prove a future image implementation secure.
 
-Before B1 runs a local storage fixture, review a pinned MinIO image/source build,
-vulnerabilities and licensing/maintenance disposition: its official community
-repository is archived/source-only and legacy binaries are unmaintained. Preserve
-the approved disposable Docker MinIO choice; do not silently substitute a
-different vendor, paid AIStor or real R2. Report a blocker if no acceptable local
-artifact is available. No new credential needs to be pasted into chat or a PR.
+**Owner-approved B1 amendment:** replace MinIO with SeaweedFS only for
+isolated local development/CI; private Cloudflare R2 remains the production
+choice. MinIO's unresolved signature bypass is not accepted or patched silently.
+B1 now has its own [official artifact/security/provenance review](milestone-6.5b1-seaweedfs-review.md)
+and [implementation/evidence status](milestone-6.5b1-storage.md). The original
+6.5A checks above describe that design-only PR; they do not certify later B1 code.
+Future fixture/image upgrades must repeat the review and native S3 contracts.
+No AIStor, vendor switch or real R2 access is implied.
 
 ## Small implementation PRs and merge order
 
@@ -44,7 +47,7 @@ pass; do not deploy an incomplete upload path. Photos stay optional throughout.
 
 | PR | Focus / proposed new files | Existing files to modify | Review acceptance |
 | --- | --- | --- | --- |
-| B1 | Private S3 adapter + endpoint isolation; **new** `services/item-image-storage.js`, `test/helpers/isolated-minio.js`, storage contract tests | `config.js`, later `runtime.js`/`app-factory.js` dependency injection; package/lock only for reviewed modular SDK | MinIO-only tests; private bucket; explicit credential resolution, no remote fallback, bounded I/O and one PUT/key; failure injection; no live upload route |
+| B1 | Private S3 adapter + endpoint isolation; **new** `services/item-image-storage.js`, `test/helpers/isolated-seaweedfs.js`, storage contract tests | `config.js`, later `runtime.js`/`app-factory.js` dependency injection; package/lock only for reviewed modular SDK | SeaweedFS-only tests; private bucket; explicit credential resolution, no remote fallback, bounded I/O and one PUT/key; failure injection; no live upload route |
 | B2 | Metadata/policy/account usage + reservations, versions, safe serializers; **new** `services/item-images.js`, `services/item-image-policy.js`, `routes/itemImageRoutes.js`, native-driver tests | `routes/itemRoutes.js` nested photo router under validated owner item scope, `services/inventory.js` plan boundary/additive imageRevision preservation, `services/identity.js` serializer regression, `services/database-indexes.js`, preparation tests | Atomic five-slot/account quotas across plans/instances on `users.itemImageQuota`; idempotent intent/status; strict references; registry dry-run/repeat/conflict tests; still no enabled binary route |
 | B3 | Strict intake/decode/variants and authenticated binary reads; **new** `services/item-image-processing.js` and media validation tests | `middleware/identity.js` narrow content-type exception, `app-factory.js`, image routes, config, reviewed Sharp dependency/lock | Session/Origin/CSRF before parsing; strict raster corpus; orientation/GPS removal; bounded output/CPU; proxy permission matrix; no public keys/originals; feature still disabled until B4 |
 | B4 | Durable delete/compensation/reconcile; **new** `util/reconcile-item-images.js`, crash/cleanup tests | Image service/storage tests, lint script's explicit util/test list, local setup docs | Guarded dry-run/apply and receipt/manifest controls; partial/unknown PUT and killed-worker races; no early accounting refund; verified object absence; operator recovery procedure |
@@ -52,7 +55,7 @@ pass; do not deploy an incomplete upload path. Photos stay optional throughout.
 | C2 | Owner reorder/cover/delete and independent draft recovery | ItemPhotos/transport tests, `forms/UnsavedChanges.js` **reuse**, no blanket rewrite | Up/down/Make cover/Delete native controls, stale revisions, explicit discard and lost-response status recovery; no item-form draft reset/localStorage |
 | D1 | Public cover/gallery and inventory thumbnail; **new** small `ItemImage`/`ItemGallery` components | `services/discovery.js` bounded enrichment after page/count, `services/inventory.js` optional cover serialization, `PublicItemCard.js`, `PublicItems.js` + `validFeed`, `Inventory.js`, scoped styles/tests | Exact counts/cursors/owner behavior unchanged; safe relative app URLs/dimensions; 400px covers only, gallery display on demand; distinguish none from unavailable |
 | D2 | Request-detail thumbnail with independent photo access | `services/pickups.js` **serialize** only if a thumbnail DTO is needed; `Pickups.js` detail, image-policy tests | Closed conversation stays readable without inheriting private photos; no message attachments, archived copies, global inbox or state-machine changes |
-| E1 | Integrated photo/security/product acceptance and rollout review | Local-only browser specs, synthetic fixtures, docs, CI only where needed for MinIO prerequisites | Full two-account/native media + fault/cleanup suite; actual desktop/mobile/axe evidence; MinIO resource cleanup; current hosting/package verification gate and separate remote-approval checklist |
+| E1 | Integrated photo/security/product acceptance and rollout review | Local-only browser specs, synthetic fixtures, docs, CI only where needed for SeaweedFS prerequisites | Full two-account/native media + fault/cleanup suite; actual desktop/mobile/axe evidence; SeaweedFS resource cleanup; current hosting/package verification gate and separate remote-approval checklist |
 
 B2/B3/B4 may be retuned into smaller backend PRs if actual diff size requires it;
 do not ship quotas/cleanup “later” than the first usable upload path. There is no
@@ -131,7 +134,7 @@ and existing pickup/chat/rescheduling actions untouched.
 
 ## Mandatory local test plan
 
-Use actual MongoDB transactions and the reviewed disposable MinIO target, plus
+Use actual MongoDB transactions and the reviewed disposable SeaweedFS target, plus
 small synthetic raster/metadata fixtures that cannot be mistaken for real offered
 items. No private photographs, generated household-item mockups, real accounts,
 R2 connection, provider credential, public bucket or hosted run. Two independent
@@ -141,7 +144,7 @@ sharing the same owned local DB/store, not two independent counters.
 
 | Test group | Required cases / evidence |
 | --- | --- |
-| Target isolation | MinIO driver + literal loopback only; reject R2/external/DNS/tunnel/default AWS credentials even with a local DB; wrong container/image/run/bucket/namespace/process receipt; mutated DB/storage binding; no network fallback or broad resource cleanup |
+| Target isolation | SeaweedFS driver + literal loopback only; reject R2/external/DNS/tunnel/default AWS credentials even with a local DB; wrong container/image/run/bucket/namespace/process receipt; mutated DB/storage binding; no network fallback or broad resource cleanup |
 | Permission matrix | Anonymous/public/reserved detail; owner draft/hidden/expired/cleared; requester accepted/cancelled/declined/completed; invalid/expired sessions; nonexistent/deleted user/item/plan/request; image ownership/generation mismatch; generic denials and no private DTO data |
 | Session/CSRF/parser | Anonymous, wrong/missing Origin/header; JSON still mandatory on every other write; multipart allowed only exact content route/method; malformed boundaries/extra file/field/huge headers; oversize Content-Length/chunked/truncated body; no parser before auth/quota/admission |
 | Decode/content | Real JPEG/PNG/WebP vs fake MIME/extension; SVG/PDF/HTML/HEIF; JPEG/polyglot/trailing data; malformed PNG CRC/RIFF/chunks; APNG/animated WebP; zero/overflow dimensions, unsupported depth, pixel/decompression bombs and native timeout |
@@ -166,11 +169,11 @@ Extend `e2e/local.cjs` with an explicit injected local media fixture only for th
 new local photo specs. Do not enable media for a remote fixture through inherited
 env vars. Keep `e2e/fixtures.cjs` hosted gate and `policy.cjs`/`cleanup.cjs` budgets
 unchanged; existing cleanup cannot erase media safely. Local fixture `finally`
-closes app/SDK clients and removes only receipt-owned MinIO/MongoDB resources,
+closes app/SDK clients and removes only receipt-owned SeaweedFS/MongoDB resources,
 never an existing bucket/volume. Bound setup/shutdown time and output.
 
-Normal CI may add pinned local MinIO build/image preparation in a future B PR,
-without cloud credentials or hosted environment access. Run backend lint/all
+Normal B1 CI runs its native pinned SeaweedFS contracts through recursive backend
+tests, without cloud credentials or hosted environment access. Run backend lint/all
 integration/preparation tests, frontend suites, strict build, policy tests, full
 isolated HTTPS browser suite, axe, actionlint, whitespace and fixture integrity.
 Keep old assertions; do not skip privacy/fault tests to obtain green CI. E1 records
@@ -182,10 +185,10 @@ performed. Those remain human trial tasks.
 
 1. **6.5A review:** approve/adjust the proposed proxy, permission, byte/quota and
    lifecycle contract. Owner-approved storage/product choices remain fixed.
-   Review the MinIO maintenance finding and source-backed Vercel unknowns.
+   Review the approved SeaweedFS artifact restrictions and source-backed Vercel unknowns.
    Proposed pilot quotas may constrain a large move-out; review expected items/
    photos per day before treating these starting thresholds as launch settings.
-2. **Before local B fixture:** acceptable MinIO artifact/license/provenance and
+2. **Before local B fixture:** acceptable SeaweedFS artifact/license/provenance and
    security review; disposable target/SDK headers/conditional PUT contract tests.
    No real R2 needed for implementation or normal CI.
 3. **Before enabling first upload:** B1–B4 pass, including account quotas, physical
@@ -226,13 +229,13 @@ No rollback action or remote operation is executed by 6.5A.
 
 ## 6.5A checks and remaining limits
 
-This PR changes **only the three design documents**. Relevant local checks are
+The original 6.5A PR changed **only the three design documents**. Its local checks were
 backend lint, frontend regression/strict production build, deployment/E2E policy
 tests, actionlint, Markdown target/diagram review, whitespace and unchanged
 application/dependencies/workflows/16-gift integrity. Exact results and the normal
 CI run at the immutable PR head are recorded in its description. Normal CI's
 MongoDB/HTTPS regressions use disposable local resources; no hosted E2E or new
-MinIO/Sharp/R2 capability is certified by those pre-image tests.
+SeaweedFS/Sharp/R2 capability is certified by those pre-image tests.
 
 The design is implementation-ready subject to the explicit artifact/hosting/
 benchmark gates. Public docs sites were inaccessible; official GitHub publisher

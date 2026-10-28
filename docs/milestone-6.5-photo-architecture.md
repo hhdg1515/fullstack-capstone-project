@@ -2,14 +2,16 @@
 
 ## Status and decisions
 
-**Design only.** Baseline: remote main
+**Architecture/design record.** Original 6.5A baseline: remote main
 `f9ac7cd4a13f889a5ab3e75b9e625e160f6d8300`, including merged #58 and 6.4A–6.4E.
 The working tree was clean before creating `codex/m65a-photo-architecture`.
-No upload code, package, index, bucket, lifecycle rule, credential, provider
-configuration, database migration or deployment is added by this PR.
+The original design PR added no upload code, package, index, bucket, lifecycle
+rule, credential, provider configuration, database migration or deployment.
+The owner-approved B1 local-provider amendment is recorded below; its separate
+[implementation status](milestone-6.5b1-storage.md) does not enable item photos.
 
 Owner-approved requirements remain fixed: **private Cloudflare R2** in eventual
-production; **disposable Docker MinIO** locally; **five photos maximum** per item;
+production; **disposable Docker SeaweedFS** locally; **five photos maximum** per item;
 photos **optional** for publication; **400px thumbnail and 1280px display WebP**;
 first photo is cover, with owner reordering; owner deletion with physical cleanup;
 account quotas in the first implementation. AI/video are excluded. Thirty days
@@ -51,7 +53,7 @@ below are proposed files, not current commands or implemented APIs.
 | [`Pickups.js`](../giftlink-frontend/src/components/Pickups/Pickups.js) | Optional current-item thumbnail only when photo policy permits. Do not modify `PickupConversation`/`PickupScheduling` or store attachments in messages |
 | [`api/client.js`](../giftlink-frontend/src/api/client.js) | Existing helper JSON-stringifies writes and aborts after 15 seconds. Use a separate bounded FormData upload helper; do not send binary through this JSON helper or relax its existing contract |
 | [`UnsavedChanges.js`](../giftlink-frontend/src/forms/UnsavedChanges.js), [`primitives.js`](../giftlink-frontend/src/design-system/primitives.js) | Independent photo/file draft guard; Surface/Feedback/native buttons and focus. No localStorage private drafts or new UI framework |
-| [`isolated-mongo.js`](../giftlink-backend/test/helpers/isolated-mongo.js), [`e2e/local.cjs`](../e2e/local.cjs) | Owned Docker/process/loopback/empty DB checks and production-mode local HTTPS already work. Add a separate verified MinIO fixture; never infer that local MongoDB implies local storage |
+| [`isolated-mongo.js`](../giftlink-backend/test/helpers/isolated-mongo.js), [`e2e/local.cjs`](../e2e/local.cjs) | Owned Docker/process/loopback/empty DB checks and production-mode local HTTPS already work. Add a separate verified SeaweedFS fixture; never infer that local MongoDB implies local storage |
 | [`e2e/policy.cjs`](../e2e/policy.cjs), [`e2e/cleanup.cjs`](../e2e/cleanup.cjs), [`deployment/frontend-config.cjs`](../deployment/frontend-config.cjs) | Current hosted budgets/cleanup do not include image objects or photo quotas. Keep them unchanged. Preserve host-scoped `/api` proxy and production isolation; normal local media tests must not become hosted fixtures |
 
 The 16 `gifts` demo records and their existing `image` string field/legacy routes
@@ -69,7 +71,7 @@ flowchart LR
   API -->|Short retriable metadata transactions| Mongo[Native-driver MongoDB]
   API --> Processor[Strict decode / orientation / WebP]
   Processor -->|Only sanitized variants| Store[Private S3 adapter]
-  Store --> Local[Disposable MinIO]
+  Store --> Local[Disposable SeaweedFS]
   Store --> Future[Future private R2]
   Browser -->|Opaque app image URL| Read[Image proxy: recheck item + plan + image]
   Read --> Mongo
@@ -255,24 +257,24 @@ Proposed backend-only config (names are specifications, not new env settings):
 | Variable | Rule |
 | --- | --- |
 | `ITEM_IMAGES_ENABLED` | Default false; no storage client/network side effects while disabled |
-| `ITEM_IMAGE_STORAGE_DRIVER` | `minio-local` or `r2`; explicit, not inferred from credentials |
-| `ITEM_IMAGE_S3_ENDPOINT`, `ITEM_IMAGE_S3_BUCKET`, `ITEM_IMAGE_S3_REGION` | Verified exact target. R2 region `auto`; local MinIO uses its configured region/path style. Never defaults to AWS or a real account |
-| `ITEM_IMAGE_S3_ACCESS_KEY_ID`, `ITEM_IMAGE_S3_SECRET_ACCESS_KEY` | Backend secret store only; local credentials newly generated per run. No `REACT_APP_` secret, default MinIO password, URL credential, commit or CLI-log value |
+| `ITEM_IMAGE_STORAGE_DRIVER` | `seaweedfs-local` or `r2`; explicit, not inferred from credentials |
+| `ITEM_IMAGE_S3_ENDPOINT`, `ITEM_IMAGE_S3_BUCKET`, `ITEM_IMAGE_S3_REGION` | Verified exact target. R2 region `auto`; local SeaweedFS uses its configured region/path style. Never defaults to AWS or a real account |
+| `ITEM_IMAGE_S3_ACCESS_KEY_ID`, `ITEM_IMAGE_S3_SECRET_ACCESS_KEY` | Backend secret store only; local credentials newly generated per run. No `REACT_APP_` secret, default provider password, URL credential, commit or CLI-log value |
 | `ITEM_IMAGE_NAMESPACE`, `ITEM_IMAGE_STORAGE_ENVIRONMENT` | Separate development/staging/production binding; must match the expected application environment/receipt |
 | `ITEM_IMAGE_MAX_*`, `ITEM_IMAGE_DAILY_*` | Validated proposed caps from the security document, within hard ceilings; no unbounded/zero-means-unlimited production option |
 
 R2 runtime token must be restricted to the approved private bucket; separate
 administration credential remains outside the app. R2 is not AWS S3 feature-
 complete: its published compatibility matrix omits bucket ACL/policy/public-
-access-block APIs, and checksum algorithms differ. Do not copy MinIO IAM policy
+access-block APIs, and checksum algorithms differ. Do not copy SeaweedFS IAM policy
 calls or SDK automatic checksum assumptions to R2. Review request-checksum SDK
 defaults (including explicit WHEN_REQUIRED request/response checksum settings
 where supported); use supported Content-MD5 where appropriate plus our own SHA-256, and
 contract-test both configurations. No assumption of versioned-delete recovery.
 No public `r2.dev` domain/custom domain, cache or lifecycle rule is enabled.
 
-Local/CI requires **both** verified disposable MongoDB and a separately verified
-MinIO container: pinned reviewed image/build digest, random run labels/credentials,
+Integrated local/CI photo workflows require **both** verified disposable MongoDB and a separately verified
+SeaweedFS container: pinned reviewed image/build digest, random run labels/credentials,
 empty disposable storage, daemon/container/loopback mapping checks and a fresh
 random bucket/namespace receipt. Literal loopback endpoint only, no proxy/tunnel,
 arbitrary DNS, AWS credential chain, region redirect or external endpoint fallback.
@@ -280,15 +282,20 @@ Reject remote driver/endpoint even if the DB is local. Block non-loopback storag
 network calls in tests. Bind any console to loopback or do not publish it. Create
 the test bucket only after ownership verification; runtime never creates R2 buckets.
 Reuse only a matching owned local receipt, never somebody else's volume/bucket.
+Storage-only B1 contracts need no MongoDB connection.
 
-**MinIO maintenance gate:** the official repository is archived and its README
-says it is no longer maintained/source-only; old binaries receive no updates.
-Keep the approved MinIO local architecture, but do not treat `minio/minio:latest`
-as a maintained artifact. 6.5B must review a pinned build/image provenance,
-vulnerabilities and AGPL obligations, and record the owner's maintenance-risk
-disposition. Do not silently select AIStor, another product, a paid license or
-real R2. If no acceptable disposable local artifact is available, report that
-implementation blocker before provisioning; 6.5A does not run MinIO.
+**Local provider amendment — owner approved in 6.5B1:** SeaweedFS replaces
+MinIO **only for disposable local development and CI**. The archived MinIO
+Community source retains an unresolved authentication bypass and remains banned;
+AIStor and other vendors were not substituted. Eventual production remains
+**private Cloudflare R2**, requiring separate activation approval.
+
+B1 pins an official SeaweedFS artifact and checks its signature, source revision,
+license, dependency findings and exact S3 operations. Its restricted test profile
+is not a production security certification. See the
+[artifact review and observed compatibility](milestone-6.5b1-seaweedfs-review.md)
+and [B1 implementation/status](milestone-6.5b1-storage.md). Any new artifact,
+architecture or enabled service requires review; no floating tag or fallback.
 
 ## Vercel viability and alternatives
 
@@ -380,4 +387,6 @@ installed SDK/build/runtime certification.
   [auto orientation](https://github.com/lovell/sharp/blob/1ea0375ef20c94e0dc94f790bf1375bb8872642f/docs/src/content/docs/api-operation.md),
   [metadata/WebP/timeout behavior](https://github.com/lovell/sharp/blob/1ea0375ef20c94e0dc94f790bf1375bb8872642f/docs/src/content/docs/api-output.md),
   [cache/concurrency](https://github.com/lovell/sharp/blob/1ea0375ef20c94e0dc94f790bf1375bb8872642f/docs/src/content/docs/api-utility.md).
-- MinIO [official maintenance/distribution/license notice](https://github.com/minio/minio/blob/7aac2a2c5b7c882e68c1ce017d8256be2feea27f/README.md).
+- Historical MinIO [maintenance/distribution/license notice](https://github.com/minio/minio/blob/7aac2a2c5b7c882e68c1ce017d8256be2feea27f/README.md)
+  explains the rejected artifact. The owner-approved SeaweedFS local-only
+  replacement has its own [pinned source/signature/security review](milestone-6.5b1-seaweedfs-review.md).

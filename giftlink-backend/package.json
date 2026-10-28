@@ -12,13 +12,18 @@
     "seed": "node util/import-mongo/index.js",
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "db:prepare": "node util/prepare-database.js"
+    "db:prepare": "node util/prepare-database.js",
+    "test:storage": "mocha --timeout 180000 test/item-image-storage.test.js test/item-image-storage-contract.test.js --fail-zero",
+    "test:storage:unit": "mocha --timeout 10000 test/item-image-storage.test.js --fail-zero",
+    "test:storage:seaweedfs": "mocha --timeout 180000 test/item-image-storage-contract.test.js --fail-zero"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1158.0",
     "@js-temporal/polyfill": "0.5.1",
+    "@smithy/node-http-handler": "4.13.0",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",

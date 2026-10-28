@@ -742,3 +742,11 @@ and two-session steps. Known validation/form-layout debt and public-launch gates
 remain explicit; local/normal CI success is not hosted or production readiness.
 No feature, dependency, schema, provider configuration or remote data change is
 part of this acceptance package.
+
+## Private photo storage preparation (6.5B1)
+
+Photos remain disabled and the application is unchanged. Local S3 contracts now
+use an official, digest-pinned **SeaweedFS** fixture; MinIO is banned. Future
+production storage remains private **Cloudflare R2**, with no remote activation.
+See [B1 setup, isolation and verification status](docs/milestone-6.5b1-storage.md)
+and the [artifact/security review](docs/milestone-6.5b1-seaweedfs-review.md).
