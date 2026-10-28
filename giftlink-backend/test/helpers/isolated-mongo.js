@@ -2,13 +2,43 @@ const assert = require('node:assert/strict');
 const { execFile } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const { promisify } = require('node:util');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { createDatabase } = require('../../models/db');
 
 const execute = promisify(execFile);
 const image = 'mongo@sha256:4a4ab5d4834207389e0d7270fac988e21ffedccecba77991a552f755df229907';
 // A Docker archive can retain this verified x64 image without its repository digest.
 const snapshotImageId = 'sha256:09f940d01e0c09abbfd246a2b10965cbf86a87c9c1dad86b374f925a084976c8';
+// MongoDB 8.0.34's own rseq compatibility regression uses this allocator
+// selection on Linux >=6.19. Keep its startup safety check enabled. This affects
+// only the disposable container, never Atlas or the application environment.
+const allocatorProfile = 'glibc.pthread.rseq=1';
 const pause = () => new Promise(resolve => setTimeout(resolve, 200));
+
+function startupDiagnostic(container, logs = '') {
+    const state = container && container.State || {};
+    // Only this freshly provisioned, owned, still-empty fixture is inspected.
+    // Never forward MongoDB logs, host paths, process args or environment values.
+    const category = /"id"\s*:\s*12257600/.test(logs) ? 'kernel_rseq_incompatible' :
+        /AVX|illegal instruction|requires a CPU/i.test(logs) ? 'cpu_unsupported' :
+        /pthread_create|Resource temporarily unavailable|Cannot allocate memory|out of memory/i.test(logs) ? 'resource_limit' :
+        /Permission denied|Operation not permitted/i.test(logs) ? 'permissions_or_syscall' :
+        /Address already in use/i.test(logs) ? 'port_conflict' : 'startup_or_connectivity';
+    const events = [];
+    for (const line of logs.split('\n')) try {
+        const entry = JSON.parse(line);
+        if (Number.isSafeInteger(entry.id) && entry.id >= 0) events.push(entry.id);
+    } catch (ignored) { /* Never forward a raw line. */ }
+    return { category, running: state.Running === true, oomKilled: state.OOMKilled === true,
+        exitCode: Number.isInteger(state.ExitCode) ? state.ExitCode : null,
+        imageMatches: Boolean(container && container.Image === snapshotImageId), eventIds: events.slice(-12),
+        signatures: ['rseq', 'GLIBC', 'WiredTiger', 'InvalidOptions', 'BadValue', 'FileNotOpen', 'DBPathInUse', 'FileStreamFailed',
+            'NonExistentPath', 'SocketException', 'UnknownError', 'system_error', 'exception', 'Fatal'].filter(value => logs.includes(value)),
+        portPublished: Boolean(container && container.NetworkSettings && container.NetworkSettings.Ports &&
+            container.NetworkSettings.Ports['27017/tcp'] && container.NetworkSettings.Ports['27017/tcp'].length) };
+}
 
 async function docker(args) {
     return execute('docker', args, { timeout: 120000, maxBuffer: 1024 * 1024 });
@@ -23,6 +53,7 @@ async function createIsolatedMongo() {
     let containerId;
     let database;
     let imageId;
+    let receiptDirectory;
 
     async function inspectOwnedContainer() {
         const result = await docker(['inspect', containerId]);
@@ -43,6 +74,7 @@ async function createIsolatedMongo() {
                 await docker(['rm', '--force', '--volumes', containerId]);
                 containerId = undefined;
             }
+            if (receiptDirectory) { fs.rmSync(receiptDirectory, { recursive: true }); receiptDirectory = undefined; }
         }
     }
 
@@ -63,12 +95,14 @@ async function createIsolatedMongo() {
         const started = await docker([
             'run', '--detach', '--name', name,
             '--label', 'com.giftlink.test-run=' + runId,
+            '--env', 'GLIBC_TUNABLES=' + allocatorProfile,
             '--publish', '127.0.0.1::27017', imageId, '--bind_ip_all', '--replSet', 'giftlink-test'
         ]);
         containerId = started.stdout.trim();
         assert.match(containerId, /^[a-f0-9]{64}$/);
         const container = await inspectOwnedContainer();
         assert.equal(container.Image, imageId);
+        assert.deepEqual(container.Config.Env.filter(value => value.startsWith('GLIBC_TUNABLES=')), ['GLIBC_TUNABLES=' + allocatorProfile]);
         // Mongo's image creates disposable anonymous data volumes. No bind mount
         // or pre-existing named volume may be attached to the test container.
         assert.ok(container.Mounts.every(mount => mount.Type === 'volume' &&
@@ -117,11 +151,27 @@ async function createIsolatedMongo() {
             await pause();
         }
         assert.deepEqual(await db.listCollections().toArray(), []);
-        return { db, mongoUrl, dbName, close };
+        // Non-secret, mode-0600 identity evidence for separately invoked local
+        // maintenance. No URI, credentials, environment or remote target is saved.
+        const daemon = JSON.parse((await docker(['info', '--format', '{{json .}}'])).stdout);
+        const receipt = { version: 1, runId, containerId, containerName: name, imageId, allocatorProfile, dbName,
+            port: Number(ports[0].HostPort), processId: hello.topologyVersion.processId.toHexString(), daemonId: daemon.ID,
+            volumes: container.Mounts.map(mount => mount.Name).sort() };
+        receiptDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'moveout-mongo-receipt-'));
+        const receiptPath = path.join(receiptDirectory, 'receipt.json');
+        fs.writeFileSync(receiptPath, JSON.stringify(receipt), { mode: 0o600 });
+        return { db, mongoUrl, dbName, close, receiptPath };
     } catch (error) {
+        let diagnostic;
+        if (containerId) try {
+            const owned = await inspectOwnedContainer();
+            const logs = await docker(['logs', '--tail', '50', containerId]);
+            diagnostic = startupDiagnostic(owned, logs.stdout + logs.stderr);
+        } catch (ignored) { diagnostic = { category: 'owned_fixture_diagnostic_unavailable' }; }
         await close();
+        if (diagnostic) throw new Error('Isolated MongoDB fixture failed: ' + JSON.stringify(diagnostic));
         throw error;
     }
 }
 
-module.exports = { createIsolatedMongo };
+module.exports = { createIsolatedMongo, startupDiagnostic, snapshotImageId, allocatorProfile };

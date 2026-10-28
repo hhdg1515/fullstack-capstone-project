@@ -42,6 +42,19 @@ async function localEnvironment({ photos = false } = {}) {
     api = hosted.listen(0, '127.0.0.1'); await new Promise(resolve => api.once('listening', resolve));
     const target = await inspectTarget(isolated.db, await readPreparationTarget(env, true));
     return { origin, db: isolated.db, fingerprint: target.fingerprint, local: true, serverErrors,
+      ...(photos ? { reconcilePhotos: async () => {
+        if (process.env.E2E_APP_ORIGIN) throw Error('Photo maintenance is isolated local only');
+        const { openLocalMaintenance } = require(root + '/giftlink-backend/util/local-image-maintenance');
+        const { createLocalImageRecovery } = require(root + '/giftlink-backend/services/item-image-recovery');
+        const maintenance = await openLocalMaintenance({ mongoReceiptPath: isolated.receiptPath, storageReceiptPath: storage.receiptPath,
+          databaseName: isolated.dbName, environment: 'development', provider: 'seaweedfs-local', bucket: storage.receipt.bucket, namespace: storage.receipt.namespace });
+        try {
+          const preview = createLocalImageRecovery(maintenance); let manifest;
+          try { manifest = await preview.preview(); } finally { preview.close(); }
+          const apply = createLocalImageRecovery(maintenance);
+          try { return await apply.apply(manifest, { ...maintenance.identity, manifest: manifest.digest }); } finally { apply.close(); }
+        } finally { await maintenance.close(); }
+      } } : {}),
       now: () => clock === undefined ? Date.now() : clock, advance: value => { clock = value; }, setOnline: value => { online = value; },
       close: async () => { await new Promise(resolve => front.close(resolve)); await new Promise(resolve => api.close(resolve)); await hosted.close();
         if (imagePipeline) imagePipeline.close(); try { if (storage) await storage.close(); } finally { await isolated.close(); }
