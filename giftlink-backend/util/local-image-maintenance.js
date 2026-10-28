@@ -4,6 +4,7 @@ const { createDatabase } = require('../models/db');
 const { readPreparationTarget, inspectTarget } = require('./database-target');
 const { readPrivateJson } = require('./local-maintenance-receipt');
 const { openIsolatedSeaweedFS } = require('../test/helpers/isolated-seaweedfs');
+const { snapshotImageId, allocatorProfile } = require('../test/helpers/isolated-mongo');
 const execute = promisify(execFile);
 const host = process.platform === 'win32' ? 'npipe:////./pipe/docker_engine' : 'unix:///var/run/docker.sock';
 const fail = () => { throw new Error('Local maintenance target verification failed.'); };
@@ -24,9 +25,10 @@ async function openLocalMaintenance({ mongoReceiptPath, storageReceiptPath, data
         !/^[a-f0-9]{64}$/.test(receipt.containerId) || !/^[a-f0-9]{24}$/.test(receipt.processId) ||
         receipt.containerName !== 'giftlink-test-' + receipt.runId || receipt.dbName !== 'giftdb_test_' + receipt.runId ||
         databaseName !== receipt.dbName || !Number.isInteger(receipt.port) || receipt.port < 1024 || receipt.port > 65535 ||
+        receipt.allocatorProfile !== allocatorProfile ||
         !Array.isArray(receipt.volumes) || receipt.volumes.length !== 2 || !receipt.volumes.every(v => /^[a-f0-9]{64}$/.test(v)) ||
         bucket !== storageReceipt.bucket || namespace !== storageReceipt.namespace) fail();
-    const mongoImage = 'sha256:09f940d01e0c09abbfd246a2b10965cbf86a87c9c1dad86b374f925a084976c8';
+    const mongoImage = snapshotImageId;
     async function verifyContainer() {
         const results = await Promise.all([docker(['info', '--format', '{{json .}}']), docker(['inspect', receipt.containerId])]);
         const daemon = results[0], c = results[1][0];
@@ -34,6 +36,7 @@ async function openLocalMaintenance({ mongoReceiptPath, storageReceiptPath, data
             c.Image !== mongoImage || receipt.imageId !== mongoImage || !c.State.Running || c.HostConfig.Privileged ||
             c.Config.Labels['com.giftlink.test-run'] !== receipt.runId || c.HostConfig.Binds !== null ||
             JSON.stringify(c.Config.Cmd) !== JSON.stringify(['--bind_ip_all', '--replSet', 'giftlink-test']) ||
+            JSON.stringify(c.Config.Env.filter(value => value.startsWith('GLIBC_TUNABLES='))) !== JSON.stringify(['GLIBC_TUNABLES=' + allocatorProfile]) ||
             !c.Mounts.every(m => m.Type === 'volume' && receipt.volumes.includes(m.Name)) || c.Mounts.length !== 2 ||
             Object.keys(c.HostConfig.PortBindings).length !== 1 ||
             JSON.stringify(c.NetworkSettings.Ports['27017/tcp']) !== JSON.stringify([{ HostIp: '127.0.0.1', HostPort: String(receipt.port) }])) fail();

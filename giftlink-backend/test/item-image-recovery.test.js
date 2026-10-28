@@ -36,6 +36,7 @@ describe('isolated MongoDB startup diagnostics', function () {
             imageMatches: false, eventIds: [], signatures: [] });
         assert.ok(!/secret-sentinel|credentials|private/.test(JSON.stringify(result)));
         assert.equal(startupDiagnostic({}, 'pthread_create failed').category, 'resource_limit');
+        assert.equal(startupDiagnostic({}, '{"id":12257600,"msg":"secret-sentinel"}').category, 'kernel_rseq_incompatible');
     });
 });
 
@@ -98,6 +99,7 @@ describe('durable local physical image recovery on real MongoDB and SeaweedFS', 
         target = { mongoReceiptPath: mongo.receiptPath, storageReceiptPath: fixture.receiptPath, databaseName: mongo.dbName,
             environment: 'development', provider: 'seaweedfs-local', bucket: fixture.receipt.bucket, namespace: fixture.receipt.namespace };
         context = await openLocalMaintenance(target);
+        assert.equal(readPrivateJson(mongo.receiptPath).allocatorProfile, 'glibc.pthread.rseq=1');
         service = createItemImagesService({ connectToDatabase: async () => db, configuration: config });
         pipeline = createLocalItemImagePipeline({ connectToDatabase: async () => db, configuration: config, storageConfig: fixture.config });
         bytes = await sharp({ create: { width: 800, height: 600, channels: 3, background: '#387ab2' } }).png().toBuffer();

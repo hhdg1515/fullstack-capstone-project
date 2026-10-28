@@ -234,6 +234,35 @@ prune or delete resources by a prefix/name guess.
 
 ## Verification and remaining decisions
 
+### CI MongoDB kernel compatibility
+
+The first CI runs stopped in existing MongoDB fixture setup, before B4 or browser
+assertions. Sanitized diagnostics established: the **same pinned image** exited
+with code 1, no OOM, MongoDB event **12257600**. The runner reported Ubuntu's
+7.0.0-1017-azure kernel. The image is MongoDB **8.0.34**, whose default
+`GLIBC_TUNABLES=glibc.pthread.rseq=0` enables TCMalloc's incompatible per-CPU path.
+This was a startup safety refusal, not an application assertion or Atlas issue.
+
+MongoDB's [8.0.34 startup compatibility check](https://github.com/mongodb/mongo/blob/a1cb58fa746233febef0da3e8034533ed4320c22/src/mongo/db/startup_check_rseq.cpp)
+and [same-release regression](https://github.com/mongodb/mongo/blob/a1cb58fa746233febef0da3e8034533ed4320c22/jstests/noPassthrough/rseq_linux_compatibility/rseq_kernel_compatibility_check.js)
+demonstrate `GLIBC_TUNABLES=glibc.pthread.rseq=1` as the compatible allocator
+selection. The **disposable MongoDB container only** now sets that exact value:
+glibc owns rseq and TCMalloc uses its fallback. The original image digest,
+MongoDB startup guard, process/loopback/empty-database verification, replica-set
+transactions, storage fixture and all test assertions remain. No host sysctl,
+privilege, seccomp exception, runner/CI workflow, Atlas or application environment
+is changed. This is an allocator profile, not a production MongoDB recommendation
+or a bypass of MongoDB's kernel safety check.
+
+The local ownership receipt and reattachment verifier also bind/check this exact
+profile. Old fixture receipts without it are refused; use fresh owned fixtures,
+never alter an existing database or forge a receipt to adopt it. Failure diagnostics
+expose only bounded category/state, pinned-image match and numeric startup event
+IDs/allowlisted signatures; raw MongoDB logs, configuration and credentials are
+never forwarded. A regression verifies that private sentinels cannot escape.
+
+### Regression evidence
+
 `npm run test:images:recovery` uses a genuine disposable MongoDB replica set and
 the unchanged approved SeaweedFS image, actual Sharp outputs and real stored
 objects. Deterministic tests kill child processes before PUT/after permit/after

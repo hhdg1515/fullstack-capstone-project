@@ -11,13 +11,18 @@ const execute = promisify(execFile);
 const image = 'mongo@sha256:4a4ab5d4834207389e0d7270fac988e21ffedccecba77991a552f755df229907';
 // A Docker archive can retain this verified x64 image without its repository digest.
 const snapshotImageId = 'sha256:09f940d01e0c09abbfd246a2b10965cbf86a87c9c1dad86b374f925a084976c8';
+// MongoDB 8.0.34's own rseq compatibility regression uses this allocator
+// selection on Linux >=6.19. Keep its startup safety check enabled. This affects
+// only the disposable container, never Atlas or the application environment.
+const allocatorProfile = 'glibc.pthread.rseq=1';
 const pause = () => new Promise(resolve => setTimeout(resolve, 200));
 
 function startupDiagnostic(container, logs = '') {
     const state = container && container.State || {};
     // Only this freshly provisioned, owned, still-empty fixture is inspected.
     // Never forward MongoDB logs, host paths, process args or environment values.
-    const category = /AVX|illegal instruction|requires a CPU/i.test(logs) ? 'cpu_unsupported' :
+    const category = /"id"\s*:\s*12257600/.test(logs) ? 'kernel_rseq_incompatible' :
+        /AVX|illegal instruction|requires a CPU/i.test(logs) ? 'cpu_unsupported' :
         /pthread_create|Resource temporarily unavailable|Cannot allocate memory|out of memory/i.test(logs) ? 'resource_limit' :
         /Permission denied|Operation not permitted/i.test(logs) ? 'permissions_or_syscall' :
         /Address already in use/i.test(logs) ? 'port_conflict' : 'startup_or_connectivity';
@@ -90,12 +95,14 @@ async function createIsolatedMongo() {
         const started = await docker([
             'run', '--detach', '--name', name,
             '--label', 'com.giftlink.test-run=' + runId,
+            '--env', 'GLIBC_TUNABLES=' + allocatorProfile,
             '--publish', '127.0.0.1::27017', imageId, '--bind_ip_all', '--replSet', 'giftlink-test'
         ]);
         containerId = started.stdout.trim();
         assert.match(containerId, /^[a-f0-9]{64}$/);
         const container = await inspectOwnedContainer();
         assert.equal(container.Image, imageId);
+        assert.deepEqual(container.Config.Env.filter(value => value.startsWith('GLIBC_TUNABLES=')), ['GLIBC_TUNABLES=' + allocatorProfile]);
         // Mongo's image creates disposable anonymous data volumes. No bind mount
         // or pre-existing named volume may be attached to the test container.
         assert.ok(container.Mounts.every(mount => mount.Type === 'volume' &&
@@ -147,7 +154,7 @@ async function createIsolatedMongo() {
         // Non-secret, mode-0600 identity evidence for separately invoked local
         // maintenance. No URI, credentials, environment or remote target is saved.
         const daemon = JSON.parse((await docker(['info', '--format', '{{json .}}'])).stdout);
-        const receipt = { version: 1, runId, containerId, containerName: name, imageId, dbName,
+        const receipt = { version: 1, runId, containerId, containerName: name, imageId, allocatorProfile, dbName,
             port: Number(ports[0].HostPort), processId: hello.topologyVersion.processId.toHexString(), daemonId: daemon.ID,
             volumes: container.Mounts.map(mount => mount.Name).sort() };
         receiptDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'moveout-mongo-receipt-'));
@@ -167,4 +174,4 @@ async function createIsolatedMongo() {
     }
 }
 
-module.exports = { createIsolatedMongo, startupDiagnostic };
+module.exports = { createIsolatedMongo, startupDiagnostic, snapshotImageId, allocatorProfile };
