@@ -777,3 +777,27 @@ owned disposable local replica set. Normal `npm test` and CI include them and th
 unchanged B1 real SeaweedFS contracts. Pilot quotas are provisional ceilings,
 not approved production limits; B3 processing and B4 physical cleanup remain
 deferred.
+
+## Secure local photo pipeline (6.5B3)
+
+The [B3 implementation, security review and measurements](docs/milestone-6.5b3-image-pipeline.md)
+cover real JPEG/PNG/static WebP intake, Sharp sanitization, fenced two-variant
+storage/finalization and current-authorized GET/HEAD. All production binary routes
+remain disabled: `ITEM_IMAGE_PIPELINE_ENABLED=true` is refused until B4 acceptance.
+Only a live-verified disposable local SeaweedFS configuration can inject the
+pipeline for tests. Metadata flags do not activate uploads or photo delivery.
+
+From the repository root, with Node 22 and a local Linux/amd64 Docker engine:
+
+```sh
+npm --prefix giftlink-backend run test:images:pipeline
+npm --prefix giftlink-backend run test:images:resources
+```
+
+Tests own their MongoDB/SeaweedFS resources and clean them using existing receipt
+guards. Resource probes generate images in memory and perform no DB/S3 writes.
+The existing CI runs all backend/native contracts and the full local HTTPS suite,
+including two-account browser photo isolation; hosted photo fixtures are refused.
+No photo UI, public bucket, R2 configuration, cleanup/retention job or launch
+activation is included. **B4 physical deletion, compensation and recovery remain
+mandatory before real users can upload.**

@@ -62,7 +62,7 @@ function validOperation(row) {
     for (const name of ['thumbnail', 'display']) {
         const v = row.variants[name];
         if (!fields(v, ['key', 'outcome', 'byteLength', 'sha256', 'width', 'height', 'contentType']) || v.key !== variantKey(row, name) ||
-            !['not_started', 'unknown', 'stored', 'rejected', 'deleted'].includes(v.outcome) || v.contentType !== 'image/webp') return false;
+            !['not_started', 'prepared', 'unknown', 'stored', 'rejected', 'deleted'].includes(v.outcome) || v.contentType !== 'image/webp') return false;
         if (v.outcome === 'not_started') {
             if (![v.byteLength, v.sha256, v.width, v.height].every(value => value === null)) return false;
         } else if (!integer(v.byteLength) || v.byteLength < 1 || v.byteLength > ceiling[name + 'Bytes'] || !hash(v.sha256) ||

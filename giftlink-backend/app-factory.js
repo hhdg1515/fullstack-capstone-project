@@ -16,11 +16,13 @@ const { requestDiagnostics } = require('./middleware/diagnostics');
 
 function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', secureCookies = false,
     sessionTtlSeconds = 28800, authLimit = 30, discoveryLimit = 120, pickupNow, messageLimit,
-    imageMetadata = null, imageControlLimit = 20, logger = require('./logger') }) {
+    imageMetadata = null, imageControlLimit = 20, imagePipeline = null, logger = require('./logger') }) {
     const app = express();
+    const pipeline = imagePipeline ? require('./services/item-image-pipeline').pipelineBinding(imagePipeline, imageMetadata) : null;
     const identity = createIdentityService({ connectToDatabase, sessionTtlSeconds });
-    const auth = createIdentityMiddleware({ identity, appOrigin, secureCookies, sessionTtlSeconds });
-    const items = createItemRoutes({ connectToDatabase, auth, discoveryLimit, imageMetadata, imageControlLimit });
+    const auth = createIdentityMiddleware({ identity, appOrigin, secureCookies, sessionTtlSeconds,
+        binaryRequest: pipeline ? require('./services/item-image-pipeline').isContentRequest : () => false });
+    const items = createItemRoutes({ connectToDatabase, auth, discoveryLimit, imageMetadata, imageControlLimit, pipeline });
     app.disable('x-powered-by');
     app.use(requestDiagnostics);
     app.use(pinoHttp({ logger, genReqId: req => req.id, serializers: {
@@ -31,6 +33,12 @@ function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', sec
     app.use(cors({ origin: appOrigin, credentials: true, allowedHeaders: ['Content-Type', 'X-CSRF-Protection'] }));
     app.use(cookieParser());
     app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+    if (pipeline) {
+        const { rateLimit } = require('express-rate-limit');
+        const limit = rateLimit({ windowMs: 60000, limit: imageControlLimit, standardHeaders: 'draft-7', legacyHeaders: false,
+            handler: (req, res) => res.status(429).json({ error: { code: 'IMAGE_CONTROL_LIMIT', message: 'Too many photo requests. Wait a minute before retrying.' } }) });
+        app.use('/api', (req, res, next) => require('./services/item-image-pipeline').isContentRequest(req) ? limit(req, res, next) : next());
+    }
     app.use('/api', auth.protectWrites);
     app.use(express.json({ limit: '32kb' }));
     app.get('/api/regions', (req, res) => res.json(require('./services/regions').directory));
@@ -42,6 +50,16 @@ function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', sec
     app.use('/api/move-out-plans', createPlanRoutes({ connectToDatabase, auth }));
     app.use('/api/move-out-plans/:planId/items', items.privateRouter);
     app.use('/api/items', items.publicRouter);
+    if (pipeline) {
+        const { rateLimit } = require('express-rate-limit');
+        app.use('/api/item-images', rateLimit({ windowMs: 60000, limit: discoveryLimit, standardHeaders: 'draft-7', legacyHeaders: false,
+            handler: (req, res) => res.status(429).json({ error: { code: 'IMAGE_READ_BUSY', message: 'Too many photo requests. Try again shortly.' } }) }));
+        const deliver = (req, res, next) => pipeline.deliver(req, res, next, async () => {
+            const current = await identity.authenticate(auth.readToken(req)); return current && current.user._id;
+        });
+        app.head('/api/item-images/:imageId/:variant', auth.optionalAuth, deliver);
+        app.get('/api/item-images/:imageId/:variant', auth.optionalAuth, deliver);
+    }
     app.use('/api/pickup-requests', createPickupRoutes({ connectToDatabase, auth, now: pickupNow, messageLimit }));
     app.use('/api', (req, res) => res.status(404).json({ error: { code: 'NOT_FOUND', message: 'API route not found' } }));
     app.use((err, req, res, next) => {

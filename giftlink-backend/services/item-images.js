@@ -53,6 +53,8 @@ function createItemImagesService({ connectToDatabase, configuration }) {
         if (!account) throw unavailable();
         const item = await db.collection('items').findOne({ _id: new ObjectId(itemId), planId: plan._id, ownerId }, options(session));
         if (!item || !['draft', 'available', 'unlisted', 'expired', 'cleared'].includes(item.status)) throw unavailable();
+        if (!(plan.ownerId instanceof ObjectId) || !plan.ownerId.equals(ownerId) || !(item.ownerId instanceof ObjectId) ||
+            !item.ownerId.equals(ownerId) || !(item.planId instanceof ObjectId) || !item.planId.equals(plan._id)) throw unavailable();
         // Configuration/reference changes must not hide old slots or upload IDs.
         // Moving existing media to another target requires a separately reviewed migration.
         const inconsistent = await db.collection('itemImages').findOne({ itemId: item._id, $or: [
@@ -260,6 +262,116 @@ function createItemImagesService({ connectToDatabase, configuration }) {
             return { status: 202, body: { imageRevision: revision, upload: operationResponse(row, ctx.now), binaryUploadsEnabled: false } };
         });
     }
-    return { list, status, reserve, reorder, remove };
+    function contentEligible(plan, ctx, row) {
+        const day = ctx.now.toISOString().slice(0, 10);
+        if (plan.status !== 'active' || ctx.item.status === 'cleared' ||
+            !require('./calendar').isCalendarDate(plan.moveOutDeadline) || plan.moveOutDeadline < day ||
+            !require('./calendar').isCalendarDate(ctx.item.availableUntil || plan.moveOutDeadline) ||
+            (ctx.item.availableUntil || plan.moveOutDeadline) < day || (ctx.item.availableUntil || plan.moveOutDeadline) > plan.moveOutDeadline ||
+            row.lease.expiresAt <= ctx.now || row.charge.quotaDay !== day) {
+            throw new InventoryError(409, 'IMAGE_UPLOAD_UNAVAILABLE', 'This reservation is no longer eligible. Review its status.');
+        }
+    }
+    function contentResult(row, ctx) {
+        return { imageRevision: ctx.revision, upload: operationResponse(row, ctx.now), binaryUploadsEnabled: false };
+    }
+    async function inspectUpload(ownerId, planId, itemId, imageId) {
+        inputIds(ownerId, planId, itemId, imageId);
+        return read(ownerId, planId, itemId, async (db, plan, ctx, session) => {
+            const row = await ownedRow(db, scope(ownerId, planId, itemId), imageId, session);
+            if (row.state === 'reserved') contentEligible(plan, ctx, row);
+            return { row, body: contentResult(row, ctx) };
+        });
+    }
+    async function claim(ownerId, planId, itemId, imageId) {
+        inputIds(ownerId, planId, itemId, imageId); const token = randomUUID();
+        return write(ownerId, planId, itemId, async (db, plan, ctx, session) => {
+            const row = await ownedRow(db, scope(ownerId, planId, itemId), imageId, session);
+            if (row.state !== 'reserved') return { claimed: false, body: contentResult(row, ctx) };
+            contentEligible(plan, ctx, row);
+            const quota = quotaFor(ctx.account.itemImageQuota, ctx.now);
+            if (ctx.account.itemImageQuota === undefined || quota.activeUploads < 1 || quota.reservedBytes < ceiling.reservedBytes || quota.heldSuccess < 1) throw damaged();
+            row.state = 'processing'; row.lease.claimedAt = ctx.now; row.lease.fenceToken = token; row.updatedAt = ctx.now; row.version++;
+            assertOperation(row);
+            const claimed = await db.collection('itemImages').replaceOne({ _id: row._id, state: 'reserved', version: row.version - 1,
+                $expr: { $gt: ['$lease.expiresAt', '$$NOW'] } }, row, { session });
+            if (claimed.matchedCount !== 1) throw changed();
+            return { claimed: true, row, body: contentResult(row, ctx) };
+        });
+    }
+    async function processingWrite(ticket, operation, eligible = true) {
+        return write(ticket.ownerId, ticket.planId.toHexString(), ticket.itemId.toHexString(), async (db, plan, ctx, session) => {
+            const row = await ownedRow(db, scope(ticket.ownerId, ticket.planId.toHexString(), ticket.itemId.toHexString()), ticket._id.toHexString(), session);
+            if (row.state !== 'processing' || row.generation !== ticket.generation || row.lease.fenceToken !== ticket.lease.fenceToken) throw changed();
+            if (eligible) contentEligible(plan, ctx, row);
+            const result = await operation(db, ctx, row, session);
+            row.updatedAt = ctx.now; row.version++; assertOperation(row);
+            const filter = { _id: row._id, state: 'processing', version: row.version - 1, 'lease.fenceToken': ticket.lease.fenceToken };
+            if (eligible) filter.$expr = { $gt: ['$lease.expiresAt', '$$NOW'] };
+            const replaced = await db.collection('itemImages').replaceOne(filter, row, { session });
+            if (replaced.matchedCount !== 1) throw changed();
+            return result === undefined ? row : result;
+        });
+    }
+    async function prepareVariants(ticket, variants) {
+        return processingWrite(ticket, async (db, ctx, row) => {
+            for (const name of ['thumbnail', 'display']) {
+                if (row.variants[name].outcome !== 'not_started') throw changed();
+                const v = variants[name];
+                row.variants[name] = { key: variantKey(row, name), outcome: 'prepared', byteLength: v.byteLength,
+                    sha256: v.sha256, width: v.width, height: v.height, contentType: 'image/webp' };
+            }
+        });
+    }
+    async function beginPut(ticket, name) {
+        if (!['thumbnail', 'display'].includes(name)) throw damaged();
+        return processingWrite(ticket, async (db, ctx, row) => {
+            if (row.variants[name].outcome !== 'prepared') throw changed();
+            row.variants[name].outcome = 'unknown';
+            return Object.assign({}, row.variants[name]);
+        });
+    }
+    async function stored(ticket, name) {
+        if (!['thumbnail', 'display'].includes(name)) throw damaged();
+        return processingWrite(ticket, async (db, ctx, row) => {
+            if (row.variants[name].outcome !== 'unknown') throw changed(); row.variants[name].outcome = 'stored';
+        });
+    }
+    async function fail(ticket) {
+        return processingWrite(ticket, async (db, ctx, row, session) => {
+            const certain = Object.values(row.variants).every(v => ['not_started', 'prepared', 'rejected'].includes(v.outcome));
+            if (certain) {
+                if (ctx.account.itemImageQuota === undefined) throw damaged();
+                const quota = quotaFor(ctx.account.itemImageQuota, ctx.now), c = row.charge;
+                if (quota.activeUploads < 1 || quota.reservedBytes < c.reservedBytes || c.quotaDay === quota.utcDay && quota.heldSuccess < 1) throw damaged();
+                quota.activeUploads--; quota.reservedBytes -= c.reservedBytes;
+                if (c.quotaDay === quota.utcDay) quota.heldSuccess--;
+                row.charge = Object.assign({}, c, { reservedBytes: 0, heldSuccess: false, concurrencyHeld: false,
+                    slotHeld: false, holdsSettled: true, storageReleasedAt: ctx.now });
+                await saveQuota(db, ticket.ownerId, quota, session);
+            }
+            row.state = 'failed'; row.cleanup = { reason: 'pipeline_failed', attempts: 0, nextAttemptAt: certain ? null : ctx.now };
+            row.needsMaintenance = !certain; row.maintenanceDueAt = certain ? null : ctx.now;
+        }, false);
+    }
+    async function finalize(ticket) {
+        return processingWrite(ticket, async (db, ctx, row, session) => {
+            if (!Object.values(row.variants).every(v => v.outcome === 'stored') || ctx.account.itemImageQuota === undefined) throw damaged();
+            const quota = quotaFor(ctx.account.itemImageQuota, ctx.now), c = row.charge;
+            if (quota.activeUploads < 1 || quota.heldSuccess < 1 || quota.reservedBytes < c.reservedBytes || c.holdsSettled) throw damaged();
+            const ready = await readyRows(db, scope(ticket.ownerId, ticket.planId.toHexString(), ticket.itemId.toHexString()), session);
+            if (ready.length >= ceiling.photos) throw damaged();
+            const size = row.variants.thumbnail.byteLength + row.variants.display.byteLength;
+            quota.activeUploads--; quota.heldSuccess--; quota.successful++; quota.reservedBytes -= c.reservedBytes; quota.retainedBytes += size;
+            row.charge = Object.assign({}, c, { reservedBytes: 0, retainedBytes: size, heldSuccess: false,
+                concurrencyHeld: false, dailySuccessCharged: true, holdsSettled: true });
+            row.state = 'ready'; row.sortPosition = ready.length; row.readyAt = ctx.now; row.needsMaintenance = false; row.maintenanceDueAt = null;
+            row.updatedAt = ctx.now;
+            await saveQuota(db, ticket.ownerId, quota, session);
+            const revision = await bumpRevision(db, ticket.ownerId, ticket.planId.toHexString(), ctx.item, ctx.revision, session);
+            return { imageRevision: revision, image: readyResponse(row, ctx.now), binaryUploadsEnabled: false };
+        });
+    }
+    return { list, status, reserve, reorder, remove, inspectUpload, claim, prepareVariants, beginPut, stored, fail, finalize };
 }
 module.exports = { createItemImagesService };
