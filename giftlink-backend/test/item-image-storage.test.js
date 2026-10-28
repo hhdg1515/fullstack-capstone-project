@@ -16,11 +16,11 @@ function fixtureConfig(changes = {}) {
     const accessKeyId = 'test' + randomBytes(8).toString('hex');
     const secretAccessKey = randomBytes(32).toString('hex');
     const receipt = { version: 1, runId, containerId: randomBytes(32).toString('hex'),
-        imageId: 'sha256:' + randomBytes(32).toString('hex'), containerName: 'moveout-minio-' + runId,
-        volumeName: 'moveout-minio-' + runId, port: 19481, endpoint: 'http://127.0.0.1:19481',
+        imageId: 'sha256:' + randomBytes(32).toString('hex'), containerName: 'moveout-seaweed-' + runId,
+        volumeName: 'moveout-seaweed-' + runId, port: 19481, endpoint: 'http://127.0.0.1:19481',
         bucket: 'moveout-test-' + runId, namespace: 'item-images-test-' + runId,
         credentialsSha256: hash(accessKeyId + ':' + secretAccessKey) };
-    const env = Object.assign({ ITEM_IMAGES_ENABLED: 'true', ITEM_IMAGE_STORAGE_DRIVER: 'minio-local',
+    const env = Object.assign({ ITEM_IMAGES_ENABLED: 'true', ITEM_IMAGE_STORAGE_DRIVER: 'seaweedfs-local',
         ITEM_IMAGE_STORAGE_ENVIRONMENT: 'test', ITEM_IMAGE_S3_REGION: 'us-east-1',
         ITEM_IMAGE_S3_ENDPOINT: receipt.endpoint, ITEM_IMAGE_S3_BUCKET: receipt.bucket,
         ITEM_IMAGE_NAMESPACE: receipt.namespace, ITEM_IMAGE_STORAGE_TARGET: fingerprint(receipt),
@@ -32,7 +32,7 @@ function fixtureConfig(changes = {}) {
 }
 
 // Exercises the actual pinned SDK's serialization/deserialization against a synthetic
-// in-process transport. This is NOT a MinIO server or a substitute for its blocked tests.
+// in-process transport. This is not a storage server; actual SeaweedFS contracts run in a separate suite.
 class ProtocolTransport {
     constructor() { this.requests = []; this.objects = new Map(); this.closed = 0; }
     async handle(request, context) {

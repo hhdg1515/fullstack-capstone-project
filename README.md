@@ -745,7 +745,8 @@ part of this acceptance package.
 
 ## Private photo storage preparation (6.5B1)
 
-The application remains unchanged and photos remain disabled. The private storage
-adapter has non-network SDK tests, but its local MinIO fixture is **blocked by the
-Community artifact security review**. See [B1 status and isolation](docs/milestone-6.5b1-storage.md)
-before running storage checks. No real R2 configuration or credentials are needed.
+Photos remain disabled and the application is unchanged. Local S3 contracts now
+use an official, digest-pinned **SeaweedFS** fixture; MinIO is banned. Future
+production storage remains private **Cloudflare R2**, with no remote activation.
+See [B1 setup, isolation and verification status](docs/milestone-6.5b1-storage.md)
+and the [artifact/security review](docs/milestone-6.5b1-seaweedfs-review.md).
