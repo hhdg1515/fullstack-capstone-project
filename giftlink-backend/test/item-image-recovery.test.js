@@ -32,7 +32,8 @@ describe('isolated MongoDB startup diagnostics', function () {
         const state = { State: { Running: false, OOMKilled: false, ExitCode: 132 },
             Config: { Env: ['secret-sentinel'] }, NetworkSettings: { Ports: {} } };
         const result = startupDiagnostic(state, 'secret-sentinel: MongoDB requires AVX; private credentials');
-        assert.deepEqual(result, { category: 'cpu_unsupported', running: false, oomKilled: false, exitCode: 132, portPublished: false });
+        assert.deepEqual(result, { category: 'cpu_unsupported', running: false, oomKilled: false, exitCode: 132, portPublished: false,
+            imageMatches: false, eventIds: [], signatures: [] });
         assert.ok(!/secret-sentinel|credentials|private/.test(JSON.stringify(result)));
         assert.equal(startupDiagnostic({}, 'pthread_create failed').category, 'resource_limit');
     });

@@ -21,8 +21,16 @@ function startupDiagnostic(container, logs = '') {
         /pthread_create|Resource temporarily unavailable|Cannot allocate memory|out of memory/i.test(logs) ? 'resource_limit' :
         /Permission denied|Operation not permitted/i.test(logs) ? 'permissions_or_syscall' :
         /Address already in use/i.test(logs) ? 'port_conflict' : 'startup_or_connectivity';
+    const events = [];
+    for (const line of logs.split('\n')) try {
+        const entry = JSON.parse(line);
+        if (Number.isSafeInteger(entry.id) && entry.id >= 0) events.push(entry.id);
+    } catch (ignored) { /* Never forward a raw line. */ }
     return { category, running: state.Running === true, oomKilled: state.OOMKilled === true,
         exitCode: Number.isInteger(state.ExitCode) ? state.ExitCode : null,
+        imageMatches: Boolean(container && container.Image === snapshotImageId), eventIds: events.slice(-12),
+        signatures: ['rseq', 'GLIBC', 'WiredTiger', 'InvalidOptions', 'BadValue', 'FileNotOpen', 'DBPathInUse', 'FileStreamFailed',
+            'NonExistentPath', 'SocketException', 'UnknownError', 'system_error', 'exception', 'Fatal'].filter(value => logs.includes(value)),
         portPublished: Boolean(container && container.NetworkSettings && container.NetworkSettings.Ports &&
             container.NetworkSettings.Ports['27017/tcp'] && container.NetworkSettings.Ports['27017/tcp'].length) };
 }
