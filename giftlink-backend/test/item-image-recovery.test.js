@@ -12,7 +12,7 @@ const sinon = require('sinon');
 const request = require('supertest');
 const pino = require('pino');
 const { S3Client, PutObjectCommand, DeleteBucketCommand } = require('@aws-sdk/client-s3');
-const { createIsolatedMongo } = require('./helpers/isolated-mongo');
+const { createIsolatedMongo, startupDiagnostic } = require('./helpers/isolated-mongo');
 const { createIsolatedSeaweedFS } = require('./helpers/isolated-seaweedfs');
 const { prepareDatabaseIndexes } = require('../services/database-indexes');
 const { createItemImagesService } = require('../services/item-images');
@@ -26,6 +26,17 @@ const { processRaster, sha256 } = require('../services/item-image-processing');
 const { validOperation, ceiling } = require('../services/item-image-policy');
 const createApp = require('../app');
 const execute = promisify(execFile);
+
+describe('isolated MongoDB startup diagnostics', function () {
+    it('reports bounded categories and state without forwarding logs, credentials or private configuration', function () {
+        const state = { State: { Running: false, OOMKilled: false, ExitCode: 132 },
+            Config: { Env: ['secret-sentinel'] }, NetworkSettings: { Ports: {} } };
+        const result = startupDiagnostic(state, 'secret-sentinel: MongoDB requires AVX; private credentials');
+        assert.deepEqual(result, { category: 'cpu_unsupported', running: false, oomKilled: false, exitCode: 132, portPublished: false });
+        assert.ok(!/secret-sentinel|credentials|private/.test(JSON.stringify(result)));
+        assert.equal(startupDiagnostic({}, 'pthread_create failed').category, 'resource_limit');
+    });
+});
 
 describe('durable local physical image recovery on real MongoDB and SeaweedFS', function () {
     this.timeout(180000);

@@ -13,6 +13,20 @@ const image = 'mongo@sha256:4a4ab5d4834207389e0d7270fac988e21ffedccecba77991a552
 const snapshotImageId = 'sha256:09f940d01e0c09abbfd246a2b10965cbf86a87c9c1dad86b374f925a084976c8';
 const pause = () => new Promise(resolve => setTimeout(resolve, 200));
 
+function startupDiagnostic(container, logs = '') {
+    const state = container && container.State || {};
+    // Only this freshly provisioned, owned, still-empty fixture is inspected.
+    // Never forward MongoDB logs, host paths, process args or environment values.
+    const category = /AVX|illegal instruction|requires a CPU/i.test(logs) ? 'cpu_unsupported' :
+        /pthread_create|Resource temporarily unavailable|Cannot allocate memory|out of memory/i.test(logs) ? 'resource_limit' :
+        /Permission denied|Operation not permitted/i.test(logs) ? 'permissions_or_syscall' :
+        /Address already in use/i.test(logs) ? 'port_conflict' : 'startup_or_connectivity';
+    return { category, running: state.Running === true, oomKilled: state.OOMKilled === true,
+        exitCode: Number.isInteger(state.ExitCode) ? state.ExitCode : null,
+        portPublished: Boolean(container && container.NetworkSettings && container.NetworkSettings.Ports &&
+            container.NetworkSettings.Ports['27017/tcp'] && container.NetworkSettings.Ports['27017/tcp'].length) };
+}
+
 async function docker(args) {
     return execute('docker', args, { timeout: 120000, maxBuffer: 1024 * 1024 });
 }
@@ -133,9 +147,16 @@ async function createIsolatedMongo() {
         fs.writeFileSync(receiptPath, JSON.stringify(receipt), { mode: 0o600 });
         return { db, mongoUrl, dbName, close, receiptPath };
     } catch (error) {
+        let diagnostic;
+        if (containerId) try {
+            const owned = await inspectOwnedContainer();
+            const logs = await docker(['logs', '--tail', '50', containerId]);
+            diagnostic = startupDiagnostic(owned, logs.stdout + logs.stderr);
+        } catch (ignored) { diagnostic = { category: 'owned_fixture_diagnostic_unavailable' }; }
         await close();
+        if (diagnostic) throw new Error('Isolated MongoDB fixture failed: ' + JSON.stringify(diagnostic));
         throw error;
     }
 }
 
-module.exports = { createIsolatedMongo };
+module.exports = { createIsolatedMongo, startupDiagnostic };
