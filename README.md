@@ -742,3 +742,10 @@ and two-session steps. Known validation/form-layout debt and public-launch gates
 remain explicit; local/normal CI success is not hosted or production readiness.
 No feature, dependency, schema, provider configuration or remote data change is
 part of this acceptance package.
+
+## Private photo storage preparation (6.5B1)
+
+The application remains unchanged and photos remain disabled. The private storage
+adapter has non-network SDK tests, but its local MinIO fixture is **blocked by the
+Community artifact security review**. See [B1 status and isolation](docs/milestone-6.5b1-storage.md)
+before running storage checks. No real R2 configuration or credentials are needed.
