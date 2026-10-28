@@ -10,6 +10,9 @@ function readDatabaseConfig(env = process.env) {
 }
 
 function readServerConfig(env = process.env) {
+    if (env.ITEM_IMAGE_PIPELINE_ENABLED !== undefined && env.ITEM_IMAGE_PIPELINE_ENABLED !== 'false') {
+        throw new Error('Deployed photo processing remains disabled until B4 acceptance; only isolated local fixture injection is supported');
+    }
     const database = readDatabaseConfig(env);
     const secureCookies = env.NODE_ENV === 'production';
     const appOrigin = env.APP_ORIGIN || (secureCookies ? '' : 'http://localhost:3000');

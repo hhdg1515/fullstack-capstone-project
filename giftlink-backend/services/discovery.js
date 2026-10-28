@@ -194,4 +194,4 @@ function createDiscoveryService({ connectToDatabase, now = () => new Date() }) {
     }
     return { browse, detail, locations };
 }
-module.exports = { createDiscoveryService, normalizeLabel };
+module.exports = { createDiscoveryService, normalizeLabel, visibilityPipeline, initialMatch };

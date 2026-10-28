@@ -8,10 +8,19 @@ const { createHostedApp } = require(root + '/giftlink-backend/index');
 const { createIsolatedMongo } = require(root + '/giftlink-backend/test/helpers/isolated-mongo');
 const { prepareDatabaseIndexes } = require(root + '/giftlink-backend/services/database-indexes');
 const { readPreparationTarget, inspectTarget } = require(root + '/giftlink-backend/util/database-target');
-async function localEnvironment() {
-  let isolated, api, front, hosted, directory;
+async function localEnvironment({ photos = false } = {}) {
+  if (photos && process.env.E2E_APP_ORIGIN) throw Error('Photo fixtures are local only');
+  let isolated, api, front, hosted, directory, storage, imagePipeline, imageMetadata;
   try {
     isolated = await createIsolatedMongo(); await prepareDatabaseIndexes(isolated.db);
+    if (photos) {
+      const { createIsolatedSeaweedFS } = require(root + '/giftlink-backend/test/helpers/isolated-seaweedfs');
+      const { createLocalItemImagePipeline } = require(root + '/giftlink-backend/services/item-image-pipeline');
+      storage = await createIsolatedSeaweedFS();
+      imageMetadata = { storageBinding: { fingerprint: storage.config.targetFingerprint, namespace: storage.receipt.namespace },
+        limits: { attempts: 50, successes: 20, accountBytes: 104857600, concurrent: 2, records: 1000 } };
+      imagePipeline = createLocalItemImagePipeline({ connectToDatabase: async () => isolated.db, configuration: imageMetadata, storageConfig: storage.config });
+    }
     directory = fs.mkdtempSync(path.join(os.tmpdir(), 'moveout-e2e-'));
     execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-keyout', path.join(directory, 'key.pem'), '-out', path.join(directory, 'cert.pem'), '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost,IP:127.0.0.1'], { stdio: 'ignore' });
     let online = true; let clock; const serverErrors = [];
@@ -25,16 +34,23 @@ async function localEnvironment() {
     front = https.createServer({ key: fs.readFileSync(path.join(directory, 'key.pem')), cert: fs.readFileSync(path.join(directory, 'cert.pem')) }, web).listen(0, '127.0.0.1');
     await new Promise(resolve => front.once('listening', resolve)); const origin = 'https://127.0.0.1:' + front.address().port;
     const env = { NODE_ENV: 'production', DB_ENVIRONMENT: 'staging', MONGO_URL: isolated.mongoUrl, MONGO_DB_NAME: isolated.dbName, APP_ORIGIN: origin };
+    if (photos) Object.assign(env, { ITEM_IMAGE_METADATA_ENABLED: 'true', ITEM_IMAGE_STORAGE_TARGET: imageMetadata.storageBinding.fingerprint,
+      ITEM_IMAGE_NAMESPACE: imageMetadata.storageBinding.namespace });
     hosted = createHostedApp({ env, databaseFactory: () => ({ connect: async () => isolated.db, close: async () => {} }),
-      logger: pino({ level: 'info' }, { write: line => { const entry = JSON.parse(line); if ((entry.event === 'request_failed' || entry.event === 'hosted_startup_failed' || entry.res?.statusCode >= 500) && serverErrors.length < 100) serverErrors.push('Server request/startup failure'); } }), appFactory: options => createApp({ ...options, pickupNow: () => new Date(clock === undefined ? Date.now() : clock) }) });
+      logger: pino({ level: 'info' }, { write: line => { const entry = JSON.parse(line); if ((entry.event === 'request_failed' || entry.event === 'hosted_startup_failed' || entry.res?.statusCode >= 500) && serverErrors.length < 100) serverErrors.push('Server request/startup failure'); } }), appFactory: options => createApp({ ...options, imageMetadata: imageMetadata || options.imageMetadata, imagePipeline,
+        pickupNow: () => new Date(clock === undefined ? Date.now() : clock) }) });
     api = hosted.listen(0, '127.0.0.1'); await new Promise(resolve => api.once('listening', resolve));
     const target = await inspectTarget(isolated.db, await readPreparationTarget(env, true));
     return { origin, db: isolated.db, fingerprint: target.fingerprint, local: true, serverErrors,
       now: () => clock === undefined ? Date.now() : clock, advance: value => { clock = value; }, setOnline: value => { online = value; },
-      close: async () => { await new Promise(resolve => front.close(resolve)); await new Promise(resolve => api.close(resolve)); await hosted.close(); await isolated.close(); fs.rmSync(directory, { recursive: true, force: true }); } };
+      close: async () => { await new Promise(resolve => front.close(resolve)); await new Promise(resolve => api.close(resolve)); await hosted.close();
+        if (imagePipeline) imagePipeline.close(); try { if (storage) await storage.close(); } finally { await isolated.close(); }
+        fs.rmSync(directory, { recursive: true, force: true }); } };
   } catch (error) {
     if (front) await new Promise(resolve => front.close(resolve)); if (api) await new Promise(resolve => api.close(resolve));
-    if (hosted) await hosted.close().catch(() => {}); if (isolated) await isolated.close(); if (directory) fs.rmSync(directory, { recursive: true, force: true }); throw error;
+    if (hosted) await hosted.close().catch(() => {}); if (imagePipeline) imagePipeline.close();
+    try { if (storage) await storage.close(); } finally { if (isolated) await isolated.close(); }
+    if (directory) fs.rmSync(directory, { recursive: true, force: true }); throw error;
   }
 }
 module.exports = { localEnvironment };

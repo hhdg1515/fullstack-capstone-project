@@ -7,7 +7,7 @@ const { createItemImagesService } = require('../services/item-images');
 const { ceiling } = require('../services/item-image-policy');
 
 const revision = () => body('imageRevision').custom(value => Number.isSafeInteger(value) && value >= 0).withMessage('Use the current photo revision.');
-function createItemImageRoutes({ connectToDatabase, configuration, controlLimit = 20 }) {
+function createItemImageRoutes({ connectToDatabase, configuration, controlLimit = 20, pipeline = null }) {
     const router = express.Router({ mergeParams: true });
     const service = createItemImagesService({ connectToDatabase, configuration });
     router.use((req, res, next) => {
@@ -18,6 +18,7 @@ function createItemImageRoutes({ connectToDatabase, configuration, controlLimit 
         handler: (req, res) => errorResponse(res, 429, 'IMAGE_CONTROL_LIMIT', 'Too many photo metadata requests. Wait a minute before retrying.') }));
     router.param('imageId', (req, res, next, value) => /^[a-fA-F0-9]{24}$/.test(value) ? next() : errorResponse(res, 404, 'IMAGE_UNAVAILABLE', 'Photo or item unavailable.'));
     const actor = req => [req.user._id, req.params.planId, req.params.itemId];
+    if (pipeline) router.put('/:imageId/content', pipeline.upload);
     router.get('/', async (req, res, next) => { try { res.json(await service.list(...actor(req))); } catch (error) { next(error); } });
     router.get('/:imageId', async (req, res, next) => { try { res.json(await service.status(...actor(req), req.params.imageId)); } catch (error) { next(error); } });
     router.post('/uploads', validate(['imageRevision', 'clientUploadId', 'byteLength', 'sha256'], [revision(),
