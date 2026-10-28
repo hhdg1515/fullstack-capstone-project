@@ -5,8 +5,12 @@ const fs = require('node:fs');
 function readPrivateJson(file, maximum = 65536) {
     let descriptor;
     try {
-        if (typeof file !== 'string' || fs.lstatSync(file).isSymbolicLink()) throw new Error();
-        descriptor = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
+        if (typeof file !== 'string') throw new Error();
+        const initial = fs.lstatSync(file);
+        if (!initial.isFile() || initial.isSymbolicLink()) throw new Error();
+        // NONBLOCK also protects the gap between lstat/open: a substituted FIFO
+        // must not block the event loop and defeat the CLI's lifetime timer.
+        descriptor = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0) | (fs.constants.O_NONBLOCK || 0));
         const stat = fs.fstatSync(descriptor);
         if (!stat.isFile() || stat.size > maximum || stat.size < 2 ||
             process.platform !== 'win32' && ((stat.mode & 0o077) !== 0 || stat.uid !== process.getuid())) throw new Error();

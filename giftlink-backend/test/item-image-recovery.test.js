@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict');
 const { ObjectId, ClientSession, MongoServerError } = require('mongodb');
 const { randomUUID } = require('node:crypto');
-const { execFile } = require('node:child_process');
+const { execFile, execFileSync } = require('node:child_process');
 const { promisify } = require('node:util');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -465,7 +465,11 @@ describe('durable local physical image recovery on real MongoDB and SeaweedFS', 
         const file = path.join(temp, randomUUID() + '.json'); writePrivateJson(file, { synthetic: true });
         assert.throws(() => writePrivateJson(file, {}));
         const link = path.join(temp, randomUUID() + '.json'); fs.symlinkSync(file, link); assert.throws(() => readPrivateJson(link));
-        if (process.platform !== 'win32') { fs.chmodSync(file, 0o644); assert.throws(() => readPrivateJson(file)); }
+        if (process.platform !== 'win32') {
+            fs.chmodSync(file, 0o644); assert.throws(() => readPrivateJson(file));
+            const fifo = path.join(temp, randomUUID() + '.fifo');
+            execFileSync('mkfifo', [fifo]); assert.throws(() => readPrivateJson(fifo));
+        }
     });
     it('bounds a full apply to 25 operations with a resumable preview cursor and no full-namespace sweep', async function () {
         for (let i = 0; i < 26; i++) { const id = await reserve(); await remove(id); }
