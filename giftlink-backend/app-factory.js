@@ -15,11 +15,12 @@ const { createIdentityMiddleware } = require('./middleware/identity');
 const { requestDiagnostics } = require('./middleware/diagnostics');
 
 function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', secureCookies = false,
-    sessionTtlSeconds = 28800, authLimit = 30, discoveryLimit = 120, pickupNow, messageLimit, logger = require('./logger') }) {
+    sessionTtlSeconds = 28800, authLimit = 30, discoveryLimit = 120, pickupNow, messageLimit,
+    imageMetadata = null, imageControlLimit = 20, logger = require('./logger') }) {
     const app = express();
     const identity = createIdentityService({ connectToDatabase, sessionTtlSeconds });
     const auth = createIdentityMiddleware({ identity, appOrigin, secureCookies, sessionTtlSeconds });
-    const items = createItemRoutes({ connectToDatabase, auth, discoveryLimit });
+    const items = createItemRoutes({ connectToDatabase, auth, discoveryLimit, imageMetadata, imageControlLimit });
     app.disable('x-powered-by');
     app.use(requestDiagnostics);
     app.use(pinoHttp({ logger, genReqId: req => req.id, serializers: {

@@ -17,6 +17,10 @@ describe('server bootstrap and configuration', function () {
         name === 'pickupRequests' ? [{ key: { giverId: 1, _id: -1 } }, { key: { receiverId: 1, _id: -1 } }, { key: { itemId: 1 }, unique: true, partialFilterExpression: { status: 'accepted' } }, { key: { itemId: 1, receiverId: 1 }, unique: true, partialFilterExpression: { active: true } }] :
         name === 'moveOutPlans' ? [{ key: { ownerId: 1, moveOutDeadline: 1, _id: 1 } }, { key: { metroId: 1, status: 1, stateId: 1, _id: 1 } }] :
         name === 'pickupMessages' ? [{ key: { requestId: 1, createdAt: -1, _id: -1 } }] :
+        name === 'itemImages' ? [{ key: { itemId: 1, ownerId: 1, state: 1, sortPosition: 1, _id: 1 } },
+            { key: { itemId: 1, clientUploadId: 1 }, unique: true },
+            { key: { maintenanceDueAt: 1, _id: 1 }, partialFilterExpression: { needsMaintenance: true } },
+            { key: { ownerId: 1, state: 1, _id: 1 } }] :
         [{ key: { planId: 1, ownerId: 1, createdAt: 1, _id: 1 } }, { key: { status: 1, publishedAt: -1, _id: -1 } }, { key: { status: 1, availableFrom: 1, publishedAt: -1, _id: -1 } }] }) };
 
     afterEach(function () {
@@ -85,6 +89,14 @@ describe('server bootstrap and configuration', function () {
         const database = { connect: async () => Object.assign({}, indexedDb, { command: async () => ({ ok: 1 }) }), close: sinon.stub().resolves() };
         const listen = sinon.spy(express.application, 'listen');
         await assert.rejects(startServer({ port: 0 }, { database, logger }), /replica set required/);
+        assert.equal(listen.callCount, 0); assert.equal(database.close.callCount, 1);
+    });
+
+    it('requires photo indexes even with metadata disabled, without creating them during startup', async function () {
+        const database = { connect: async () => Object.assign({}, indexedDb, { collection: name => name === 'itemImages' ?
+            { indexes: async () => [] } : indexedDb.collection(name) }), close: sinon.stub().resolves() };
+        const listen = sinon.spy(express.application, 'listen');
+        await assert.rejects(startServer({ port: 0, imageMetadata: null }, { database, logger }), /Database indexes are required/);
         assert.equal(listen.callCount, 0); assert.equal(database.close.callCount, 1);
     });
 

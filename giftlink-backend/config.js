@@ -27,7 +27,10 @@ function readServerConfig(env = process.env) {
     if (env.PORT === '' || !Number.isInteger(port) || port < 0 || port > 65535) {
         throw new Error('PORT must be an integer from 0 to 65535');
     }
-    return { mongoUrl: database.mongoUrl, dbName: database.dbName, appOrigin, secureCookies, sessionTtlSeconds, port };
+    const config = { mongoUrl: database.mongoUrl, dbName: database.dbName, appOrigin, secureCookies, sessionTtlSeconds, port };
+    const imageMetadata = require('./services/item-image-policy').readImageMetadataConfig(env);
+    if (imageMetadata) config.imageMetadata = imageMetadata;
+    return config;
 }
 
 module.exports = { readDatabaseConfig, readServerConfig };

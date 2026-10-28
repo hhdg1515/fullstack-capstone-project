@@ -1,5 +1,11 @@
 # Milestone 6.5 — Implementation and acceptance roadmap
 
+**Implementation status:** B1 is merged in PR #60. B2 now implements the
+[disabled owner metadata/reservation/quota foundation](milestone-6.5b2-photo-metadata.md).
+The remaining binary processing, delivery, physical cleanup and photo UI gates
+below are still deferred; the architecture's future API descriptions are not
+claims of shipped upload functionality.
+
 **6.5A delivers architecture only.** Base is main
 `f9ac7cd4a13f889a5ab3e75b9e625e160f6d8300` (#58 merged).
 [Architecture/API/schema/references](milestone-6.5-photo-architecture.md) and

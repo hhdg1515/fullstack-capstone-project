@@ -6,8 +6,9 @@
   "engines": { "node": "22.x" },
   "scripts": {
     "test": "mocha --timeout 30000 --recursive test --fail-zero",
-    "test:integration": "mocha --timeout 30000 test/integration.test.js test/identity.test.js test/plans.test.js test/items.test.js test/discovery.test.js test/regional-discovery.test.js test/pickups.test.js test/pickup-communication.test.js test/rescheduling.test.js --fail-zero",
+    "test:integration": "mocha --timeout 30000 test/integration.test.js test/identity.test.js test/plans.test.js test/items.test.js test/discovery.test.js test/regional-discovery.test.js test/pickups.test.js test/pickup-communication.test.js test/rescheduling.test.js test/item-images.test.js --fail-zero",
     "test:preparation": "mocha --timeout 30000 test/prepare-database.test.js --fail-zero",
+    "test:images": "mocha --timeout 30000 test/item-images.test.js --fail-zero",
     "lint": "jshint --config ../.jshintrc app.js app-factory.js index.js runtime.js server.js config.js logger.js models routes services middleware serializers util/import-mongo/index.js util/prepare-database.js util/database-target.js util/verify-region-source.js ../deployment/validate-staging-preparation.js test",
     "seed": "node util/import-mongo/index.js",
     "start": "node server.js",

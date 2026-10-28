@@ -750,3 +750,23 @@ use an official, digest-pinned **SeaweedFS** fixture; MinIO is banned. Future
 production storage remains private **Cloudflare R2**, with no remote activation.
 See [B1 setup, isolation and verification status](docs/milestone-6.5b1-storage.md)
 and the [artifact/security review](docs/milestone-6.5b1-seaweedfs-review.md).
+
+## Owner photo metadata and quotas (6.5B2)
+
+[B2 API, schema, quota and rollout notes](docs/milestone-6.5b2-photo-metadata.md)
+describe the metadata-only foundation. Owner endpoints default **off** behind
+`ITEM_IMAGE_METADATA_ENABLED=false`. Reservations never upload/process files or
+make images ready; no photo UI or public/binary image endpoint exists.
+
+**Upgrade gate:** the shared index registry now requires four `itemImages`
+indexes, including when metadata is disabled. Use the existing `db:prepare`
+dry-run and exact database/environment/fingerprint approval before starting an
+upgraded backend. Startup checks indexes read-only. Remote preparation requires
+separate owner approval; this change performs no Atlas or R2 operations.
+
+`npm --prefix giftlink-backend run test:images` runs owner authorization,
+idempotency, quotas, expiry, ordering and two-instance transaction tests on an
+owned disposable local replica set. Normal `npm test` and CI include them and the
+unchanged B1 real SeaweedFS contracts. Pilot quotas are provisional ceilings,
+not approved production limits; B3 processing and B4 physical cleanup remain
+deferred.
