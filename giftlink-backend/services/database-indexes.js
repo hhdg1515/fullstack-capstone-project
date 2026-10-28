@@ -117,10 +117,16 @@ async function prepareDatabaseIndexes(db) {
     return plan;
 }
 
-async function assertDatabaseIndexes(db) {
+async function assertDatabaseIndexes(db, { imageMetadataEnabled = true } = {}) {
     try {
         for (const definition of definitions) {
-            if (!hasCompatible(await listIndexes(db, definition.collection), definition)) throw new Error('Missing index');
+            // Explicit preparation/full-registry callers retain the default check.
+            // Only startup with disabled metadata may omit the four photo indexes.
+            if (definition.collection === 'itemImages' && imageMetadataEnabled === false) continue;
+            const indexes = await listIndexes(db, definition.collection);
+            if (!hasCompatible(indexes, definition) || definition.collection === 'itemImages' && hasConflict(indexes, definition)) {
+                throw new Error('Missing or incompatible index');
+            }
         }
     } catch (error) {
         throw new Error('Database indexes are required. Verify the target and run npm run db:prepare; existing data was not changed');

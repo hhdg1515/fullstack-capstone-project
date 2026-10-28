@@ -92,11 +92,11 @@ describe('server bootstrap and configuration', function () {
         assert.equal(listen.callCount, 0); assert.equal(database.close.callCount, 1);
     });
 
-    it('requires photo indexes even with metadata disabled, without creating them during startup', async function () {
+    it('requires photo indexes when metadata is enabled, without creating them during startup', async function () {
         const database = { connect: async () => Object.assign({}, indexedDb, { collection: name => name === 'itemImages' ?
             { indexes: async () => [] } : indexedDb.collection(name) }), close: sinon.stub().resolves() };
         const listen = sinon.spy(express.application, 'listen');
-        await assert.rejects(startServer({ port: 0, imageMetadata: null }, { database, logger }), /Database indexes are required/);
+        await assert.rejects(startServer({ port: 0, imageMetadata: {} }, { database, logger }), /Database indexes are required/);
         assert.equal(listen.callCount, 0); assert.equal(database.close.callCount, 1);
     });
 

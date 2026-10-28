@@ -157,7 +157,7 @@ Optional downward-only settings: `ITEM_IMAGE_QUOTA_DAILY_ATTEMPTS`,
 configuration fails startup. B2 does not load storage credentials or call the
 B1 adapter. `ITEM_IMAGES_ENABLED` is not an upload feature switch.
 
-The existing registry now requires these simple-collation indexes:
+The explicit preparation registry includes these simple-collation indexes:
 
 | Name | Key / options |
 | --- | --- |
@@ -166,11 +166,28 @@ The existing registry now requires these simple-collation indexes:
 | `images_due_work` | `{maintenanceDueAt:1,_id:1}`, partial `{needsMaintenance:true}` |
 | `images_owner_state` | `{ownerId:1,state:1,_id:1}` |
 
-**All four are required before backend upgrade, even while metadata is off.**
-Startup remains a read-only index/topology check; missing indexes prevent
-readiness. There is no media TTL, DDL on startup, demo seeding or automatic data
-migration. Preparation reports malformed rows/quotas and duplicate upload groups
-as counts only, blocks incompatible indexes and never repairs documents.
+**Disabled rollout needs no photo schema change.** When
+`ITEM_IMAGE_METADATA_ENABLED` is unset or exactly `false`, both normal Express
+startup and Vercel cold-start readiness verify all 12 pre-B2 application indexes,
+without inspecting `itemImages` indexes or constructing metadata routes. Existing
+session, inventory, pickup, messaging and discovery checks stay mandatory. No
+storage calls are made, and no indexes or documents are created or changed.
+
+**Before enabling metadata, all four compatible photo indexes are required.**
+Only explicit `ITEM_IMAGE_METADATA_ENABLED=true` plus valid binding/quota
+configuration enables metadata. Enabled startup fails closed on any missing or
+incompatible photo index, as well as every previously required application index.
+Both modes check topology/index metadata read-only; neither mode runs migrations
+or DDL. Disabling the flag again requires no rollback DDL and does not erase any
+existing photo metadata, accounting or indexes.
+
+Explicit `db:prepare` inspection/apply continues to cover the **complete**
+16-index registry regardless of the runtime flag; its target validation,
+dry-run/conflict detection and exact confirmations are unchanged. It can therefore
+preview photo preparation before activation without enabling routes. There is no
+media TTL, demo seeding or automatic data migration. Preparation reports malformed
+rows/quotas and duplicate upload groups as counts only, blocks incompatible indexes
+and never repairs documents.
 
 On your independently verified disposable local target, use existing commands
 from `giftlink-backend`, with its explicit local database/environment settings:
@@ -183,9 +200,12 @@ npm run db:prepare -- --apply --confirm-db '<verified local database>' \
 
 The [existing preparation instructions](../README.md#prepare-database-indexes-explicitly)
 describe target checks and remote TLS/confirmation requirements. **No remote
-preparation is authorized by this implementation.** Later Atlas rollout requires
-separate owner approval and the existing guarded dry-run/apply workflow. No
-existing remote indexes/data were touched.
+preparation is authorized by this implementation.** Keep metadata disabled on
+existing remote databases. Before any later activation, obtain separate owner
+approval, verify the Atlas target and review its guarded dry-run, approve apply
+using the exact database/environment/fingerprint, and verify all indexes before
+changing the flag. No existing remote indexes/data were touched. These steps
+prepare owner JSON metadata only, never binary uploads/storage or B3/B4 behavior.
 
 ## Verification and remaining gates
 
@@ -193,8 +213,13 @@ existing remote indexes/data were touched.
 MongoDB replica set. Tests include two app instances, cross-plan first-use quota
 races, last item slot, retry rollback, lost responses, UTC rollover, exact-once
 safe expiry settlement, uncertain holds, independent text/image revisions,
-strict ownership/DTOs and index conflicts/repeated preparation. The normal CI
-recursive backend suite already includes these tests and unchanged B1 real
+strict ownership/DTOs and index conflicts/repeated preparation. Native startup
+regressions use actual MongoDB indexes and monitored commands to cover disabled
+pre-B2 databases, every missing legacy index, each missing photo index, incompatible
+indexes, enabled readiness, disabled routes/no storage calls and absence of startup
+DDL/document writes. Both ordinary Express and Vercel cold-start paths are tested
+in [the startup regression suite](../giftlink-backend/test/image-startup.test.js).
+The normal CI recursive backend suite already includes these tests and unchanged B1 real
 SeaweedFS contracts; no workflow needs new secrets or remote access.
 
 Exact local and immutable-commit CI results are recorded in the B2 PR. Local

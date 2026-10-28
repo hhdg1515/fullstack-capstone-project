@@ -149,10 +149,13 @@ unique `_id` index; there is no new quota collection/index.
 6.5B extends registry/preflight tests and count-only conflict inspection for these
 new collections. Existing incompatible/duplicate/malformed experimental data must
 block preparation, not be rewritten. Same guarded `db:prepare` dry-run and exact
-apply confirmations; no TTL, startup DDL or silent normalization. Because the
-current startup checks the registry globally, a future backend adding these
-definitions requires separately approved index preparation **even if uploads are
-disabled**. An additive index is not automatically authorized on Atlas.
+apply confirmations; no TTL, startup DDL or silent normalization. B2 startup
+always verifies the 12 pre-photo application indexes, and requires these four
+photo indexes only when metadata is explicitly enabled. Disabled metadata must
+not require a remote schema change or inspect photo indexes. Explicit preparation
+still covers the complete registry regardless of the feature flag. Enabling
+metadata requires separately approved preparation first; an additive index is
+not automatically authorized on Atlas. No binary upload path is enabled by B2.
 
 ## Proposed API contract
 
