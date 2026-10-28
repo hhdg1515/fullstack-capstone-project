@@ -2,11 +2,12 @@
 
 **Implementation status:** B1 is merged in PR #60. B2 now implements the
 [disabled owner metadata/reservation/quota foundation](milestone-6.5b2-photo-metadata.md).
-PR #61 is merged. B3 adds the [isolated local binary pipeline and verification](milestone-6.5b3-image-pipeline.md),
-without enabling deployed uploads/delivery or starting B4 cleanup.
-Deployed photo activation, physical cleanup/recovery and photo UI remain deferred;
-local B3 processing/delivery does not satisfy those later gates. The architecture's
-future API descriptions are not claims of shipped user-facing uploads.
+PR #61 is merged. PR #62 merged B3's [isolated local binary pipeline and verification](milestone-6.5b3-image-pipeline.md).
+B4 adds [local physical deletion and durable recovery](milestone-6.5b4-photo-recovery.md),
+with guarded manifests, conservative unknown-write holds and exact-once settlement.
+Deployed uploads/delivery remain disabled, including after B4 tests pass.
+Photo UI, R2/remote preparation and hosted compatibility/rollout remain deferred;
+the architecture's future API descriptions are not claims of user-facing uploads.
 
 **6.5A delivers architecture only.** Base is main
 `f9ac7cd4a13f889a5ab3e75b9e625e160f6d8300` (#58 merged).

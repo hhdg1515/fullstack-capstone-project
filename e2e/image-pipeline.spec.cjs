@@ -48,6 +48,14 @@ test('isolated HTTPS photos preserve real browser account boundaries and current
     await post(giver, prefix + '/' + upload.id + '/actions', { imageRevision: 1, action: 'delete' });
     await a.reload(); expect(await image(a, path)).toBe(0);
     expect((await giver.request.get(path)).status()).toBe(404);
+    // B4 runs only through the receipt-verified local test capability, never
+    // through an HTTP operator route or a hosted deployment.
+    const cleanup = await deployment.reconcilePhotos();
+    expect(cleanup.operations).toBe(1); expect(cleanup.results).toEqual([{ status: 'deleted', category: null }]);
+    expect(await deployment.db.collection('itemImages').countDocuments({ state: 'deleted' })).toBe(1);
+    expect((await giver.request.get(path)).status()).toBe(404);
+    const account = await deployment.db.collection('users').findOne({ 'itemImageQuota.operationCount': 1 });
+    expect(account.itemImageQuota.retainedBytes).toBe(0); expect(account.itemImageQuota.successful).toBe(1);
     expect(deployment.serverErrors).toEqual([]);
   } finally { await Promise.all(contexts.map(context => context.close())); }
 });

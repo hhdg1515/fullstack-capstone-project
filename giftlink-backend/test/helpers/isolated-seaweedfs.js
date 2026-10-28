@@ -278,4 +278,41 @@ async function createIsolatedSeaweedFS() {
     }
 }
 
-module.exports = { createIsolatedSeaweedFS, validateResources, artifact };
+// Reattach only to a live, fully verified disposable fixture. This does not
+// provision, adopt, reset or destroy any resource. Credentials are recovered only
+// from this exact owned local container, after its complete identity is checked.
+async function openIsolatedSeaweedFS(receipt) {
+    let closed = false;
+    async function inspect(signal) {
+        if (closed || !receipt || !/^[a-f0-9]{64}$/.test(receipt.containerId) || !/^[a-f0-9]{48}$/.test(receipt.nonce) ||
+            receipt.version !== 1 || !/^[a-f0-9]{32}$/.test(receipt.runId) ||
+            receipt.containerName !== 'moveout-seaweed-' + receipt.runId || receipt.volumeName !== receipt.containerName ||
+            receipt.networkName !== receipt.containerName || receipt.bucket !== 'moveout-test-' + receipt.runId ||
+            receipt.namespace !== 'item-images-test-' + receipt.runId || receipt.imageId !== artifact.amd64ImageId ||
+            !Number.isInteger(receipt.port) || receipt.port < 1024 || receipt.port > 65535 ||
+            receipt.endpoint !== 'http://127.0.0.1:' + receipt.port) throw fixtureError('receipt');
+        const observed = await Promise.all([
+            docker(['info', '--format', '{{json .}}'], { signal, timeout: 2000 }),
+            docker(['inspect', receipt.containerId], { signal, timeout: 2000 }),
+            docker(['volume', 'inspect', receipt.volumeName], { signal, timeout: 2000 }),
+            docker(['network', 'inspect', receipt.networkName], { signal, timeout: 2000 })
+        ]);
+        const state = { daemon: JSON.parse(observed[0].stdout), container: JSON.parse(observed[1].stdout)[0],
+            volume: JSON.parse(observed[2].stdout)[0], network: JSON.parse(observed[3].stdout)[0] };
+        try { validateResources(receipt, state); } catch (error) { throw fixtureError('identity_mismatch'); }
+        if (!state.container.State.Running) throw fixtureError('not_running');
+        return state.container;
+    }
+    async function verify(candidate, signal) {
+        if (!candidate || Object.keys(candidate).some(key => candidate[key] !== receipt[key])) throw fixtureError('receipt');
+        await inspect(signal); return true;
+    }
+    const container = await inspect();
+    const values = Object.fromEntries(container.Config.Env.map(entry => { const i = entry.indexOf('='); return [entry.slice(0, i), entry.slice(i + 1)]; }));
+    const config = readItemImageStorageConfig({ ITEM_IMAGES_ENABLED: 'true', ITEM_IMAGE_STORAGE_DRIVER: 'seaweedfs-local',
+        ITEM_IMAGE_STORAGE_ENVIRONMENT: 'test', ITEM_IMAGE_S3_REGION: 'us-east-1', ITEM_IMAGE_S3_ENDPOINT: receipt.endpoint,
+        ITEM_IMAGE_S3_BUCKET: receipt.bucket, ITEM_IMAGE_NAMESPACE: receipt.namespace, ITEM_IMAGE_STORAGE_TARGET: fingerprint(receipt),
+        ITEM_IMAGE_S3_ACCESS_KEY_ID: values.AWS_ACCESS_KEY_ID, ITEM_IMAGE_S3_SECRET_ACCESS_KEY: values.AWS_SECRET_ACCESS_KEY }, { receipt, verify });
+    return { config, close: () => { closed = true; } };
+}
+module.exports = { createIsolatedSeaweedFS, openIsolatedSeaweedFS, validateResources, artifact };

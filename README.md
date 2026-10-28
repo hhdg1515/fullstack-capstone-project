@@ -775,15 +775,15 @@ no Atlas or R2 operations. Enabling metadata never enables binary uploads.
 idempotency, quotas, expiry, ordering and two-instance transaction tests on an
 owned disposable local replica set. Normal `npm test` and CI include them and the
 unchanged B1 real SeaweedFS contracts. Pilot quotas are provisional ceilings,
-not approved production limits; B3 processing and B4 physical cleanup remain
-deferred.
+not approved production limits. B3/B4 add local processing and recovery below;
+deployed activation remains separately gated.
 
 ## Secure local photo pipeline (6.5B3)
 
 The [B3 implementation, security review and measurements](docs/milestone-6.5b3-image-pipeline.md)
 cover real JPEG/PNG/static WebP intake, Sharp sanitization, fenced two-variant
 storage/finalization and current-authorized GET/HEAD. All production binary routes
-remain disabled: `ITEM_IMAGE_PIPELINE_ENABLED=true` is refused until B4 acceptance.
+remain disabled: `ITEM_IMAGE_PIPELINE_ENABLED=true` is refused, including after B4.
 Only a live-verified disposable local SeaweedFS configuration can inject the
 pipeline for tests. Metadata flags do not activate uploads or photo delivery.
 
@@ -799,5 +799,25 @@ guards. Resource probes generate images in memory and perform no DB/S3 writes.
 The existing CI runs all backend/native contracts and the full local HTTPS suite,
 including two-account browser photo isolation; hosted photo fixtures are refused.
 No photo UI, public bucket, R2 configuration, cleanup/retention job or launch
-activation is included. **B4 physical deletion, compensation and recovery remain
-mandatory before real users can upload.**
+activation is included. Physical recovery is described below; frontend work and
+separately approved hosting/storage rollout remain mandatory before real uploads.
+
+## Local physical photo cleanup and recovery (6.5B4)
+
+[B4's operator procedure and failure policy](docs/milestone-6.5b4-photo-recovery.md)
+cover exact-key deletion, unknown-write holds, durable leases/tombstones and
+exact-once accounting. With Node 22 and the existing local Docker engine:
+
+```sh
+npm --prefix giftlink-backend run test:images:recovery
+```
+
+`npm --prefix giftlink-backend run images:reconcile -- ...` has separate dry-run
+and explicitly confirmed apply modes. Both require private ownership receipts
+for **disposable local MongoDB and SeaweedFS**, exact database/environment,
+provider/bucket/namespace identities, and apply additionally requires both target
+fingerprints and the reviewed manifest digest. See the linked procedure for
+complete arguments, bounds and safe shutdown. No `.env` or remote URI fallback.
+No scheduler, retention purge, R2 access, Atlas write, production activation or
+photo UI is introduced. Unknown PUTs remain charged when their outcome cannot
+be established; a temporary missing object never authorizes a refund.

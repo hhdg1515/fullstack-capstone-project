@@ -51,7 +51,8 @@ function validOperation(row) {
         typeof row.needsMaintenance !== 'boolean' || !nullableDate(row.maintenanceDueAt) || row.needsMaintenance !== date(row.maintenanceDueAt) ||
         !fields(row.lease, ['fenceToken', 'claimedAt', 'expiresAt']) || !(row.lease.fenceToken === null || uuid(row.lease.fenceToken)) ||
         !nullableDate(row.lease.claimedAt) || !date(row.lease.expiresAt) ||
-        !fields(row.cleanup, ['reason', 'attempts', 'nextAttemptAt']) || ![null, 'owner_delete', 'reservation_expired', 'pipeline_failed'].includes(row.cleanup.reason) ||
+        !(fields(row.cleanup, ['reason', 'attempts', 'nextAttemptAt']) || fields(row.cleanup, ['reason', 'attempts', 'nextAttemptAt', 'recovery'])) ||
+        ![null, 'owner_delete', 'reservation_expired', 'pipeline_failed'].includes(row.cleanup.reason) ||
         !integer(row.cleanup.attempts) || !nullableDate(row.cleanup.nextAttemptAt) ||
         !fields(row.charge, ['quotaDay', 'reservedBytes', 'retainedBytes', 'heldSuccess', 'concurrencyHeld', 'slotHeld', 'dailySuccessCharged', 'holdsSettled', 'storageReleasedAt'])) return false;
     const charge = row.charge;
@@ -62,12 +63,21 @@ function validOperation(row) {
     for (const name of ['thumbnail', 'display']) {
         const v = row.variants[name];
         if (!fields(v, ['key', 'outcome', 'byteLength', 'sha256', 'width', 'height', 'contentType']) || v.key !== variantKey(row, name) ||
-            !['not_started', 'prepared', 'unknown', 'stored', 'rejected', 'deleted'].includes(v.outcome) || v.contentType !== 'image/webp') return false;
+            !['not_started', 'prepared', 'unknown', 'stored', 'rejected', 'delete_unknown', 'delete_acknowledged', 'deleted'].includes(v.outcome) || v.contentType !== 'image/webp') return false;
         if (v.outcome === 'not_started') {
             if (![v.byteLength, v.sha256, v.width, v.height].every(value => value === null)) return false;
         } else if (!integer(v.byteLength) || v.byteLength < 1 || v.byteLength > ceiling[name + 'Bytes'] || !hash(v.sha256) ||
             !integer(v.width) || !integer(v.height) || v.width < 1 || v.height < 1 || Math.max(v.width, v.height) > (name === 'thumbnail' ? 400 : 1280)) return false;
     }
+    const recovery = row.cleanup.recovery;
+    if (recovery !== undefined && (!fields(recovery, ['fenceToken', 'claimedAt', 'expiresAt', 'status', 'category', 'manifestDigest', 'unknownWrites', 'absent']) ||
+        !uuid(recovery.fenceToken) || !date(recovery.claimedAt) || !date(recovery.expiresAt) || !hash(recovery.manifestDigest) ||
+        !['leased', 'blocked', 'retry', 'complete'].includes(recovery.status) ||
+        ![null, 'unknown_write', 'authorization', 'target_missing', 'target_mismatch', 'integrity', 'timeout', 'provider', 'accounting', 'changed', 'budget'].includes(recovery.category) ||
+        !Array.isArray(recovery.unknownWrites) || recovery.unknownWrites.length > 2 || new Set(recovery.unknownWrites).size !== recovery.unknownWrites.length ||
+        !recovery.unknownWrites.every(name => ['thumbnail', 'display'].includes(name)) ||
+        !fields(recovery.absent, ['thumbnail', 'display']) || !Object.values(recovery.absent).every(value => typeof value === 'boolean') ||
+        !['delete_pending', 'deleted'].includes(row.state) || recovery.status === 'complete' && row.state !== 'deleted')) return false;
     if (row.state === 'reserved') return row.sortPosition === null && row.readyAt === null && row.lease.claimedAt === null && row.lease.fenceToken === null &&
         Object.values(row.variants).every(v => v.outcome === 'not_started') && charge.reservedBytes === ceiling.reservedBytes && charge.retainedBytes === 0 &&
         charge.heldSuccess && charge.concurrencyHeld && charge.slotHeld && !charge.dailySuccessCharged && !charge.holdsSettled && charge.storageReleasedAt === null;
@@ -81,7 +91,8 @@ function validOperation(row) {
     if (Object.values(row.variants).some(v => v.outcome === 'unknown') && (!charge.concurrencyHeld || !charge.slotHeld || charge.holdsSettled)) return false;
     if (charge.holdsSettled && (charge.heldSuccess || charge.concurrencyHeld)) return false;
     if (charge.storageReleasedAt && (charge.reservedBytes || charge.retainedBytes || !charge.holdsSettled)) return false;
-    if (row.state === 'deleted') return !charge.reservedBytes && !charge.retainedBytes && !charge.slotHeld && charge.holdsSettled && date(charge.storageReleasedAt);
+    if (row.state === 'deleted') return !charge.reservedBytes && !charge.retainedBytes && !charge.slotHeld && charge.holdsSettled && date(charge.storageReleasedAt) &&
+        recovery && recovery.status === 'complete' && Object.values(recovery.absent).every(Boolean) && !row.needsMaintenance && date(row.deletedAt);
     return true;
 }
 function assertOperation(row) { if (!validOperation(row)) throw damaged(); return row; }

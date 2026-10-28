@@ -2,6 +2,9 @@ const assert = require('node:assert/strict');
 const { execFile } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const { promisify } = require('node:util');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { createDatabase } = require('../../models/db');
 
 const execute = promisify(execFile);
@@ -23,6 +26,7 @@ async function createIsolatedMongo() {
     let containerId;
     let database;
     let imageId;
+    let receiptDirectory;
 
     async function inspectOwnedContainer() {
         const result = await docker(['inspect', containerId]);
@@ -43,6 +47,7 @@ async function createIsolatedMongo() {
                 await docker(['rm', '--force', '--volumes', containerId]);
                 containerId = undefined;
             }
+            if (receiptDirectory) { fs.rmSync(receiptDirectory, { recursive: true }); receiptDirectory = undefined; }
         }
     }
 
@@ -117,7 +122,16 @@ async function createIsolatedMongo() {
             await pause();
         }
         assert.deepEqual(await db.listCollections().toArray(), []);
-        return { db, mongoUrl, dbName, close };
+        // Non-secret, mode-0600 identity evidence for separately invoked local
+        // maintenance. No URI, credentials, environment or remote target is saved.
+        const daemon = JSON.parse((await docker(['info', '--format', '{{json .}}'])).stdout);
+        const receipt = { version: 1, runId, containerId, containerName: name, imageId, dbName,
+            port: Number(ports[0].HostPort), processId: hello.topologyVersion.processId.toHexString(), daemonId: daemon.ID,
+            volumes: container.Mounts.map(mount => mount.Name).sort() };
+        receiptDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'moveout-mongo-receipt-'));
+        const receiptPath = path.join(receiptDirectory, 'receipt.json');
+        fs.writeFileSync(receiptPath, JSON.stringify(receipt), { mode: 0o600 });
+        return { db, mongoUrl, dbName, close, receiptPath };
     } catch (error) {
         await close();
         throw error;
