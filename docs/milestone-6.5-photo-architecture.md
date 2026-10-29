@@ -304,14 +304,17 @@ architecture or enabled service requires review; no floating tag or fallback.
 
 | Option | Benefits | Constraints / decision |
 | --- | --- | --- |
-| Bounded server-mediated multipart | Existing cookies/CSRF/owner path; no raw original stored; one trusted Sharp processor; simplest compensation | Recommend initially: input ≤3 MiB, total multipart ≤3.25 MiB, one image/request; native processing admission and deadlines mandatory. Reject larger originals with friendly guidance |
+| Bounded server-mediated multipart | Existing cookies/CSRF/owner path; no raw original stored; one trusted Sharp processor; simplest compensation | Recommend initially: input ≤3 MiB, total multipart ≤3.25 MiB, one image/request; native processing admission and deadlines mandatory. C1 prepares larger local sources into bounded derivatives before transfer; never sends originals as fallback |
 | Direct PUT to private quarantine + trusted processing | Bypasses function body limit; useful for larger phone originals | Not initial scope: private unsanitized objects, expiring upload capability/CORS, hostile multipart/size enforcement, trusted read/process step, quota reservation and original cleanup all remain necessary. Direct upload is not a processing/security bypass |
 
 The official Vercel-owned storage SDK guide explicitly documents **4.5 MB** for
 server uploads. Our 3,407,872-byte multipart ceiling is below 4,500,000 bytes,
 including boundaries/headers, and remains bounded even with chunked/no length
-input. Five files must not be combined into one request. Browser compression may
-help UX but cannot replace server limits/validation. Output display is ≤1 MiB;
+input. Five files must not be combined into one request. C1 now implements browser preparation of supported sources up to 20 MiB/48 MP,
+with a new at-most-1280px/3 MiB derivative before transfer. Original bytes are
+never sent as fallback. This helps UX but cannot replace server limits/validation;
+HEIC conversion and unbounded native browser decoding are not supported. See
+[C1 limits](milestone-6.5c1-owner-photo-upload.md#local-browser-preparation). Output display is ≤1 MiB;
 proxy reads also need verified platform response/stream limits.
 
 The official Node adapter source recognizes Express exports by `.listen` and

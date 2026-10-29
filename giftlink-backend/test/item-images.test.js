@@ -150,6 +150,46 @@ describe('owner image metadata and quota transactions on verified isolated Mongo
         await request(app).get('/api/item-images/' + new ObjectId() + '/display').expect(404);
         assert.equal(await db.collection('itemImages').countDocuments(), 0); assert.equal(await quota(), undefined);
     });
+    it('reports owner-only admission allowance and unavailable binary capability without creating quota or storage', async function () {
+        const result = await read().expect(200);
+        assert.deepEqual(result.body.capabilities, { metadata: true, binaryUpload: false, imageRead: false });
+        assert.deepEqual(result.body.allowance, { itemSlots: 5, attempts: 50, successes: 20, storageBytes: defaults.accountBytes,
+            concurrent: 2, records: 1000, newUploadsAllowed: true });
+        assert.equal(result.body.binaryUploadsEnabled, false); assert.equal(await quota(), undefined);
+        assert.equal(await db.collection('itemImages').countDocuments(), 0);
+        await db.collection('items').updateOne({ _id: item._id }, { $set: { status: 'cleared' } });
+        assert.equal((await read().expect(200)).body.allowance.newUploadsAllowed, false);
+    });
+    it('previews only safe never-claimed expiry for admission without persisting reaping or refunding unknown holds', async function () {
+        const a = (await reserve().expect(201)).body.upload.id, b = (await reserve().expect(201)).body.upload.id;
+        await stage(b, 'processing');
+        const past = new Date(Date.now() - 10000);
+        await db.collection('itemImages').updateMany({}, { $set: { 'lease.expiresAt': past, maintenanceDueAt: past } });
+        const before = await quota(), rowBefore = await op(a);
+        const result = await read().expect(200);
+        assert.equal(result.body.allowance.itemSlots, 4); assert.equal(result.body.allowance.concurrent, 1);
+        assert.equal(result.body.allowance.successes, 19); assert.equal(result.body.allowance.attempts, 48);
+        assert.deepEqual(await quota(), before); assert.deepEqual(await op(a), rowBefore);
+        assert.equal((await op(b)).variants.thumbnail.outcome, 'unknown');
+    });
+    it('recovers a lost reservation response by stable UUID without another write or exposing private internals', async function () {
+        const input = intent(); const created = await reserve(input).expect(201); const before = await quota();
+        const response = await request(app2).get(root() + '/uploads/' + input.clientUploadId).set('Cookie', owner.cookie).expect(200);
+        assert.equal(response.body.upload.id, created.body.upload.id); assert.equal(response.body.upload.state, 'reserved');
+        assert.deepEqual(await quota(), before); assert.equal(await db.collection('itemImages').countDocuments(), 1);
+        const text = JSON.stringify(response.body);
+        for (const privateValue of [input.sha256, owner.email, owner.id.toHexString(), binding.fingerprint, binding.namespace]) assert.ok(!text.includes(privateValue));
+        await remove(created.body.upload.id).expect(202);
+        const closed = await request(app).get(root() + '/uploads/' + input.clientUploadId).set('Cookie', owner.cookie).expect(200);
+        assert.equal(closed.body.upload.state, 'delete_pending'); assert.equal((await quota()).attempts, 1);
+    });
+    it('protects UUID recovery from anonymous users, foreign owners, other items and malformed or absent identifiers', async function () {
+        const input = intent(); await reserve(input).expect(201); const path = root() + '/uploads/' + input.clientUploadId;
+        await request(app).get(path).expect(401); await request(app).get(path).set('Cookie', other.cookie).expect(404);
+        await request(app).get(root(otherPlan, otherItem) + '/uploads/' + input.clientUploadId).set('Cookie', other.cookie).expect(404);
+        for (const value of ['bad', randomUUID()]) await request(app).get(root() + '/uploads/' + value).set('Cookie', owner.cookie).expect(404);
+        assert.equal((await quota()).attempts, 1);
+    });
     it('rejects anonymous, invalid and expired sessions and verifies original ownership on every read/write', async function () {
         await request(app).get(root()).expect(401);
         await request(app).get(root()).set('Cookie', 'giftlink_session=' + '0'.repeat(64)).expect(401);

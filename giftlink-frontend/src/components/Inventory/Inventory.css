@@ -36,7 +36,7 @@
 @media (max-width: 420px) { .ui-page .inventory-form { padding: var(--ui-space-4); } }
 
 .inventory-list { display: grid; gap: var(--ui-space-4); }
-.inventory-card { display: grid; gap: var(--ui-space-3); }
+.inventory-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--ui-space-3); }
 .inventory-card > p { margin: 0; }
 .inventory-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--ui-space-3); }
 .inventory-card-heading h2 { min-width: 0; flex: 1; }
@@ -46,3 +46,7 @@
 .inventory-more summary { cursor: pointer; min-height: var(--ui-control-height); padding-block: var(--ui-space-2); color: var(--ui-primary); }
 .inventory-more p { color: var(--ui-muted); margin-block: var(--ui-space-3); }
 @media (max-width: 420px) { .inventory-actions { align-items: stretch; } .inventory-actions .ui-button { flex: 1 1 auto; } }
+
+.ui-page .inventory-card .inventory-form { border: 0; padding: 0; max-width: none; margin-block: var(--ui-space-3); }
+.inventory-form .item-photos { margin-block: var(--ui-space-4); }
+.inventory-card-photos { max-width: 42rem; }

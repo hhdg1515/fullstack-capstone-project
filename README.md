@@ -821,3 +821,25 @@ complete arguments, bounds and safe shutdown. No `.env` or remote URI fallback.
 No scheduler, retention purge, R2 access, Atlas write, production activation or
 photo UI is introduced. Unknown PUTs remain charged when their outcome cannot
 be established; a temporary missing object never authorizes a refund.
+
+## Owner photo selection and upload (6.5C1)
+
+The [C1 interaction, transport and verification notes](docs/milestone-6.5c1-owner-photo-upload.md)
+describe optional photo selection inside Add/Edit item, immediate explicit
+**Upload N photos** after saving, and ready thumbnails on each owner inventory
+card. Saving an item does not upload photos; the batch sends sequentially only
+after confirmation. Each successful save closes creation fields; Add item starts
+another. Text and photo drafts are independent, with tab-only file loss warnings.
+Browser preparation accepts supported sources up to 20 MiB/48 MP, creates a new
+bounded derivative, and never uploads the original as fallback. The backend's
+3 MiB upload cap and Sharp validation remain unchanged. HEIC needs JPEG export.
+Partial/uncertain batches retain confirmed photos and unsent files for explicit
+status recovery. An uncertain new-item save requires inventory review, never an
+automatic second create. Reorder/cover/deletion and public galleries are deferred.
+
+Deployed binary upload/read gates stay **disabled**. The UI requires actual
+server capabilities; metadata-off/binary-unavailable servers show disabled
+controls. Real uploads run only through the existing verified disposable local
+MongoDB + SeaweedFS pipeline injection. No new frontend flag enables production
+uploads, creates indexes or selects a remote provider. The normal local/CI suites
+include the new native/frontend/HTTPS photo cases and existing lifecycle tests.

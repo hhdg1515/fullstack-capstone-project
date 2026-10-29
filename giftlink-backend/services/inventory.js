@@ -75,7 +75,28 @@ function itemResponse(item, plan, privateResponse = true, isReserved = null, isP
     if (privateResponse && typeof isPickedUp === 'boolean') result.isPickedUp = isPickedUp;
     return result;
 }
-function createInventoryService({ connectToDatabase }) {
+function createInventoryService({ connectToDatabase, imageMetadata = null, imageRead = false }) {
+    const media = require('./item-image-policy');
+    const binding = imageMetadata && media.validateImageConfig(imageMetadata).storageBinding;
+    const photoStages = binding && imageRead ? [{ $lookup: { from: 'itemImages', let: { item: '$_id' }, pipeline: [
+        { $match: { $expr: { $and: [{ $eq: ['$itemId', '$$item'] }, { $eq: ['$state', 'ready'] }] } } },
+        { $sort: { sortPosition: 1, _id: 1 } }, { $limit: 6 }
+    ], as: 'ownerPhotos' } }] : [];
+    function photoPreview(item, plan) {
+        if (!binding || !imageRead) return { availability: 'disabled', images: [] };
+        try {
+            if (!media.integer(item.imageRevision === undefined ? 0 : item.imageRevision)) throw media.damaged();
+            const photos = item.ownerPhotos || [];
+            if (photos.length > 5) throw media.damaged();
+            const images = photos.map((row, index) => {
+                media.assertOperation(row);
+                if (!row.ownerId.equals(plan.ownerId) || !row.planId.equals(plan._id) || !row.itemId.equals(item._id) || row.sortPosition !== index ||
+                    row.storageBinding.fingerprint !== binding.fingerprint || row.storageBinding.namespace !== binding.namespace) throw media.damaged();
+                return { id: row._id.toHexString(), thumbnail: { width: row.variants.thumbnail.width, height: row.variants.thumbnail.height } };
+            });
+            return { availability: images.length ? 'ready' : 'none', imageRevision: item.imageRevision || 0, images };
+        } catch (_) { return { availability: 'unavailable', images: [] }; }
+    }
     async function list(ownerId, planId) {
         const db = await connectToDatabase();
         const rows = await db.collection('moveOutPlans').aggregate([
@@ -83,7 +104,7 @@ function createInventoryService({ connectToDatabase }) {
             { $lookup: { from: 'items', let: { parent: '$_id', owner: '$ownerId' }, pipeline: [
                 { $match: { $expr: { $and: [{ $eq: ['$planId', '$$parent'] }, { $eq: ['$ownerId', '$$owner'] }] } } },
                 { $sort: { createdAt: 1, _id: 1 } }
-            ].concat(pickupReservationStages(), [
+            ].concat(photoStages, pickupReservationStages(), [
                 { $lookup: { from: 'pickupRequests', let: { reference: '$clearedByPickupRequestId' }, pipeline: [
                     { $match: { $expr: { $eq: ['$_id', '$$reference'] } } },
                     { $project: { itemId: 1, planId: 1, giverId: 1, receiverId: 1, status: 1, active: 1, completedAt: 1,
@@ -91,10 +112,11 @@ function createInventoryService({ connectToDatabase }) {
                         lastEvent: { $arrayElemAt: [{ $cond: [{ $isArray: '$history' }, '$history', []] }, -1] } } }
                 ], as: 'completedHandoffs' } }
             ]), as: 'items' } }
-        ], { readConcern: { level: 'snapshot' }, collation: { locale: 'simple' } }).toArray();
+        ], { readConcern: { level: 'snapshot' }, collation: { locale: 'simple' }, maxTimeMS: 5000 }).toArray();
         const plan = rows[0];
         if (!plan) throw notFound();
-        const items = plan.items.map(item => itemResponse(item, plan, true, item.isReserved, completedHandoff(item, plan)));
+        const items = plan.items.map(item => Object.assign(itemResponse(item, plan, true, item.isReserved, completedHandoff(item, plan)),
+            { photoPreview: photoPreview(item, plan) }));
         return { items, plan: Object.assign({ id: plan._id.toString(), title: plan.title, city: plan.city, neighborhood: plan.neighborhood,
             moveOutDeadline: plan.moveOutDeadline, status: plan.status, pickupTimeZone: plan.pickupTimeZone || null }, regionResponse(plan)),
             progress: { total: items.length, cleared: items.filter(item => item.status === 'cleared').length } };

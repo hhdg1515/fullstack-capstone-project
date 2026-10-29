@@ -25,14 +25,13 @@ test('owner configures pickup explicitly and manages items before entering a rep
     await expect(page.getByRole('link', { name: 'Set pickup timezone', exact: true })).toHaveCount(0);
     const inventory = page.getByRole('region', { name: 'Inventory items', exact: true });
     await expect(inventory.getByRole('heading', { name: 'Desk', exact: true })).toBeInViewport();
-    await page.getByRole('button', { name: 'Add item', exact: true }).click();
     for (const name of ['Box of mugs', 'Dining chairs']) {
+      await page.getByRole('button', { name: 'Add item', exact: true }).click();
       const input = page.getByLabel('Item name', { exact: true }); await expect(input).toBeFocused(); await input.fill(name);
       await page.getByRole('button', { name: 'Save Draft', exact: true }).click();
       await expect(inventory.getByRole('heading', { name, exact: true })).toBeVisible();
-      await expect(input).toHaveValue(''); await expect(input).toBeFocused();
+      await expect(input).toHaveCount(0);
     }
-    await page.getByRole('button', { name: 'Back to items', exact: true }).click();
     await expect(page.getByLabel('Item name', { exact: true })).toBeHidden();
   } finally { await context.close(); }
 });

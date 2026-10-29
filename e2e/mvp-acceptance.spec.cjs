@@ -112,7 +112,7 @@ test('two independent users complete the integrated marketplace journey with tru
     await capture(a, 'publication-validation');
     await a.getByRole('button', { name: 'Save Draft', exact: true }).click();
     await expect(card('Local study desk').getByText('Draft', { exact: true })).toBeVisible();
-    await a.getByRole('button', { name: 'Complete Local study desk for publication', exact: true }).click();
+    await a.getByRole('button', { name: 'Edit Local study desk', exact: true }).click();
     for (const [label, value] of [['Category', 'office-lighting'], ['Item type', 'desk'], ['Condition (optional)', 'good']]) await a.getByLabel(label, { exact: true }).selectOption(value);
     await a.getByLabel('Description', { exact: true }).fill('A sturdy household study desk. Legs detach for transport.');
     await a.getByRole('button', { name: 'Publish', exact: true }).evaluate(node => { node.click(); node.click(); });
@@ -124,7 +124,8 @@ test('two independent users complete the integrated marketplace journey with tru
     await a.getByLabel('Description', { exact: true }).fill('An adjustable household office chair, with working wheels.');
     await a.getByLabel('Condition (optional)', { exact: true }).selectOption('good');
     await a.getByRole('button', { name: 'Publish', exact: true }).click();
-    await expect(a.getByLabel('Item name', { exact: true })).toHaveValue('');
+    await expect(a.getByLabel('Item name', { exact: true })).toHaveCount(0);
+    await a.getByRole('button', { name: 'Add item', exact: true }).click();
     await expect(a.getByLabel('Item name', { exact: true })).toBeFocused();
     await a.getByLabel('Item name', { exact: true }).fill('Local unfinished shelf');
     await a.getByRole('button', { name: 'Save Draft', exact: true }).click();

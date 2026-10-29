@@ -13,7 +13,8 @@ permissions:
 jobs:
   backend:
     name: Backend lint and integration tests
-    runs-on: ubuntu-latest
+    # Keep the reviewed Docker image/receipt semantics; ubuntu-latest moved to Docker 29.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
       run:
@@ -84,7 +85,8 @@ jobs:
   browser_e2e:
     name: Isolated full-stack Chromium E2E
     needs: client_build
-    runs-on: ubuntu-latest
+    # Match the reviewed local storage fixture runtime without weakening image checks.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1; Node 24 action runtime

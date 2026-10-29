@@ -125,7 +125,8 @@ function createItemImagesService({ connectToDatabase, configuration }) {
         row.charge = Object.assign({}, c, { reservedBytes: 0, heldSuccess: false, concurrencyHeld: false,
             slotHeld: false, holdsSettled: true, storageReleasedAt: now });
     }
-    async function reap(db, ownerId, quota, now, tokens, session) {
+    async function reap(db, ownerId, quota, now, tokens, session, preview = false) {
+        const settled = [];
         const rows = await db.collection('itemImages').find({ ownerId, state: 'reserved', 'charge.concurrencyHeld': true,
             'lease.expiresAt': { $lte: now }, 'storageBinding.fingerprint': config.storageBinding.fingerprint,
             'storageBinding.namespace': config.storageBinding.namespace }, options(session)).sort({ _id: 1 }).limit(2).toArray();
@@ -135,6 +136,8 @@ function createItemImagesService({ connectToDatabase, configuration }) {
             const item = await db.collection('items').findOne({ _id: row.itemId, planId: row.planId, ownerId }, options(session));
             if (!parent || !item) continue; // Orphan/corrupt references require operator review, never a blind refund.
             settleNeverClaimed(row, quota, now);
+            settled.push(row._id.toHexString());
+            if (preview) continue; // Admission projection only; GET never writes/reaps.
             if (!tokens.has(row._id.toHexString())) tokens.set(row._id.toHexString(), randomUUID());
             Object.assign(row, { state: 'failed', updatedAt: now, version: row.version + 1,
                 needsMaintenance: false, maintenanceDueAt: null });
@@ -145,6 +148,7 @@ function createItemImagesService({ connectToDatabase, configuration }) {
                 'lease.expiresAt': { $lte: now } }, row, { session });
             if (result.matchedCount !== 1) throw damaged();
         }
+        return settled;
     }
     function quotaLimit(quota, now) {
         const dailyDelay = Math.max(1, Math.min(86400, Math.ceil((Date.parse(quota.utcDay + 'T00:00:00.000Z') + 86400000 - now.getTime()) / 1000)));
@@ -164,14 +168,34 @@ function createItemImagesService({ connectToDatabase, configuration }) {
             if (active.length + ready.length > ceiling.photos) throw damaged();
             const recent = await db.collection('itemImages').find(Object.assign({}, filter, { state: { $ne: 'ready' },
                 _id: { $nin: active.map(row => row._id) } }), options(session)).sort({ updatedAt: -1, _id: -1 }).limit(20).toArray();
+            active.concat(recent).forEach(assertOperation);
+            if (ctx.account.itemImageQuota === undefined && await db.collection('itemImages').findOne({ ownerId }, options(session))) throw damaged();
+            const quota = quotaFor(ctx.account.itemImageQuota, ctx.now);
+            const unused = await reap(db, ownerId, quota, ctx.now, new Map(), session, true);
+            const calendar = require('./calendar'), day = ctx.now.toISOString().slice(0, 10);
+            const end = ctx.item.availableUntil || plan.moveOutDeadline;
+            const allowance = { itemSlots: Math.max(0, ceiling.photos - ready.length - active.filter(row => !unused.includes(row._id.toHexString())).length),
+                attempts: Math.max(0, limits.attempts - quota.attempts), successes: Math.max(0, limits.successes - quota.successful - quota.heldSuccess),
+                storageBytes: Math.max(0, limits.accountBytes - quota.reservedBytes - quota.retainedBytes),
+                concurrent: Math.max(0, limits.concurrent - quota.activeUploads), records: Math.max(0, limits.records - quota.operationCount),
+                newUploadsAllowed: plan.status === 'active' && ctx.item.status !== 'cleared' && calendar.isCalendarDate(plan.moveOutDeadline) &&
+                    calendar.isCalendarDate(end) && end >= day && end <= plan.moveOutDeadline && plan.moveOutDeadline >= day };
             return { imageRevision: ctx.revision, images: ready.map(row => readyResponse(row, ctx.now)),
-                uploads: active.concat(recent).map(row => operationResponse(row, ctx.now)), limits, binaryUploadsEnabled: false };
+                uploads: active.concat(recent).map(row => operationResponse(row, ctx.now)), limits, allowance, binaryUploadsEnabled: false };
         });
     }
     async function status(ownerId, planId, itemId, imageId) {
         inputIds(ownerId, planId, itemId, imageId);
         return read(ownerId, planId, itemId, async (db, plan, ctx, session) => ({ imageRevision: ctx.revision,
             upload: operationResponse(await ownedRow(db, scope(ownerId, planId, itemId), imageId, session), ctx.now), binaryUploadsEnabled: false }));
+    }
+    async function lookup(ownerId, planId, itemId, clientUploadId) {
+        if (!policy.uuid(clientUploadId)) throw unavailable();
+        return read(ownerId, planId, itemId, async (db, plan, ctx, session) => {
+            const row = await db.collection('itemImages').findOne(Object.assign(scope(ownerId, planId, itemId), { clientUploadId }), options(session));
+            if (!row) throw unavailable();
+            return { imageRevision: ctx.revision, upload: operationResponse(row, ctx.now), binaryUploadsEnabled: false };
+        });
     }
     async function reserve(ownerId, planId, itemId, input) {
         if (!input || !policy.uuid(input.clientUploadId) || !policy.hash(input.sha256) ||
@@ -372,6 +396,6 @@ function createItemImagesService({ connectToDatabase, configuration }) {
             return { imageRevision: revision, image: readyResponse(row, ctx.now), binaryUploadsEnabled: false };
         });
     }
-    return { list, status, reserve, reorder, remove, inspectUpload, claim, prepareVariants, beginPut, stored, fail, finalize };
+    return { list, status, lookup, reserve, reorder, remove, inspectUpload, claim, prepareVariants, beginPut, stored, fail, finalize };
 }
 module.exports = { createItemImagesService };

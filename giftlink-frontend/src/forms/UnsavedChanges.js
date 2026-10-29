@@ -15,19 +15,21 @@ export function UnsavedChangesProvider({ children }) {
   const { user, status } = useAppContext();
   const scope = user?.id || 'anonymous';
   const identity = useRef(); identity.current = { scope, enabled: ['anonymous', 'authenticated'].includes(status) };
-  const drafts = useRef(new Map());
+  const drafts = useRef(new Map()), notices = useRef(new Map());
   const [version, changed] = useReducer(value => value + 1, 0);
   const hasChanges = useCallback(() => identity.current.enabled && [...drafts.current.values()].some(value => value === identity.current.scope), []);
-  const update = useCallback((id, dirty, owner) => {
+  const update = useCallback((id, dirty, owner, notice) => {
+    if (dirty && notice) notices.current.set(id, notice); else notices.current.delete(id);
     const previous = drafts.current.get(id);
     if (dirty) drafts.current.set(id, owner); else drafts.current.delete(id);
     if (previous !== drafts.current.get(id)) changed();
   }, []);
   const discard = useCallback(() => {
-    if (drafts.current.size) { drafts.current.clear(); changed(); }
+    if (drafts.current.size) { drafts.current.clear(); notices.current.clear(); changed(); }
   }, []);
   const confirmDiscard = useCallback(({ release = true } = {}) => {
-    if (hasChanges() && !window.confirm(warning)) return false;
+    const notice = [...drafts.current.entries()].find(([id, owner]) => owner === identity.current.scope && notices.current.has(id));
+    if (hasChanges() && !window.confirm(notice ? notices.current.get(notice[0]) : warning)) return false;
     if (release) discard();
     return true;
   }, [hasChanges, discard]);
@@ -50,24 +52,23 @@ export function UnsavedChangesProvider({ children }) {
 }
 
 export function useDiscardChanges() { return useContext(DraftContext); }
-export function useUnsavedForm(values, initial) {
+export function useUnsavedForm(values, initial, discardWarning = warning) {
   const protection = useContext(DraftContext);
   const id = useRef(Symbol('form'));
   const signature = JSON.stringify(normalize(values));
   const dirty = meaningfulChanges(values, initial);
   useLayoutEffect(() => {
-    protection?.update(id.current, dirty, protection.scope);
+    protection?.update(id.current, dirty, protection.scope, discardWarning === warning ? undefined : discardWarning);
     const formId = id.current;
     return () => protection?.update(formId, false);
-  }, [protection, dirty, signature]);
+  }, [protection, dirty, signature, discardWarning]);
   return {
     dirty,
     markSaved: () => protection?.update(id.current, false),
-    confirmDiscard: () => {
-      if (!protection) return true;
-      if (dirty && !window.confirm(warning)) return false;
+    confirmDiscard: ({ release = true } = {}) => {
+      if (dirty && !window.confirm(discardWarning)) return false;
       // Discarding one form must not release another form's draft guard.
-      protection.update(id.current, false);
+      if (release) protection?.update(id.current, false);
       return true;
     },
   };

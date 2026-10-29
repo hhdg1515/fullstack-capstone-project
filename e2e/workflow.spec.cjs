@@ -102,6 +102,7 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     await test.step('Giver login and plan creation verified', async () => {});
     const itemIds = [];
     for (const [label, days] of [['desk', 3], ['chair', 5], ['lamp', 4]]) {
+      if (label !== 'desk') await a.getByRole('button', { name: 'Add item', exact: true }).click();
       await a.getByLabel('Item name', { exact: true }).fill(prefix + ' ' + label);
       await a.getByLabel('Category', { exact: true }).selectOption('other-household');
       await a.getByLabel('Item type', { exact: true }).selectOption('other');

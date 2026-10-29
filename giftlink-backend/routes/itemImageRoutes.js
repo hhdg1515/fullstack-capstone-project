@@ -19,7 +19,14 @@ function createItemImageRoutes({ connectToDatabase, configuration, controlLimit 
     router.param('imageId', (req, res, next, value) => /^[a-fA-F0-9]{24}$/.test(value) ? next() : errorResponse(res, 404, 'IMAGE_UNAVAILABLE', 'Photo or item unavailable.'));
     const actor = req => [req.user._id, req.params.planId, req.params.itemId];
     if (pipeline) router.put('/:imageId/content', pipeline.upload);
-    router.get('/', async (req, res, next) => { try { res.json(await service.list(...actor(req))); } catch (error) { next(error); } });
+    router.get('/', async (req, res, next) => {
+        try { res.json(Object.assign(await service.list(...actor(req)), {
+            capabilities: { metadata: true, binaryUpload: Boolean(pipeline), imageRead: Boolean(pipeline) }
+        })); } catch (error) { next(error); }
+    });
+    router.get('/uploads/:clientUploadId', async (req, res, next) => {
+        try { res.json(await service.lookup(...actor(req), req.params.clientUploadId)); } catch (error) { next(error); }
+    });
     router.get('/:imageId', async (req, res, next) => { try { res.json(await service.status(...actor(req), req.params.imageId)); } catch (error) { next(error); } });
     router.post('/uploads', validate(['imageRevision', 'clientUploadId', 'byteLength', 'sha256'], [revision(),
         body('clientUploadId').isString().bail().isUUID(4).withMessage('Use a random version 4 upload ID.').toLowerCase(),
