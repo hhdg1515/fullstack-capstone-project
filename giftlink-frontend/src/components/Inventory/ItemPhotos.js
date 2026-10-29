@@ -2,7 +2,8 @@ import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } f
 import { useAppContext } from '../../context/AuthContext';
 import { useUnsavedForm } from '../../forms/UnsavedChanges';
 import { Feedback, Surface } from '../../design-system/primitives';
-import { fileDigest, photoError, photoUrl, readPhotos, readUpload, reservePhoto, securePhotoBrowser, selectionError, uploadId, uploadPhoto } from '../../api/itemImages';
+import { fileDigest, photoError, photoUrl, readPhotos, readUpload, reservePhoto, securePhotoBrowser, uploadId, uploadPhoto, validReady } from '../../api/itemImages';
+import { preparePhoto, sourcePhotoError } from '../../api/photoPreparation';
 import './ItemPhotos.css';
 
 export function operationLabel(operation) {
@@ -19,11 +20,11 @@ function entryProblem(entry) {
 }
 function LocalPreview({ url, position }) {
   const [failed, setFailed] = useState(false);
-  return failed ? <p className="item-photo-missing">Preview unavailable</p> :
+  return failed || !url ? <p className="item-photo-missing">Preview unavailable</p> :
     <img src={url} alt={'Local preview of selected photo ' + position} onError={() => setFailed(true)} />;
 }
 
-function ReadyPhoto({ image, position }) {
+export function ReadyPhoto({ image, position }) {
   const [failed, setFailed] = useState(false);
   return <li className="item-photo-ready">
     {failed ? <p className="item-photo-problem">Photo unavailable. Refresh to check again.</p> :
@@ -33,11 +34,15 @@ function ReadyPhoto({ image, position }) {
   </li>;
 }
 
-const PhotoSession = forwardRef(function PhotoSession({ planId, item, onClose }, ref) {
+const PhotoSession = forwardRef(function PhotoSession({ planId, item = {}, onClose, entries: ownedEntries, onEntriesChange, previewUrls, capabilities, embedded = false, onMetadata, onBusyChange, disabled: saving = false }, ref) {
   const [data, setData] = useState(null), [loading, setLoading] = useState(true), [error, setError] = useState(null);
-  const [entries, setEntries] = useState([]), [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [announcement, setAnnouncement] = useState(''), [refresh, setRefresh] = useState(0);
-  const alive = useRef(true), inFlight = useRef(false), urls = useRef(new Set()), activeUpload = useRef(), fileInput = useRef(), addButton = useRef(), heading = useRef(), feedback = useRef(), focusSelection = useRef(false);
-  const guard = useUnsavedForm({ photos: entries.map(entry => entry.clientUploadId).join(',') }, { photos: '' });
+  const [localEntries, setLocalEntries] = useState([]), [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [announcement, setAnnouncement] = useState(''), [refresh, setRefresh] = useState(0);
+  const entries = ownedEntries ?? localEntries, setEntries = onEntriesChange || setLocalEntries;
+  const draft = !item.id, dataRef = useRef(data), batch = useRef(false); dataRef.current = data;
+  const [batchBusy, setBatchBusy] = useState(false), [metadataStale, setMetadataStale] = useState(false);
+  useEffect(() => { onBusyChange?.(busy || batchBusy); }, [busy, batchBusy, onBusyChange]);
+  const alive = useRef(true), inFlight = useRef(false), urls = useRef(previewUrls || new Set()), activeUpload = useRef(), fileInput = useRef(), addButton = useRef(), heading = useRef(), feedback = useRef(), focusSelection = useRef(false);
+  const guard = useUnsavedForm({ photos: ownedEntries ? '' : entries.map(entry => entry.clientUploadId).join(',') }, { photos: '' }, 'Discard unsent photos? They are kept only in this tab and cannot be restored after reloading.');
   useImperativeHandle(ref, () => ({ confirmDiscard: guard.confirmDiscard }));
   useEffect(() => {
     if (!busy && !loading && focusSelection.current) {
@@ -46,10 +51,11 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item, onClose },
     }
   }, [busy, loading, entries.length]);
   const releaseUrl = url => { if (urls.current.delete(url)) URL.revokeObjectURL(url); };
+  const mountOptions = useRef({ autofocus: !embedded || Boolean(item.id && entries.length), ownsPreviews: !previewUrls });
   useEffect(() => {
-    alive.current = true; heading.current?.focus();
+    const options = mountOptions.current; alive.current = true; if (options.autofocus) heading.current?.focus();
     const ownedUrls = urls.current;
-    return () => { alive.current = false; activeUpload.current?.abort(); ownedUrls.forEach(url => URL.revokeObjectURL(url)); ownedUrls.clear(); };
+    return () => { alive.current = false; activeUpload.current?.abort(); if (options.ownsPreviews) { ownedUrls.forEach(url => URL.revokeObjectURL(url)); ownedUrls.clear(); } };
   }, []);
   const current = () => alive.current;
   const failed = failure => {
@@ -61,14 +67,14 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item, onClose },
   const load = async () => {
     try {
       const result = await readPhotos(planId, item.id);
-      if (current()) { setData(result); setError(null); }
+      if (current()) { dataRef.current = result; setData(result); setMetadataStale(false); setError(null); onMetadata?.(item.id, result); }
       return result;
-    } catch (failure) { if (current()) setData(null); throw failure; }
+    } catch (failure) { if (current()) setMetadataStale(true); throw failure; }
   };
   useEffect(() => {
-    let active = true; setLoading(true);
-    readPhotos(planId, item.id).then(value => { if (active && current()) { setData(value); setError(null); } }).catch(failure => {
-      if (active && current()) { setData(null); failed({ ...failure, message: failure.message, blockUploads: true }); }
+    let active = true; if (draft || (embedded && capabilities?.metadata !== true)) { setLoading(false); return; } setLoading(true);
+    readPhotos(planId, item.id).then(value => { if (active && current()) { dataRef.current = value; setData(value); setMetadataStale(false); setError(null); onMetadata?.(item.id, value); } }).catch(failure => {
+      if (active && current()) { setMetadataStale(true); failed({ ...failure, message: failure.message, blockUploads: true }); }
     }).finally(() => { if (active && current()) setLoading(false); });
     return () => { active = false; };
     // This instance is keyed to the account/plan/item; refresh is deliberately manual.
@@ -81,43 +87,69 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item, onClose },
     setMessage(''); setAnnouncement('Photo uploaded.');
     focusSelection.current = true;
   };
-  const add = event => {
+  const acknowledgeReady = (entry, result) => {
+    const latest = dataRef.current;
+    // A confirmed operation can preserve its safe thumbnail even if the next
+    // collection read fails. Admission still requires a fresh metadata read.
+    if (!latest || !validReady(result.upload)) return false;
+    const images = latest.images.filter(image => image.id !== result.upload.id).concat(result.upload).sort((a, b) => a.sortPosition - b.sortPosition);
+    if (images.length > 5) return false;
+    const snapshot = { ...latest, imageRevision: Math.max(latest.imageRevision, result.imageRevision), images };
+    dataRef.current = snapshot; setData(snapshot); setMetadataStale(true); onMetadata?.(item.id, snapshot); complete(entry);
+    return true;
+  };
+  const add = async event => {
     const files = Array.from(event.target.files || []); event.target.value = '';
-    if (inFlight.current || !data?.capabilities.binaryUpload || !data.allowance.newUploadsAllowed) return;
+    if (!files.length || inFlight.current || batch.current || saving || !(draft ? capabilities?.binaryUpload === true : data?.capabilities.binaryUpload && data.allowance.newUploadsAllowed)) return;
     const unreserved = entries.filter(entry => !entry.operation).length;
-    if (files.length + entries.length > 5 || files.length + unreserved > data.allowance.itemSlots) {
+    if (files.length + entries.length > 5 || files.length + unreserved > (draft ? 5 : data.allowance.itemSlots)) {
       failed({ ...photoError({ code: 'IMAGE_ITEM_LIMIT', status: 409 }), message: 'Choose up to 5 photos in total.', field: 'file' }); return;
     }
-    const problem = files.map(selectionError).find(Boolean);
-    if (problem) { failed({ message: problem, field: 'file' }); return; }
-    const next = [];
+    // One bounded decode at a time. Only the resulting canvas derivative becomes
+    // entry.file; the original never reaches hashing/reservation/multipart code.
+    inFlight.current = true; setBusy(true); onBusyChange?.(true); setError(null);
+    let preparedCount = 0;
     try {
-      for (const file of files) {
-        const clientUploadId = uploadId(), url = URL.createObjectURL(file); urls.current.add(url);
-        next.push({ clientUploadId, file, url, phase: 'selected', operation: null, reservationAttempted: false, putAttempted: false });
+      for (const source of files) {
+        if (!current()) return;
+        const clientUploadId = uploadId();
+        setEntries(list => list.concat({ clientUploadId, file: null, url: null, phase: 'preparing', operation: null, reservationAttempted: false, putAttempted: false }));
+        try {
+          const problem = sourcePhotoError(source); if (problem) throw Error(problem);
+          const file = await preparePhoto(source); if (!current()) return;
+          const url = URL.createObjectURL(file); urls.current.add(url);
+          patch(clientUploadId, { file, url, phase: 'selected', error: '' }); preparedCount++;
+        } catch (failure) {
+          if (current()) {
+            const message = failure.code === 'PHOTO_PREPARATION_FAILED' || sourcePhotoError(source) ? failure.message : 'Could not prepare this photo. Try a smaller JPEG.';
+            patch(clientUploadId, { phase: 'failed', error: message }); failed({ message, clientUploadId, field: 'file' });
+          }
+        }
       }
-      setEntries(list => list.concat(next)); setError(null); setMessage(''); setAnnouncement('Photos selected. Choose Upload to confirm.');
-    } catch (failure) { next.forEach(entry => releaseUrl(entry.url)); failed(photoError(failure)); }
+      if (current()) { setMessage(''); setAnnouncement(preparedCount ? `${preparedCount} photos prepared. Choose Upload to confirm.` : 'No photos prepared. Check the photo errors.'); }
+    } catch (failure) { failed(photoError(failure)); }
+    finally { if (current()) { inFlight.current = false; setBusy(false); } }
   };
-  const upload = async entry => {
+  const upload = async (entry, publicConfirmed = false) => {
+    const data = dataRef.current;
     if (inFlight.current || !data || loading || error?.blockUploads || entry.putAttempted || entry.phase === 'uncertain' || (entry.operation && (entry.operation.state !== 'reserved' || entry.operation.reservationExpired))) return;
-    if (item.status === 'available' && !window.confirm('Add this photo to the posted item? Ready photos follow its public visibility.')) return;
+    if (!publicConfirmed && item.status === 'available' && !window.confirm('Add this photo to the posted item? Ready photos follow its public visibility.')) return;
     inFlight.current = true; setBusy(true); setError(null); setMessage('');
-    let operation = entry.operation, attempted = entry.reservationAttempted;
+    let operation = entry.operation, attempted = entry.reservationAttempted, confirmedReady = false;
     try {
       // Use the last authoritative read, then let the versioned reservation
       // enforce races. Avoid redundant GETs that consume the control budget.
-      const latest = data; if (!current()) return;
+      const latest = data; let revision = latest.imageRevision; if (!current()) return;
       if (!latest.capabilities.binaryUpload || !latest.allowance.newUploadsAllowed) { setMessage('Photo uploads are unavailable for this item.'); return; }
       if (!operation) {
         patch(entry.clientUploadId, { phase: 'hashing' });
         const sha256 = await fileDigest(entry.file); if (!current()) return;
         patch(entry.clientUploadId, { phase: 'reserving', reservationAttempted: true }); attempted = true;
         const result = await reservePhoto(planId, item.id, { imageRevision: latest.imageRevision, clientUploadId: entry.clientUploadId, byteLength: entry.file.size, sha256 });
-        if (!current()) return; operation = result.upload;
+        if (!current()) return; operation = result.upload; revision = result.imageRevision;
         patch(entry.clientUploadId, { operation });
       }
-      if (operation.state === 'ready') { complete(entry); await load(); return; }
+      if (operation.state === 'ready') { confirmedReady = true; const removed = acknowledgeReady(entry, { imageRevision: revision, upload: operation }); await load(); if (!removed) complete(entry); return true; }
       if (operation.state !== 'reserved' || operation.reservationExpired) {
         patch(entry.clientUploadId, { operation, phase: operation.state === 'processing' ? 'processing' : 'failed' }); return;
       }
@@ -127,11 +159,15 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item, onClose },
         patch(entry.clientUploadId, { percent, phase: processing ? 'processing' : 'uploading' }) });
       if (!current()) return;
       patch(entry.clientUploadId, { operation: response.upload, phase: response.upload.state === 'ready' ? 'ready' : 'processing' });
-      if (response.upload.state === 'ready') complete(entry);
+      confirmedReady = response.upload.state === 'ready';
+      const removed = confirmedReady && acknowledgeReady(entry, response);
       await load();
+      if (confirmedReady && !removed) complete(entry);
+      return response.upload.state === 'ready';
     } catch (failure) {
       if (!current()) return;
-      const safe = photoError(failure, attempted); if (attempted) setData(null);
+      if (confirmedReady) { failed({ ...photoError(failure), message: 'Photo uploaded. Refresh photos to update status.', blockUploads: true }); return; }
+      const safe = photoError(failure, attempted); if (attempted) setMetadataStale(true);
       const message = safe.uncertain ? 'Upload not confirmed. Check status.' : safe.message;
       patch(entry.clientUploadId, { operation, reservationAttempted: attempted,
         ...((operation && safe.status === 429 && ['IMAGE_PROCESSOR_BUSY', 'IMAGE_CONTROL_LIMIT'].includes(safe.code)) ? { putAttempted: false } : {}),
@@ -142,15 +178,19 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item, onClose },
   const check = async entry => {
     if (inFlight.current) return;
     inFlight.current = true; setBusy(true); setError(null); setMessage('');
+    let confirmedReady = false;
     try {
       const result = await readUpload(planId, item.id, entry.operation?.id, entry.clientUploadId);
       if (!current()) return;
       patch(entry.clientUploadId, { operation: result.upload, phase: result.upload.state === 'reserved' ? (entry.putAttempted ? 'uncertain' : 'reserved') : result.upload.state === 'processing' ? 'processing' : 'failed', error: '', recoveryCheckedMissing: false });
-      if (result.upload.state === 'ready') complete(entry);
+      confirmedReady = result.upload.state === 'ready';
+      const removed = confirmedReady && acknowledgeReady(entry, result);
       await load();
+      if (result.upload.state === 'ready' && !removed) complete(entry);
       if (current() && result.upload.state !== 'ready') setAnnouncement(operationLabel(result.upload) + '. No file was resent.');
     } catch (failure) {
       if (!current()) return;
+      if (confirmedReady) { failed({ ...photoError(failure), message: 'Photo uploaded. Refresh photos to update status.', blockUploads: true }); return; }
       if (failure.status === 404 && !entry.operation && !entry.putAttempted) {
         patch(entry.clientUploadId, { recoveryCheckedMissing: true, error: "Upload wasn't found. You can retry." });
         try { await load(); } catch (problem) { failed(problem); return; }
@@ -158,38 +198,52 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item, onClose },
       else failed({ ...failure, message: failure.message, clientUploadId: entry.clientUploadId });
     } finally { if (current()) { inFlight.current = false; setBusy(false); } }
   };
-  const disabled = !data || !data.capabilities.binaryUpload || !data.allowance.newUploadsAllowed || Boolean(error?.blockUploads) || !securePhotoBrowser();
-  const selectionSlots = data ? data.allowance.itemSlots - entries.filter(entry => !entry.operation).length : 0;
+  const uploadable = entries.filter(entry => ['selected', 'reserved'].includes(entry.phase) && !entry.putAttempted && !entry.recoveryCheckedMissing &&
+    (!entry.operation || (entry.operation.state === 'reserved' && !entry.operation.reservationExpired)));
+  const uploadSelected = async () => {
+    if (draft || inFlight.current || batch.current || saving || metadataStale || !uploadable.length) return;
+    if (item.status === 'available' && !window.confirm('Upload these photos to the public listing?')) return;
+    batch.current = true; setBatchBusy(true);
+    try { for (const entry of uploadable) { if (!current() || !await upload(entry, true)) break; } }
+    finally { if (current()) { batch.current = false; setBatchBusy(false); } }
+  };
+  const disabled = saving || metadataStale || (draft ? capabilities?.binaryUpload !== true : !data || !data.capabilities.binaryUpload || !data.allowance.newUploadsAllowed) || Boolean(error?.blockUploads) || !securePhotoBrowser();
+  const selectionSlots = draft ? 5 - entries.length : data ? data.allowance.itemSlots - entries.filter(entry => !entry.operation).length : 0;
   const pendingHistory = data?.uploads.filter(operation => !entries.some(entry => entry.operation?.id === operation.id)) || [];
   const needsRefresh = Boolean(error) || pendingHistory.length > 0 || entries.some(entry => entry.reservationAttempted);
-  const selectionDisabled = disabled || busy || loading || entries.length >= 5 || selectionSlots <= 0;
-  const count = data ? data.images.length + entries.filter(entry => !data.images.some(image => image.id === entry.operation?.id)).length : null;
-  const refreshButton = <button type="button" className="item-photos-link" aria-label="Refresh photos" disabled={busy || loading}
+  const selectionDisabled = disabled || busy || batchBusy || loading || entries.length >= 5 || selectionSlots <= 0;
+  const count = draft ? entries.length : data ? data.images.length + entries.filter(entry => !data.images.some(image => image.id === entry.operation?.id)).length : null;
+  const refreshButton = <button type="button" className="item-photos-link" aria-label="Refresh photos" disabled={busy || batchBusy || saving || loading}
     onClick={() => { setError(null); setRefresh(value => value + 1); }}>Refresh</button>;
-  return <Surface id="owner-photo-manager" className="item-photos" aria-labelledby="item-photos-title">
+  const fileErrorId = error?.clientUploadId ? 'selected-photo-error-' + entries.findIndex(entry => entry.clientUploadId === error.clientUploadId) : 'photo-error';
+  const Wrapper = embedded ? 'section' : Surface;
+  return <Wrapper id="owner-photo-manager" className="item-photos" aria-labelledby="item-photos-title">
     <div className="item-photos-heading">
-      <h2 ref={heading} tabIndex={-1} id="item-photos-title">Photos<span className="visually-hidden"> for {item.name}</span></h2>
+      <h2 ref={heading} tabIndex={-1} id="item-photos-title">Photos{item.name && <span className="visually-hidden"> for {item.name}</span>}</h2>
       <span className="item-photos-count" aria-label={count === null ? 'Photo count unavailable' : `${count} photos and selections, maximum 5`}>{count ?? '—'} / 5</span>
-      <button type="button" className="item-photos-icon" aria-label="Close photos" title="Close photos"
-        onClick={() => { if (guard.confirmDiscard()) onClose?.(); }}>×</button>
+      {!embedded && <button type="button" className="item-photos-icon" aria-label="Close photos" title="Close photos"
+        onClick={() => { if (guard.confirmDiscard()) onClose?.(); }}>×</button>}
     </div>
-    <p className="item-photos-context">{item.name}</p>
+    {!embedded && <p className="item-photos-context">{item.name}</p>}
     <div role="status" className="visually-hidden">{announcement}</div>
+    {entries.length > 0 && <p className="item-photo-note">Unsent photos stay in this tab. Reloading will lose them.</p>}
+    {!draft && uploadable.length > 0 && <button type="button" className="ui-button" disabled={disabled || busy || batchBusy || loading} onClick={uploadSelected}>Upload {uploadable.length} {uploadable.length === 1 ? 'photo' : 'photos'}</button>}
     {loading && <p role="status">Loading photos…</p>}
     {error && !error.clientUploadId && <p id="photo-error" className="item-photo-problem" role={error.code === 'NOT_FOUND' ? 'status' : 'alert'} ref={feedback} tabIndex={-1}>{error.message}</p>}
     {message && <p role="status" className="item-photo-note">{message}</p>}
-    {data && !data.capabilities.binaryUpload && <p role="status">Photo uploads are unavailable.</p>}
+    {embedded && !draft && capabilities?.metadata !== true && <p role="status">Photo uploads are unavailable.</p>}
+    {(draft ? capabilities && !capabilities.binaryUpload : data && !data.capabilities.binaryUpload) && <p role="status">Photo uploads are unavailable.</p>}
     {data && data.capabilities.binaryUpload && !data.allowance.newUploadsAllowed && <p role="status">Update the plan and pickup dates to add photos.</p>}
     {!securePhotoBrowser() && <p role="status">Use a current browser over HTTPS or localhost.</p>}
     {(entries.length > 0 || data?.images.length > 0) && <ul className="item-photos-grid" aria-label="Photos and selections">
-      {data?.capabilities.imageRead && data.images.map((image, index) => <ReadyPhoto key={image.id + ':' + refresh} image={image} position={index} />)}
+      {!embedded && data?.capabilities.imageRead && data.images.map((image, index) => <ReadyPhoto key={image.id + ':' + refresh} image={image} position={index} />)}
       {entries.map((entry, index) => {
         const problem = error?.clientUploadId === entry.clientUploadId ? error.message : entry.error || entryProblem(entry);
-        const preparing = ['hashing', 'reserving'].includes(entry.phase);
+        const preparing = ['preparing', 'hashing', 'reserving'].includes(entry.phase);
         const transferring = ['uploading', 'processing'].includes(entry.phase);
         return <li key={entry.clientUploadId} className="item-photo-selection" aria-label={'Selected photo ' + (index + 1)} aria-describedby={problem ? 'selected-photo-error-' + index : undefined}>
           <div className="item-photo-preview"><LocalPreview url={entry.url} position={index + 1} />
-            <button type="button" className="item-photos-icon item-photo-remove" aria-label={'Remove selection ' + (index + 1)} title="Remove selection" disabled={busy} onClick={() => {
+            <button type="button" className="item-photos-icon item-photo-remove" aria-label={'Remove selection ' + (index + 1)} title="Remove selection" disabled={busy || batchBusy || saving} onClick={() => {
               releaseUrl(entry.url); setEntries(list => list.filter(value => value.clientUploadId !== entry.clientUploadId)); setError(null);
               setMessage(entry.reservationAttempted ? 'Selection removed. Its upload may still use space.' : ''); setAnnouncement('Selection removed.'); focusSelection.current = true;
             }}>×</button>
@@ -200,9 +254,7 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item, onClose },
             aria-label={(entry.phase === 'uploading' ? 'Bytes transferred for selected photo ' : 'Processing photo ') + (index + 1)} />}
           {problem && <p id={'selected-photo-error-' + index} className="item-photo-problem" role="alert" ref={error?.clientUploadId === entry.clientUploadId ? feedback : undefined} tabIndex={-1}>{problem}</p>}
           <div className="item-photos-actions">
-            {['selected', 'reserved'].includes(entry.phase) && <button type="button" className="ui-button" aria-label={'Upload photo ' + (index + 1)} disabled={busy || loading || disabled || entry.putAttempted ||
-              Boolean(entry.operation && (entry.operation.state !== 'reserved' || entry.operation.reservationExpired))} onClick={() => upload(entry)}>Upload</button>}
-            {entry.reservationAttempted && !preparing && !transferring && <button type="button" className="ui-button ui-button--secondary" aria-label={'Check upload ' + (index + 1) + ' status'} disabled={busy || loading}
+            {entry.reservationAttempted && !preparing && !transferring && <button type="button" className="ui-button ui-button--secondary" aria-label={'Check upload ' + (index + 1) + ' status'} disabled={busy || batchBusy || saving || loading}
               onClick={() => check(entry)}>Check status</button>}
             {entry.phase === 'processing' && !busy && <button type="button" className="ui-button ui-button--secondary" aria-label={'Check upload ' + (index + 1) + ' status'} disabled={loading}
               onClick={() => check(entry)}>Check status</button>}
@@ -215,14 +267,14 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item, onClose },
     {data && data.images.length > 0 && !data.capabilities.imageRead && <p role="status">Saved photos are temporarily unavailable.</p>}
     <div className="item-photos-footer">
       <button ref={addButton} type="button" className={'ui-button' + (entries.length ? ' ui-button--secondary' : '')} disabled={selectionDisabled}
-        aria-describedby={'photo-format-help photo-privacy' + (error?.field === 'file' ? ' photo-error' : '')} onClick={() => fileInput.current?.click()}>Add photos</button>
+        aria-describedby={'photo-format-help photo-privacy' + (error?.field === 'file' ? ' ' + fileErrorId : '')} onClick={() => fileInput.current?.click()}>Add photos</button>
       <input ref={fileInput} id="item-photo-files" type="file" aria-label="Choose photos" hidden accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple disabled={selectionDisabled}
-        aria-invalid={error?.field === 'file' || undefined} aria-describedby={'photo-format-help photo-privacy' + (error?.field === 'file' ? ' photo-error' : '')} onChange={add} />
+        aria-invalid={error?.field === 'file' || undefined} aria-describedby={'photo-format-help photo-privacy' + (error?.field === 'file' ? ' ' + fileErrorId : '')} onChange={add} />
       {needsRefresh && refreshButton}
       <details className="item-photos-help"><summary>Photo tips</summary>
-        <p id="photo-format-help">Up to 5 photos. JPEG, PNG or static WebP, up to 3 MiB each. Convert HEIC to JPEG. The server checks every upload.</p>
+        <p id="photo-format-help">Up to 5 photos. JPEG, PNG or static WebP, up to 20 MiB each. Photos are resized before upload; the server checks them again. Convert HEIC to JPEG.</p>
         <p id="photo-privacy">Remove visible addresses, labels, documents and people. Get permission; removing metadata does not hide these details.</p>
-        <p>Maximum 16 megapixels and 10,000 pixels per edge.</p>
+        <p>Source photos: at most 48 megapixels and 10,000 pixels per edge. Upload copies: at most 1280 pixels and 3 MiB.</p>
         {!needsRefresh && refreshButton}
       </details>
     </div>
@@ -232,12 +284,12 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item, onClose },
         {operation.cleanupPending && <p>Space may still be held. Contact support if this continues.</p>}
       </li>)}</ul>
     </details>}
-  </Surface>;
+  </Wrapper>;
 });
 
 export default forwardRef(function ItemPhotos(props, ref) {
   const { user, status } = useAppContext();
   if (!user || status !== 'authenticated') return null;
-  if (!props.item?.id) return <Feedback>Save this item before adding photos.</Feedback>;
-  return <PhotoSession {...props} ref={ref} key={user.id + ':' + props.planId + ':' + props.item.id} />;
+  if (!props.item?.id && !props.allowStaging) return <Feedback>Save this item before adding photos.</Feedback>;
+  return <PhotoSession {...props} ref={ref} key={user.id + ':' + props.planId + ':' + (props.item?.id || 'new')} />;
 });

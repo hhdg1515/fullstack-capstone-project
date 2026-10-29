@@ -19,7 +19,7 @@ function itemRules(editing) {
     return validate(['name', 'description', 'category', 'categoryId', 'itemTypeId', 'condition', 'availableFrom', 'availableUntil', 'publish'].concat(editing ? ['version', 'confirmCancelRequests'] : []), rules, editing);
 }
 function createItemRoutes({ connectToDatabase, auth, discoveryLimit = 120, imageMetadata = null, imageControlLimit = 20, pipeline = null }) {
-    const service = createInventoryService({ connectToDatabase });
+    const service = createInventoryService({ connectToDatabase, imageMetadata, imageRead: Boolean(imageMetadata && pipeline) });
     const discovery = createDiscoveryService({ connectToDatabase });
     const privateRouter = express.Router({ mergeParams: true });
     privateRouter.use(auth.requireAuth, (req, res, next) => {
@@ -30,7 +30,9 @@ function createItemRoutes({ connectToDatabase, auth, discoveryLimit = 120, image
     if (imageMetadata) privateRouter.use('/:itemId/images', require('./itemImageRoutes')({ connectToDatabase,
         configuration: imageMetadata, controlLimit: imageControlLimit, pipeline }));
     privateRouter.get('/', async (req, res, next) => {
-        try { res.json(await service.list(req.user._id, req.params.planId)); } catch (error) { next(error); }
+        try { res.json(Object.assign(await service.list(req.user._id, req.params.planId), {
+                photoCapabilities: { metadata: Boolean(imageMetadata), binaryUpload: Boolean(imageMetadata && pipeline), imageRead: Boolean(imageMetadata && pipeline) }
+            })); } catch (error) { next(error); }
     });
     privateRouter.post('/', itemRules(false), async (req, res, next) => {
         try { res.status(201).json(await service.create(req.user._id, req.params.planId, req.body)); } catch (error) { next(error); }

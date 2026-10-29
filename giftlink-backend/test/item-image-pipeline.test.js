@@ -124,6 +124,37 @@ describe('native image pipeline with owned MongoDB and real private SeaweedFS', 
         assert.deepEqual(disabled.body.capabilities, { metadata: true, binaryUpload: false, imageRead: false });
         assert.equal(disabled.body.allowance.itemSlots, 5);
     });
+    it('batches only correctly associated ready owner thumbnails in inventory without storage I/O or private fields', async function () {
+        const id = await reserve(); await upload(id).expect(201);
+        const second = Object.assign({}, item, { _id: new ObjectId(), name: 'Second synthetic item' });
+        await db.collection('items').insertOne(second);
+        const spy = sinon.spy(S3Client.prototype, 'send'), before = await quota();
+        const path = '/api/move-out-plans/' + plan._id + '/items';
+        await request(app).get(path).expect(401); await request(app).get(path).set('Cookie', other.cookie).expect(404);
+        const response = await request(app).get(path).set('Cookie', owner.cookie).expect(200);
+        assert.deepEqual(response.body.photoCapabilities, { metadata: true, binaryUpload: true, imageRead: true });
+        const firstPreview = response.body.items.find(value => value.id === item._id.toString()).photoPreview;
+        assert.deepEqual(firstPreview, { availability: 'ready', imageRevision: 1, images: [{ id, thumbnail: { width: 400, height: 300 } }] });
+        assert.deepEqual(response.body.items.find(value => value.id === second._id.toString()).photoPreview.images, []);
+        const serialized = JSON.stringify(firstPreview);
+        for (const privateValue of [owner.id.toString(), config.storageBinding.fingerprint, config.storageBinding.namespace, hash(image)]) assert.ok(!serialized.includes(privateValue));
+        assert.equal(spy.callCount, 0); assert.deepEqual(await quota(), before);
+    });
+    it('keeps inventory thumbnails disabled without the verified binary pipeline and never touches storage', async function () {
+        const id = await reserve(); await upload(id).expect(201); const spy = sinon.spy(S3Client.prototype, 'send');
+        const response = await request(makeApp(null)).get('/api/move-out-plans/' + plan._id + '/items').set('Cookie', owner.cookie).expect(200);
+        assert.deepEqual(response.body.items[0].photoPreview, { availability: 'disabled', images: [] });
+        assert.equal(response.body.photoCapabilities.imageRead, false); assert.equal(spy.callCount, 0);
+    });
+    for (const corruption of ['ownerId', 'planId', 'binding', 'order', 'revision']) it('does not expose a ready inventory thumbnail with compromised ' + corruption, async function () {
+        const id = await reserve(); await upload(id).expect(201);
+        const change = corruption === 'binding' ? { 'storageBinding.fingerprint': 'f'.repeat(64) } : corruption === 'order' ? { sortPosition: 4 } : { [corruption]: new ObjectId() };
+        if (corruption === 'revision') await db.collection('items').updateOne({ _id: item._id }, { $set: { imageRevision: -1 } });
+        else await db.collection('itemImages').updateOne({ _id: new ObjectId(id) }, { $set: change });
+        const response = await request(app).get('/api/move-out-plans/' + plan._id + '/items').set('Cookie', owner.cookie).expect(200);
+        assert.deepEqual(response.body.items[0].photoPreview, { availability: 'unavailable', images: [] });
+        assert.ok(!JSON.stringify(response.body.items[0].photoPreview).includes(id));
+    });
     it('rejects encoding and oversized request declarations without claiming the reservation', async function () {
         const id = await reserve();
         await upload(id).set('Content-Encoding', 'gzip').expect(415);

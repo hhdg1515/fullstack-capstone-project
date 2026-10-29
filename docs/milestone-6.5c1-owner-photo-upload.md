@@ -10,52 +10,95 @@ The [architecture](milestone-6.5-photo-architecture.md),
 
 ## Owner interaction
 
-Choose **Photos** on an existing saved inventory item. Unsaved items explicitly
-require saving first. Opening photos does not save text, create an item, change
-publication or require a photo for publication. The existing repeated-add form
-still resets/focuses the next name after an explicit save.
+Photos are optional **inside Add/Edit item**, next to the existing text fields.
+An empty plan opens the first form; populated plans show their existing cards
+first. Every successful save closes the creation fields. **Add item** explicitly
+starts another item; there is no automatic next blank form or detached Photos
+panel. The duplicate Complete listing action has been removed in favor of Edit;
+publication rules and category/type fields are unchanged.
 
-The compact photo panel uses existing design tokens, Surface, a native file
-picker and buttons. The default view has Photos, a count, item context and
-**Add photos**. Selecting files reveals contextual **Upload** buttons. Privacy
-and format guidance lives in a keyboard-accessible **Photo tips** disclosure,
-also associated with Add photos through `aria-describedby`. Quotas appear only
-as relevant errors; ready photos have thumbnails and screen-reader announcements
-instead of permanent success labels. Errors appear once beside the affected
-photo; pending history and manual status recovery remain available. Select up to five photos including saved/held spaces; each
-file is 1–3,145,728 bytes. JPEG, PNG and static WebP only; HEIC/HEIF needs export
-as JPEG. Picker MIME/extension and a successful preview are guidance, never image
-safety evidence. B3 still validates actual content, pixels/depth/animation, strips
-metadata, orients and verifies both sanitized outputs before ready.
+Selecting with **Add photos** prepares private previews in this tab. It does not
+save an item, reserve quota or transmit binary data. After Save Draft/Publish
+returns the real item ID, the same selections appear immediately inside that
+saved item's card with **Upload N photos**. The message explicitly distinguishes
+item save from photo success. The owner then confirms the bounded batch; a
+published item has one visibility confirmation for that batch, not one per file.
+Files are processed sequentially with their own UUID, reservation, progress and
+recovery state. The batch stops on failure, uncertainty or pending processing.
+Only an authoritative ready result removes that selection. Remaining files and
+confirmed thumbnails survive recoverable failures; status checks and Refresh
+photos work without a full inventory reload. There is no background retry.
 
-The collapsed, accessible privacy reminder names addresses, labels, documents and people:
-removing metadata does not hide visible details or replace permission. Local
-previews use temporary object URLs and browser orientation where supported. No
-filename appears in a preview label; no stock photo, upload URL or provider key
-is rendered. Local preview failure is distinct from server validation failure.
+Ready thumbnails render on the corresponding **owner inventory card**, even when
+the editor is closed. They use the fixed authenticated application image route,
+not object-storage URLs. The metadata editor remains within that card; no public
+gallery, cover, reorder or saved-photo deletion controls are included.
 
-**Selection never uploads automatically.** Choose Upload for each queued
-file; one active upload per panel, no hidden upload queue. Posted-item changes
-retain an explicit visibility confirmation. Real transfer progress describes
-multipart bytes; 100% changes to waiting/processing, not upload success. Ready
-requires a valid server operation result. Saved thumbnails use only the fixed
-application image path, credentialed reads and current B3 authorization.
+The compact UI uses Photos, a count, previews and short buttons. Progress appears
+only while preparing/transferring/processing. Photo tips is an accessible
+collapsed disclosure, associated with Add photos. It reminds owners to remove
+visible addresses, labels, documents and identifying people; metadata removal is
+not visual redaction. Errors are actionable and local to the affected selection.
+No private filename, operation ID, hash or storage key appears in the interface.
 
-Text and file drafts remain independent. Text editor switches/refreshes use
-their own guard; closing/switching a photo panel uses only its file guard. Global
-navigation/reload/logout retains the existing combined unsaved protection.
-Completion/removal/close/unmount revokes object URLs; account/item changes clear
-private selections and suppress old async results before another request or UI
-update. Late 401 responses from an old scope cannot log out the new account.
-There is no localStorage/IndexedDB binary, private draft or upload-ID persistence.
-Selected files can be lost on reload; canonical server history remains visible.
+Text and photo drafts are independent. File entries and object URLs are owned
+by the stable inventory session, so binding a newly saved ID or refreshing item
+text does not discard them. Switching/closing/editing and global navigation
+check meaningful drafts before discarding. Declining a second confirmation does
+not release the first guard. An explicit inventory refresh may discard confirmed
+text edits but keeps the file selections. Account/plan changes clear private
+selections and suppress late results. No files, private drafts or upload IDs are
+persisted in localStorage/IndexedDB. **Reloading/closing the tab loses unsent
+files**; visible guidance and the native beforeunload prompt warn about this.
+Browsers choose the native prompt's wording and may not prompt in every shutdown
+scenario. Object URLs are revoked on removal, confirmed discard or scope teardown.
+
+An ambiguous new-item save freezes that form's create action. The owner refreshes
+inventory and explicitly selects the actual saved card to associate the retained
+files, after confirming replacement of unsaved text. No guessed name match,
+automatic second POST or invisible autosave is used. This is not server-side
+item-create idempotency: after a full reload or when choosing a separate new
+draft, owners must review inventory before creating again. Upload idempotency
+and durable reservation semantics are unchanged.
+
+## Local browser preparation
+
+[photoPreparation.js](../giftlink-frontend/src/api/photoPreparation.js) performs
+local bandwidth reduction before hashing/reserving. The server receives **only
+the new derivative**, never the original as a fallback, even for small inputs.
+
+| Boundary | Limit / behavior |
+| --- | --- |
+| Source file | JPEG, PNG or static WebP; 1 byte–20 MiB; up to 48 megapixels and 10,000 pixels per edge |
+| Pre-decode check | At most 512 KiB of header; reject unsupported/unreadable dimensions and detected animation before native decoding |
+| Derivative | Orientation-aware Canvas re-encode; at most 1280px longest edge, at most 3 MiB (3,145,728 bytes) |
+| Compression | At most three size/quality attempts, one file being prepared at a time; bounded read/decode/encode deadlines |
+| Formats | JPEG stays JPEG; PNG/WebP use WebP with alpha; bounded PNG encoder fallback allowed |
+| Failure | Preserve other selections; show conversion/resize guidance; never reserve or send the original |
+
+HEIC/HEIF is unsupported and must be exported as JPEG. No conversion dependency
+is added. `accept`, MIME and header checks are preliminary client guidance;
+**Sharp remains authoritative** for content validation, pixel/depth/animation
+checks, orientation, metadata removal and both ready variants. The 3 MiB streamed
+backend cap and all multipart, native resource, privacy and security limits stay
+unchanged. Browser-selected compression cannot bypass them.
+
+Canvas output quality/format and orientation/color handling vary across browsers;
+older browsers without createImageBitmap fail closed. Preparation needs a current
+browser, and WebCrypto needs HTTPS/localhost. Deadlines stop client continuation
+and dispose late decoded bitmaps; JavaScript cannot forcibly stop native decoder
+work or guarantee a fixed device-memory ceiling. Source caps reduce exposure but
+large files may still fail on low-memory devices. The browser-generated preview
+is the prepared derivative, not a promise that server validation will succeed.
+Physical Safari/iOS/Android pickers, device memory and mobile keyboards have not
+been manually certified; Chromium emulation is documented below.
 
 ## Capabilities and production isolation
 
 There are four separate facts: UI is rendered; metadata is available; binary
 upload/read routes are available; an operation is ready. None implies another.
 
-- Owner GET metadata now reports `capabilities: {metadata, binaryUpload,
+- Owner GET inventory and GET metadata report `capabilities: {metadata, binaryUpload,
   imageRead}`. Binary/read are true **only** when the existing sealed, verified
   local pipeline is actually injected and those routes exist.
 - The historical `binaryUploadsEnabled:false` deployed-product gate remains
@@ -82,7 +125,8 @@ owner-scoped and no-store; public item/user/gift DTOs do not gain quota fields.
 
 | Addition | Meaning and boundary |
 | --- | --- |
-| GET image-list `capabilities` | Actual metadata/binary/read route capabilities, as above |
+| GET inventory `photoCapabilities` / image-list `capabilities` | Actual metadata/binary/read route capabilities, as above |
+| GET inventory item `photoPreview` | Bounded ready-only owner thumbnail summaries in the existing snapshot query; validate all ownership, binding, ordering and revisions; distinguish none/disabled/unavailable; no per-card metadata requests or storage I/O |
 | GET image-list `allowance` | Available item spaces, daily attempts/uploads, bytes, concurrency and operation-record capacity; `newUploadsAllowed` uses current server plan/item/deadline rules |
 | GET `…/images/uploads/:clientUploadId` | Read-only canonical operation lookup for the same authenticated owner, plan/item and normalized random UUID; recovers a lost reservation response without another POST |
 
@@ -128,7 +172,7 @@ limits that waiting cannot fix.
 | Definitely rejected pre-claim 429 busy/control limit | Check status successfully first; only a still-reserved operation permits an explicit manual same-reservation retry |
 | Server processing/202 | Show current processing, manual status/refresh and possible operator recovery; no invented completion |
 | Failed / cleanup pending | Preserve the selected file and history; state capacity may remain held. Removing a local selection does not delete server data or refund anything |
-| Server ready + failed metadata refresh | Ready was confirmed, but the collection is unavailable. Do not show a fake empty photo collection; explicitly refresh |
+| Server ready + failed metadata refresh | Keep a validated ready thumbnail and other selections; stop admission until an explicit metadata refresh succeeds. If the ready response lacks safe dimensions, keep the local preview pending that read |
 | Expired session / scope change | Clear private previews, stop follow-on steps, abort the in-flight XHR and let the durable server ledger govern any already accepted work |
 
 Chromium was observed to transparently replay an idempotent HTTP PUT after an
@@ -143,15 +187,17 @@ No successful response, capability or stored object is fabricated by that harnes
 ## Verification and visual evidence
 
 Frontend transport/component tests cover selection, hashing, safe multipart,
-real progress vs ready, all quota classes, stale revisions, duplicate clicks,
+pre-save selection, derivative-only upload, explicit batch confirmation, partial
+success, lost item-save review, real progress vs ready, all quota classes, stale revisions, duplicate clicks,
 ambiguous PUT and reservation recovery, same-UUID explicit retry, definitive
 busy rejection, session/account/item changes, URL cleanup and independent guards.
 Native backend tests cover safe allowances (including read-only expiry preview),
-UUID ownership/privacy/recovery and truthful sealed-pipeline capability.
+UUID ownership/privacy/recovery, truthful sealed-pipeline capability and owner-card
+thumbnail association/corruption denial. Disabled mode never queries itemImages.
 
 The isolated production-build HTTPS browser spec uses actual sessions, MongoDB,
 Sharp and private SeaweedFS. It verifies real pixels, exact reservation/PUT and
-quota counts, lost-result recovery, invalid raster feedback, private access,
+quota counts, lost-result recovery, large-source compression, local invalid raster feedback, private access,
 text-draft retention, desktop/mobile, and scoped teardown. Default-off controls
 are also tested against the real app with no injected binary pipeline. Existing
 B1/B2/B3/B4, pickup/chat/rescheduling, policy and all **111 existing axe checkpoints**
@@ -161,29 +207,31 @@ Actual local synthetic UI captures, reviewed visually (PNG files, not mockups):
 
 | State | Desktop | 320px mobile |
 | --- | --- | --- |
-| Empty panel | [Desktop](verification/m65c1/desktop-empty.png) | [Mobile](verification/m65c1/mobile-empty.png) |
-| Selection / local preview | [Desktop](verification/m65c1/desktop-selected.png) | [Mobile](verification/m65c1/mobile-selected.png) |
-| Bytes sent / awaiting confirmation | [Desktop](verification/m65c1/desktop-processing.png) | [Mobile](verification/m65c1/mobile-processing.png) |
-| Confirmed ready thumbnail | [Desktop](verification/m65c1/desktop-ready.png) | [Mobile](verification/m65c1/mobile-ready.png) |
-| Lost success / explicit recovery | [Desktop](verification/m65c1/desktop-uncertain.png) | [Mobile](verification/m65c1/mobile-uncertain.png) |
-| Real server image rejection | [Desktop](verification/m65c1/desktop-failed.png) | [Mobile](verification/m65c1/mobile-failed.png) |
-| Default-disabled backend | [Desktop](verification/m65c1/desktop-disabled.png) | [Mobile](verification/m65c1/mobile-disabled.png) |
+| Empty panel | [Desktop](verification/m65c1-workflow/desktop-empty.png) | [Mobile](verification/m65c1-workflow/mobile-empty.png) |
+| Selection before item save | [Desktop](verification/m65c1-workflow/desktop-selected.png) | [Mobile](verification/m65c1-workflow/mobile-selected.png) |
+| Saved item / explicit upload | [Desktop](verification/m65c1-workflow/desktop-saved-pending.png) | [Mobile](verification/m65c1-workflow/mobile-saved-pending.png) |
+| Bytes sent / awaiting confirmation | [Desktop](verification/m65c1-workflow/desktop-processing.png) | [Mobile](verification/m65c1-workflow/mobile-processing.png) |
+| Confirmed ready thumbnail | [Desktop](verification/m65c1-workflow/desktop-ready.png) | [Mobile](verification/m65c1-workflow/mobile-ready.png) |
+| Lost success / explicit recovery | [Desktop](verification/m65c1-workflow/desktop-uncertain.png) | [Mobile](verification/m65c1-workflow/mobile-uncertain.png) |
+| Local invalid image rejection | [Desktop](verification/m65c1-workflow/desktop-failed.png) | [Mobile](verification/m65c1-workflow/mobile-failed.png) |
+| Lost item-save recovery | [Desktop](verification/m65c1-workflow/desktop-save-recovery.png) | [Mobile](verification/m65c1-workflow/mobile-save-recovery.png) |
+| Default-disabled backend | [Desktop](verification/m65c1-workflow/desktop-disabled.png) | [Mobile](verification/m65c1-workflow/mobile-disabled.png) |
 
 All account/listing/image content is synthetic; solid-color inputs prove real
 processing and are not presented as photographs of real offered goods. No
 credentials, cookies, tokens, filenames or private provider details are captured.
-The refreshed captures show the actual photo panel without injected screenshot
-styles. Compared with the original C1 panel, the default has no instructional
-paragraphs, allowance/history section or persistent Ready labels. Two selected
-previews fit side by side at 320px; active progress and contextual errors appear
-only when needed. Close/remove controls retain 44px touch targets and meaningful
-accessible labels; removal applies only to local selections, not saved photos.
+The refreshed captures show the real Add/Edit form or saved inventory card,
+without injected screenshot styles. Tall forms use a taller capture viewport
+to avoid Chromium painting an offscreen fixed skip link into element captures;
+layout/axe checks still run at the normal test viewport. Photos are in context with the item; the
+post-save action is immediately visible. Ready card thumbnails remain after the
+editor closes. Two selections fit at 320px; controls retain accessible labels and
+44px targets. Selected-file Remove affects only in-memory files, not server data.
 
-Original C1 comparison (immutable pre-simplification commit):
-[Desktop selection](https://github.com/hhdg1515/fullstack-capstone-project/blob/979ef3c2c6e059a3e3da83f070023912329c57b0/docs/verification/m65c1/desktop-selected.png),
-[320px selection](https://github.com/hhdg1515/fullstack-capstone-project/blob/979ef3c2c6e059a3e3da83f070023912329c57b0/docs/verification/m65c1/mobile-selected.png).
-The earlier full-page captures include the documented Chromium skip-link capture
-artifact. Current panel captures do not hide or restyle accessibility controls.
+Comparison with the prior C1 panel (immutable pre-correction commit):
+[Desktop selection](https://github.com/hhdg1515/fullstack-capstone-project/blob/c1b7e870c726f355fe1a68106cd36969fcda742f/docs/verification/m65c1/desktop-selected.png),
+[320px selection](https://github.com/hhdg1515/fullstack-capstone-project/blob/c1b7e870c726f355fe1a68106cd36969fcda742f/docs/verification/m65c1/mobile-selected.png).
+The earlier evidence remains in `verification/m65c1/` for comparison.
 
 Exact test totals, immutable commit and GitHub CI evidence are recorded in the
 PR. Physical Windows/macOS/Safari/iOS picker, screen reader and mobile keyboard
@@ -204,7 +252,7 @@ Optional screenshot regeneration from repository root during the isolated photo
 spec only (the absolute path is required because npm runs the spec in `e2e/`):
 
 ```sh
-PHOTO_UI_EVIDENCE_DIR="$PWD/docs/verification/m65c1" npm --prefix e2e test -- owner-photo-upload.spec.cjs
+PHOTO_UI_EVIDENCE_DIR="$PWD/docs/verification/m65c1-workflow" npm --prefix e2e test -- owner-photo-upload.spec.cjs
 ```
 
 Use the existing Chromium setup/Playwright commands. No `.env`, R2 or Atlas
@@ -214,7 +262,7 @@ Fixtures close only their receipt-owned resources; no Docker prune/remote cleanu
 ## Deferred work and rollback
 
 C2 owns reordering, cover changes and owner deletion controls. C1 adds none.
-Public cover/gallery/inventory-card enrichment, pickup thumbnails, hosted/R2
+Public cover/gallery, pickup thumbnails, hosted/R2
 activation, remote index preparation and recurring cleanup/retention remain later
 approved work. Unknown B4 writes can retain capacity permanently; C1 does not
 hide or refund those holds. All 16 legacy demo gifts remain byte-identical.

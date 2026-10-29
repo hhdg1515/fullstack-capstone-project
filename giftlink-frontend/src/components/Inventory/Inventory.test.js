@@ -35,14 +35,15 @@ beforeEach(() => {
   });
   jest.spyOn(window, 'confirm').mockReturnValue(true);
 });
-afterEach(() => jest.restoreAllMocks());
+afterEach(async () => { await act(async () => {}); jest.restoreAllMocks(); });
 const formReady = async () => {
-  const input = await screen.findByLabelText('Item name');
-  if (input.closest('[hidden]')) fireEvent.click(screen.getByRole('button', { name: 'Add item' }));
-  return input;
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Add item' })).toBeEnabled());
+  if (!screen.queryByLabelText('Item name')) await click(screen.getByRole('button', { name: 'Add item' }));
+  return screen.findByLabelText('Item name');
 };
+const click = async target => act(async () => { fireEvent.click(target); });
 const name = value => fireEvent.change(screen.getByLabelText('Item name'), { target: { value } });
-const submitDraft = () => fireEvent.submit(screen.getByRole('button', { name: 'Save Draft' }).closest('form'));
+const submitDraft = async () => act(async () => { fireEvent.submit(screen.getByRole('button', { name: 'Save Draft' }).closest('form')); });
 
 test('inventory loads an empty plan with inherited location/deadline and a name-only quick entry', async () => {
   mount(); await formReady();
@@ -53,17 +54,15 @@ test('inventory loads an empty plan with inherited location/deadline and a name-
   expect(screen.queryByLabelText('City')).not.toBeInTheDocument();
   expect(screen.queryByLabelText(/price|address|dimensions|brand/i)).not.toBeInTheDocument();
 });
-test('populated plans put existing items first and preserve a temporarily collapsed add draft', async () => {
+test('populated plans open Add explicitly and warn before discarding a new draft', async () => {
   data = inventory([item]); mount(); await screen.findByRole('heading', { name: item.name });
-  expect(screen.getByLabelText('Item name')).not.toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: 'Add item' }));
-  expect(screen.getByLabelText('Item name')).toBeVisible(); expect(screen.getByLabelText('Item name')).toHaveFocus();
-  name('Unfinished new item'); fireEvent.click(screen.getByRole('button', { name: 'Back to items' }));
-  expect(screen.getByLabelText('Item name')).not.toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: 'Add item' }));
+  expect(screen.queryByLabelText('Item name')).not.toBeInTheDocument();
+  await formReady(); name('Unfinished new item'); window.confirm.mockReturnValue(false);
+  await click(screen.getByRole('button', { name: 'Cancel', exact: true }));
   expect(screen.getByLabelText('Item name')).toHaveValue('Unfinished new item');
-  const section = screen.getByRole('region', { name: 'Inventory items' });
-  expect(section.compareDocumentPosition(screen.getByLabelText('Item name')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  window.confirm.mockReturnValue(true); await click(screen.getByRole('button', { name: 'Cancel', exact: true }));
+  expect(screen.queryByLabelText('Item name')).not.toBeInTheDocument();
+  await formReady(); expect(screen.getByLabelText('Item name')).toHaveValue('');
 });
 test.each([null, 'UTC', undefined, 'Not/A_Zone'])('pickup setup uses the server value %s without treating absent metadata as configured', async zone => {
   data = { ...inventory([]), plan: { ...plan, pickupTimeZone: zone } }; mount(); await formReady();
@@ -74,18 +73,19 @@ test.each([null, 'UTC', undefined, 'Not/A_Zone'])('pickup setup uses the server 
   } else if (zone === undefined || zone === 'Not/A_Zone') expect(screen.getByRole('link', { name: 'Check pickup setup' })).toBeInTheDocument();
   else expect(screen.queryByRole('link', { name: /pickup (timezone|setup)/ })).not.toBeInTheDocument();
 });
-test('quick entry adds multiple grouped belongings in the same plan and focuses the next name', async () => {
+test('saved items close creation; another blank form opens only after Add item', async () => {
   const created = [];
   handler = async (url, options) => {
     const body = JSON.parse(options.body); created.push(body);
-    const value = { ...item, id: `${created.length}`, name: body.name };
+    const value = { ...item, id: String(created.length).padStart(24, '0'), name: body.name };
     data = inventory([...data.items, value]); return reply(201, { item: value });
   };
   mount(); await formReady();
-  name('Box of kitchen supplies'); submitDraft();
+  name('Box of kitchen supplies'); await submitDraft();
   await waitFor(() => expect(screen.getByText('0 of 1 items cleared')).toBeInTheDocument());
+  expect(screen.queryByLabelText('Item name')).not.toBeInTheDocument(); await formReady();
   expect(screen.getByLabelText('Item name')).toHaveValue(''); expect(screen.getByLabelText('Item name')).toHaveFocus();
-  name('Three identical chairs'); submitDraft();
+  name('Three identical chairs'); await submitDraft();
   await waitFor(() => expect(screen.getByText('0 of 2 items cleared')).toBeInTheDocument());
   expect(created.map(value => value.name)).toEqual(['Box of kitchen supplies', 'Three identical chairs']);
   expect(created.every(value => !('city' in value) && !('planId' in value) && value.publish === false)).toBe(true);
@@ -102,18 +102,18 @@ test('publish entry sends explicit publication intent and does not confuse it wi
   fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'living-room' } });
   fireEvent.change(screen.getByLabelText('Item type'), { target: { value: 'sofa' } });
   fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'A comfortable sofa.' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
-  expect(await screen.findByText('Item published. Add another below.')).toBeInTheDocument();
+  await click(screen.getByRole('button', { name: 'Publish' }));
+  expect(await screen.findByText('Item published.')).toBeInTheDocument();
   expect(await screen.findByRole('link', { name: 'Public listing' })).toBeInTheDocument();
 });
 test('client rejects invalid availability ranges and empty names without sending writes', async () => {
-  mount(); await formReady(); submitDraft();
+  mount(); await formReady(); await submitDraft();
   expect(await screen.findByRole('alert')).toHaveTextContent('Check the highlighted fields');
   expect(screen.getByText('Give this item or group a name of 1–160 characters.')).toBeInTheDocument();
   expect(screen.getByLabelText('Item name')).toHaveFocus();
   name('Chairs');
   fireEvent.change(screen.getByLabelText('Available from (optional)'), { target: { value: date(21) } });
-  submitDraft(); expect(screen.getByLabelText('Available from (optional)')).toHaveFocus();
+  await submitDraft(); expect(screen.getByLabelText('Available from (optional)')).toHaveFocus();
   expect(screen.getByText('Choose a start date on or before the end date.')).toBeInTheDocument();
   expect(screen.getByLabelText('Available from (optional)')).toHaveAccessibleDescription('Choose a start date on or before the end date.');
   expect(fetch.mock.calls.some(([, options]) => options.method !== 'GET')).toBe(false);
@@ -144,20 +144,20 @@ test.each([['available', 'Hide', 'unlist', 'unlisted'], ['unlisted', 'Publish', 
   const accessibleName = action === 'clear' ? `Mark ${item.name} cleared` : action === 'reopen' ? `Reopen ${item.name} as draft` : `${label} ${item.name}`;
   if (['clear', 'reopen'].includes(action)) screen.getByText('More actions').closest('details').open = true;
   const button = screen.getByRole('button', { name: accessibleName });
-  await act(async () => { fireEvent.click(button); });
+  await click(button);
   await waitFor(() => expect(data.items[0].version).toBe(8));
   await waitFor(() => expect(screen.getByText(next === 'cleared' ? '1 of 1 items cleared' : '0 of 1 items cleared')).toBeInTheDocument());
   expect(window.confirm).toHaveBeenCalled();
 });
 test('cancelling a consequential action leaves the inventory unchanged', async () => {
   window.confirm.mockReturnValue(false); data = inventory([{ ...item, status: 'available' }]);
-  mount(); await formReady(); fireEvent.click(screen.getByRole('button', { name: `Hide ${item.name}` }));
+  mount(); await formReady(); await click(screen.getByRole('button', { name: `Hide ${item.name}` }));
   expect(fetch.mock.calls.some(([, options]) => options.method === 'POST')).toBe(false);
 });
 test('reopening with a past pickup end is rejected before sending an action or confirming publication', async () => {
   data = inventory([{ ...item, status: 'cleared', availableUntil: date(-1), effectiveAvailableUntil: date(-1) }]);
   mount(); await formReady(); screen.getByText('More actions').closest('details').open = true;
-  fireEvent.click(screen.getByRole('button', { name: `Reopen ${item.name} as draft` }));
+  await click(screen.getByRole('button', { name: `Reopen ${item.name} as draft` }));
   expect(await screen.findByRole('alert')).toHaveTextContent('today or later');
   expect(window.confirm).not.toHaveBeenCalled();
   expect(fetch.mock.calls.some(([, options]) => options.method === 'POST')).toBe(false);
@@ -174,15 +174,15 @@ test('editing and clearing date overrides uses PATCH and preserves the plan asso
   name('Two boxes');
   fireEvent.change(screen.getByLabelText('Available from (optional)'), { target: { value: '' } });
   fireEvent.change(screen.getByLabelText('Available until (optional)'), { target: { value: '' } });
-  fireEvent.submit(screen.getByRole('button', { name: 'Save Draft' }).closest('form'));
+  await submitDraft();
   expect(await screen.findByRole('heading', { name: 'Two boxes' })).toBeInTheDocument();
 });
 test('stale actions show an error and let the owner reload authoritative state', async () => {
   data = inventory([{ ...item, status: 'available' }]);
   handler = async () => { data = inventory([{ ...item, status: 'cleared', version: 2 }]); return reply(409, { error: { message: 'This item changed. Reload the inventory.' } }); };
-  mount(); await formReady(); fireEvent.click(screen.getByRole('button', { name: `Hide ${item.name}` }));
+  mount(); await formReady(); await click(screen.getByRole('button', { name: `Hide ${item.name}` }));
   expect(await screen.findByRole('alert')).toHaveTextContent('This item changed');
-  fireEvent.click(screen.getByRole('button', { name: 'Reload inventory' }));
+  await click(screen.getByRole('button', { name: 'Reload inventory' }));
   expect(await screen.findByText('1 of 1 items cleared')).toBeInTheDocument();
 });
 test('refreshing an outdated edit replaces its values before adopting the new version', async () => {
@@ -190,7 +190,7 @@ test('refreshing an outdated edit replaces its values before adopting the new ve
   mount(`/app/plans/${plan.id}/items?edit=${item.id}`); await screen.findByRole('button', { name: 'Save Draft' });
   name('Outdated unsaved draft');
   data = inventory([{ ...item, name: 'Changed in another tab', version: 2 }]);
-  fireEvent.click(screen.getByRole('button', { name: 'Refresh inventory' }));
+  await click(screen.getByRole('button', { name: 'Refresh inventory' }));
   await waitFor(() => expect(screen.getByLabelText('Item name')).toHaveValue('Changed in another tab'));
   expect(screen.getByRole('heading', { name: 'Edit Changed in another tab' })).toBeInTheDocument();
   expect(window.confirm).toHaveBeenCalled();
@@ -199,20 +199,20 @@ test('saving an item disables competing inventory actions until the write finish
   data = inventory([item]);
   let finish;
   handler = () => new Promise(resolve => { finish = resolve; });
-  mount(); await formReady(); name('Another item'); submitDraft();
+  mount(); await formReady(); name('Another item'); await submitDraft();
   expect(screen.getByRole('button', { name: `Edit ${item.name}` })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Refresh inventory' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled();
-  await act(async () => { data = inventory([item, { ...item, id: 'second', name: 'Another item' }]); finish(reply(201, { item: data.items[1] })); });
+  await act(async () => { data = inventory([item, { ...item, id: '64a000000000000000000003', name: 'Another item' }]); finish(reply(201, { item: data.items[1] })); });
   expect(await screen.findByText('0 of 2 items cleared')).toBeInTheDocument();
 });
 test('failed saves retain drafts and expired sessions remove the private form', async () => {
-  handler = async () => reply(500, { error: { message: 'Try again' } });
-  mount(); await formReady(); name('Unsaved belongings'); submitDraft();
-  expect(await screen.findByRole('alert')).toHaveTextContent('Try again');
+  handler = async () => reply(400, { error: { message: 'Check item details' } });
+  mount(); await formReady(); name('Unsaved belongings'); await submitDraft();
+  expect(await screen.findByRole('alert')).toHaveTextContent('Check item details');
   expect(screen.getByLabelText('Item name')).toHaveValue('Unsaved belongings');
   handler = async () => reply(401, { error: { code: 'SESSION_EXPIRED', message: 'Please log in again' } });
-  submitDraft(); expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument();
+  await submitDraft(); expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument();
   expect(screen.queryByLabelText('Item name')).not.toBeInTheDocument();
 });
 test('public discovery searches published listings without requiring sign-in or displaying private owner data', async () => {
@@ -221,9 +221,9 @@ test('public discovery searches published listings without requiring sign-in or 
   mount('/app/items?stateId=06&metroId=41860');
   expect(await screen.findByRole('link', { name: item.name })).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Neighborhood'), { target: { value: 'Temescal' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Find free items' }));
+  await click(screen.getByRole('button', { name: 'Find free items' }));
   await waitFor(() => expect(fetch.mock.calls.some(([url]) => url.includes('neighborhood=Temescal'))).toBe(true));
-  fireEvent.click(await screen.findByRole('link', { name: item.name }));
+  await click(await screen.findByRole('link', { name: item.name }));
   expect(await screen.findByRole('heading', { name: item.name })).toBeInTheDocument();
   expect(screen.queryByText(user.email)).not.toBeInTheDocument();
 });
@@ -231,7 +231,7 @@ test('a withdrawn public detail disappears on refresh instead of retaining its o
   let visible = true;
   handler = async () => visible ? reply(200, { item }) : reply(404, { error: { message: 'Listing unavailable' } });
   mount(`/app/items/${item.id}`); await screen.findByRole('heading', { name: item.name });
-  visible = false; fireEvent.click(screen.getByRole('button', { name: 'Refresh listings' }));
+  visible = false; await click(screen.getByRole('button', { name: 'Refresh listings' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('This listing is no longer available');
   expect(screen.queryByRole('heading', { name: item.name })).not.toBeInTheDocument();
 });
@@ -244,7 +244,7 @@ test('date validation keeps calendar boundaries and does not treat publication t
 
 test('server validation focuses the affected control after the failed save', async () => {
   handler = async () => reply(400, { error: { message: 'Check item details', fields: [{ field: 'condition', message: 'Choose a listed condition.' }] } });
-  mount(); await formReady(); name('Desk'); submitDraft();
+  mount(); await formReady(); name('Desk'); await submitDraft();
   await waitFor(() => expect(screen.getByLabelText('Condition (optional)')).toHaveFocus());
   expect(screen.getByLabelText('Condition (optional)')).toBeVisible();
   expect(screen.getByLabelText('Condition (optional)')).toHaveAccessibleDescription('Choose a listed condition.');
@@ -266,7 +266,7 @@ test('only verified handoffs are Picked Up, while manual and unknown clearance r
 });
 test('an incomplete draft opens its existing editor instead of posting an invalid publish action', async () => {
   data = inventory([item]); mount(); await screen.findByRole('heading', { name: item.name });
-  fireEvent.click(screen.getByRole('button', { name: 'Complete ' + item.name + ' for publication' }));
+  await click(screen.getByRole('button', { name: 'Edit ' + item.name }));
   expect(screen.getByLabelText('Item name')).toBeVisible(); expect(screen.getByLabelText('Item name')).toHaveValue(item.name);
   expect(fetch.mock.calls.some(([, options]) => options.method !== 'GET')).toBe(false);
 });

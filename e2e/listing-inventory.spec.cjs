@@ -44,10 +44,10 @@ test('giver publishes a draft, distinguishes reservations and handoffs, and reco
     await audit('Publication errors'); expect(creations).toBe(0);
     await page.getByRole('button', { name: 'Save Draft', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Local chair', exact: true })).toBeVisible(); expect(creations).toBe(1);
-    await expect(page.getByLabel('Item name', { exact: true })).toBeFocused();
+    await expect(page.getByLabel('Item name', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Use plan availability', exact: true })).toHaveCount(0);
     await expect(page.getByLabel('Available until (optional)', { exact: true })).toHaveCount(0);
-    await page.getByRole('button', { name: 'Complete Local chair for publication', exact: true }).click();
+    await page.getByRole('button', { name: 'Edit Local chair', exact: true }).click();
     await page.getByLabel('Category', { exact: true }).selectOption('office-lighting'); await page.getByLabel('Item type', { exact: true }).selectOption('office-chair');
     await page.getByLabel('Description', { exact: true }).fill('Local chair with a detailed description. '.repeat(15));
     await page.getByLabel('Condition (optional)', { exact: true }).selectOption('good');

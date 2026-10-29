@@ -22,5 +22,6 @@ export default function usePlansData(path, keepData = false) {
     return () => { active = false; };
   }, [key, path, attempt, keepData]);
   // Do not display the previous account's data during a session/account switch.
-  return { ...(state.key === key ? state : { loading: true }), retry: () => setAttempt(value => value + 1) };
+  return { ...(state.key === key ? state : { loading: true }), retry: () => setAttempt(value => value + 1),
+    update: change => setState(previous => previous.key === key ? { ...previous, data: change(previous.data) } : previous) };
 }

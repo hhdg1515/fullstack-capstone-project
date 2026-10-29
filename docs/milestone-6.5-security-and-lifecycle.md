@@ -160,10 +160,14 @@ service, AI classifier, video or processing worker is introduced by this plan.
 
 HEIC/HEIF remains unsupported even if one developer's libvips can decode it.
 Safari/iOS picker behavior varies; `accept`/a browser preview does not guarantee
-JPEG conversion. Say: **“Choose a JPEG, PNG or WebP within the photo size limit.
-Export HEIC as JPEG first.”** Show the 3 MiB limit and exact byte ceiling beside
-selection; do not claim every phone photo can upload. No HEIC conversion
-dependency is planned.
+JPEG conversion. C1 accepts supported local sources up to 20 MiB/48 MP/10,000px per edge and
+re-encodes a new derivative of at most 1280px/3 MiB before any reservation or
+transfer. The original is never a fallback upload. The backend still enforces
+3 MiB (3,145,728 bytes) and authoritative Sharp validation. Photo tips explains
+both limits; actionable errors direct HEIC export or resizing. Canvas/native
+decoder support and device-memory limits vary; no promise covers every phone
+photo. No HEIC conversion dependency is added. See [C1 preparation and browser
+limitations](milestone-6.5c1-owner-photo-upload.md#local-browser-preparation).
 
 Future UI privacy warning: **“Check photos for visible addresses, delivery labels,
 documents and people. Remove identifying details and get permission before

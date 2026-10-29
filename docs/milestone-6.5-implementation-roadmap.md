@@ -62,9 +62,9 @@ pass; do not deploy an incomplete upload path. Photos stay optional throughout.
 | B2 | Metadata/policy/account usage + reservations, versions, safe serializers; **new** `services/item-images.js`, `services/item-image-policy.js`, `routes/itemImageRoutes.js`, native-driver tests | `routes/itemRoutes.js` nested photo router under validated owner item scope, `services/inventory.js` plan boundary/additive imageRevision preservation, `services/identity.js` serializer regression, `services/database-indexes.js`, preparation tests | Atomic five-slot/account quotas across plans/instances on `users.itemImageQuota`; idempotent intent/status; strict references; registry dry-run/repeat/conflict tests; still no enabled binary route |
 | B3 | Strict intake/decode/variants and authenticated binary reads; **new** `services/item-image-processing.js` and media validation tests | `middleware/identity.js` narrow content-type exception, `app-factory.js`, image routes, config, reviewed Sharp dependency/lock | Session/Origin/CSRF before parsing; strict raster corpus; orientation/GPS removal; bounded output/CPU; proxy permission matrix; no public keys/originals; feature still disabled until B4 |
 | B4 | Durable delete/compensation/reconcile; **new** `util/reconcile-item-images.js`, crash/cleanup tests | Image service/storage tests, lint script's explicit util/test list, local setup docs | Guarded dry-run/apply and receipt/manifest controls; partial/unknown PUT and killed-worker races; no early accounting refund; verified object absence; operator recovery procedure |
-| C1 | Owner selection/upload/progress; **new** `components/Inventory/ItemPhotos.js`, `api/itemImages.js` | `Inventory.js`, `ItemForm.js` only for real-item entry, design-token scoped CSS/component tests | Five-file bounded client selection; explicit upload, private previews, progress vs ready, safe service errors; no new framework/automatic item creation |
+| C1 | Owner selection/upload/progress; **new** `components/Inventory/ItemPhotos.js`, `api/itemImages.js` | `Inventory.js`, `ItemForm.js`, browser preparation, bounded owner inventory thumbnail summaries, design-token scoped CSS/component tests | Five-file bounded local preparation in Add/Edit; real ID before explicit sequential batch upload; owner-card thumbnails, independent drafts/recovery; no automatic upload/item creation |
 | C2 | Owner reorder/cover/delete and independent draft recovery | ItemPhotos/transport tests, `forms/UnsavedChanges.js` **reuse**, no blanket rewrite | Up/down/Make cover/Delete native controls, stale revisions, explicit discard and lost-response status recovery; no item-form draft reset/localStorage |
-| D1 | Public cover/gallery and inventory thumbnail; **new** small `ItemImage`/`ItemGallery` components | `services/discovery.js` bounded enrichment after page/count, `services/inventory.js` optional cover serialization, `PublicItemCard.js`, `PublicItems.js` + `validFeed`, `Inventory.js`, scoped styles/tests | Exact counts/cursors/owner behavior unchanged; safe relative app URLs/dimensions; 400px covers only, gallery display on demand; distinguish none from unavailable |
+| D1 | Public cover/gallery; **new** small `ItemImage`/`ItemGallery` components | `services/discovery.js` bounded enrichment after page/count, `PublicItemCard.js`, `PublicItems.js` + `validFeed`, scoped styles/tests | Exact counts/cursors/owner behavior unchanged; safe relative app URLs/dimensions; 400px covers only, gallery display on demand; distinguish none from unavailable |
 | D2 | Request-detail thumbnail with independent photo access | `services/pickups.js` **serialize** only if a thumbnail DTO is needed; `Pickups.js` detail, image-policy tests | Closed conversation stays readable without inheriting private photos; no message attachments, archived copies, global inbox or state-machine changes |
 | E1 | Integrated photo/security/product acceptance and rollout review | Local-only browser specs, synthetic fixtures, docs, CI only where needed for SeaweedFS prerequisites | Full two-account/native media + fault/cleanup suite; actual desktop/mobile/axe evidence; SeaweedFS resource cleanup; current hosting/package verification gate and separate remote-approval checklist |
 
@@ -77,18 +77,26 @@ advisories in the photo PRs.
 
 ## 6.5C interaction contract
 
-The photo manager belongs to the **existing saved item ID**. A new name-only draft
-or published item is created through the current explicit ItemForm save first;
-then the owner opens Photos on that item's inventory card/editor. No invisible
-autosave, duplicate item, combined cross-store form transaction or photo-required
-publication rule. Existing fast repeated item creation remains unchanged.
+The photo operation belongs to an **existing saved item ID**, while optional
+local selection/preview belongs inside Add/Edit item before saving. An explicit
+save binds the retained selections to the returned item ID, closes creation
+fields and shows **Upload N photos** directly in that card. Only this next explicit
+confirmation transfers binaries. Existing ready owner thumbnails are shown on
+that card. No detached panel, invisible autosave, automatic next blank form,
+combined cross-store transaction or photo-required publication rule.
 
-The small component owns selected File/object-URL previews and upload operation
-IDs independently of item text fields. At most five selected/active images and a
-bounded total file size; one explicit upload at a time initially is sufficient.
-Account's shared two-upload allowance still protects another tab/device. Do not
-create an unbounded browser or server work queue. Revoke object URLs on removal/
-scope change/unmount, never persist files/private drafts in localStorage.
+The stable inventory session owns selected derivatives/object URLs separately
+from text. Prepare supported source files locally (up to 20 MiB/48 MP/10,000px
+edge) to at most 1280px and the unchanged 3 MiB wire limit. Never use the original
+as fallback. Native browser limits and HEIC export guidance are documented in
+[C1](milestone-6.5c1-owner-photo-upload.md); Sharp remains authoritative.
+
+At most five selected/active images; one explicit bounded batch, sequential
+operations with individual UUIDs, reservations and recovery. Stop on uncertain
+or failed work; retain confirmed images and unrelated files. Posted-item batches
+confirm visibility once. Shared account limits still cover other tabs/devices.
+Revoke object URLs on removal/confirmed discard/scope teardown; never persist
+private drafts/files in localStorage. Warn before losing unsent files on reload.
 
 The new API helper reuses urlConfig/session/error conventions but sends native
 FormData, **without manually setting multipart Content-Type/boundary**, includes
@@ -100,7 +108,7 @@ not automatic re-POST. Known rejected files require an explicit new reservation.
 Input file/preview stays in memory on recoverable failure; browser termination
 can lose it, while the durable server operation is discoverable after refresh.
 
-Up/down buttons or Make cover update the complete ready-ID order with its current
+**C2 only:** Up/down buttons or Make cover update the complete ready-ID order with its current
 imageRevision. No drag-only interaction. Delete confirms removal, hides only
 after acknowledged logical deletion, and says Cleanup pending until physical
 settlement. Removing photos does not cancel requests, clear inventory, change an
@@ -109,12 +117,15 @@ not prevent saving/publishing an otherwise valid text item without photos.
 
 Use existing PageHeader/Surface/Feedback/tokens, 44px controls, labels, visible
 focus, concise status/error announcements and predictable focus after reorder/
-delete. No sticky overlay or decorative redesign. Show the privacy warning and
-format/byte limits before selection. Native `accept` is guidance, not validation;
+delete. No sticky overlay or decorative redesign. Keep the privacy and format guidance accessible in Photo tips, with contextual
+errors when limits matter. Native `accept` is guidance, not validation;
 HEIC/oversize files receive export/resize guidance, not an assumed automatic iOS
 conversion. Local preview labels use Photo 1, not private filenames.
 
 ## 6.5D rendering contract
+
+The approved C1 correction already renders up to five ready owner-card thumbnails.
+D1 below concerns public discovery/detail; it does not defer those owner thumbnails.
 
 Cards download only the first **400px thumbnail**, with real width/height and
 nonessential lazy loading. No display/original download hidden in list markup.

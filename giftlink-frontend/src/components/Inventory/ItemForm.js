@@ -31,9 +31,10 @@ export function publicationIssues(values) {
   if (!values.description.trim()) issues.description = 'Describe the item before publishing.';
   return issues;
 }
-export default forwardRef(function ItemForm({ plan, item, onSave, onCancel, disabled, focusName }, ref) {
-  const nameInput = useRef(), inFlight = useRef(false);
-  useEffect(() => { if (!disabled && (item || focusName)) nameInput.current?.focus(); }, [item, focusName, disabled]);
+export default forwardRef(function ItemForm({ plan, item, onSave, onCancel, disabled, focusName, photos, textHidden = false, onBeforeClose }, ref) {
+  const nameInput = useRef(), inFlight = useRef(false), alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  useEffect(() => { if (!textHidden && (item?.id || focusName)) nameInput.current?.focus(); }, [item?.id, focusName, textHidden]);
   const catalog = usePublicCatalog('/api/item-taxonomy');
   const initial = { name: item?.name || '', description: item?.description || '', categoryId: item?.classification?.category?.id || '',
     itemTypeId: item?.classification?.itemType?.id || '', condition: item?.classification?.condition?.id || '',
@@ -65,13 +66,12 @@ export default forwardRef(function ItemForm({ plan, item, onSave, onCancel, disa
     try {
       await onSave({ ...details, availableFrom: details.availableFrom || null, availableUntil: details.availableUntil || null }, publishing, guard.markSaved);
       guard.markSaved();
-    } catch (failure) { validation.failure(failure, ['name', 'description', 'categoryId', 'itemTypeId', 'condition', 'availableFrom', 'availableUntil']); }
-    finally { inFlight.current = false; setBusy(false); }
+    } catch (failure) { if (alive.current && !failure.handledByInventory) validation.failure(failure, ['name', 'description', 'categoryId', 'itemTypeId', 'condition', 'availableFrom', 'availableUntil']); }
+    finally { inFlight.current = false; if (alive.current) setBusy(false); }
   };
   return <Surface as="form" ref={validation.formRef} className="inventory-form" onSubmit={event => { event.preventDefault(); submit(false); }} noValidate aria-busy={busy}>
-    <div className="inventory-card-heading"><h2>{item ? 'Edit ' + item.name : 'Add an item or group'}</h2>{item && <span className="ui-status">{ownerStatus(item)}</span>}</div>
+    <div hidden={textHidden}><div className="inventory-card-heading"><h2>{item ? 'Edit ' + item.name : 'Add an item or group'}</h2>{item && <span className="ui-status">{ownerStatus(item)}</span>}</div>
     <p className="inventory-form-help">To publish, add a name, category, item type and description. Save a draft with just a name.</p>
-    {!item && <p className="inventory-form-help">Photos are optional. Save this item first, then choose Photos on its inventory card.</p>}
     <fieldset disabled={busy || disabled}>
       <legend className="visually-hidden">Item details</legend>
       <div className="ui-field"><label htmlFor="item-name">Item name</label>
@@ -110,11 +110,15 @@ export default forwardRef(function ItemForm({ plan, item, onSave, onCancel, disa
       </details>}
       <p className="inventory-form-help">Free household goods only. Keep contact details and street addresses out of public text.</p>
       {item?.status === 'available' && <p>Changes to this posted item become public immediately.</p>}
+    </fieldset></div>
+    {photos}
+    <fieldset disabled={busy || disabled} hidden={textHidden}>
+      <legend className="visually-hidden">Save item</legend>
       {error && <Feedback ref={validation.summaryRef} tabIndex={-1} error>{error}</Feedback>}
       <div className="plan-actions">
         {editablePublication && <button type="button" className="ui-button" onClick={() => submit(true)} disabled={plan.status !== 'active' || catalog.loading || Boolean(catalog.error)}>{busy ? 'Saving…' : 'Publish'}</button>}
         <button type="submit" className={'ui-button' + (editablePublication ? ' ui-button--secondary' : '')} disabled={busy}>{busy && !editablePublication ? 'Saving…' : item && item.status !== 'draft' ? 'Save Changes' : 'Save Draft'}</button>
-        {item && <button type="button" className="ui-button ui-button--secondary" onClick={() => { if (guard.confirmDiscard()) onCancel(); }}>Cancel edit</button>}
+        {onCancel && <button type="button" className="ui-button ui-button--secondary" onClick={() => { if ((onBeforeClose || guard.confirmDiscard)()) onCancel(); }}>{item ? 'Cancel edit' : 'Cancel'}</button>}
       </div>
     </fieldset>
   </Surface>;
