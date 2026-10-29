@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { fileDigest, photoError, photoUrl, readPhotos, readUpload, reservePhoto, selectionError, uploadId, uploadPhoto } from './itemImages';
+import { deletePhoto, reorderPhotos, validPhotoOrder, fileDigest, photoError, photoUrl, readPhotos, readUpload, reservePhoto, selectionError, uploadId, uploadPhoto } from './itemImages';
 
 const plan = 'a'.repeat(24), item = 'b'.repeat(24), image = 'c'.repeat(24), clientId = '00000000-0000-4000-8000-000000000001';
 const operation = { id: image, state: 'reserved', cleanupPending: false, reservationExpired: false, createdAt: '2026-10-28T12:00:00Z' };
@@ -84,4 +84,22 @@ test('maps actual quota and stale-revision codes to actionable messages without 
   expect(photoError({ code: 'IMAGE_RECORD_LIMIT', status: 429, message: 'PRIVATE' }).message).toMatch(/Contact support/);
   expect(photoError({ code: 'IMAGE_CHANGED', status: 409 }).message).toMatch(/Refresh and try/);
   expect(photoError({ code: 'IMAGE_DAILY_UPLOADS', status: 429 }).message).toMatch(/UTC/);
+});
+
+const ready = (id, sortPosition) => ({ ...operation, id, state: 'ready', sortPosition, thumbnail: { width: 200, height: 150, contentType: 'image/webp' }, display: { width: 800, height: 600, contentType: 'image/webp' } });
+test('management POSTs send only canonical IDs and current revisions with existing CSRF/session protection', async () => {
+  fetch.mockResolvedValueOnce(reply({ imageRevision: 2, images: [ready(image, 0)] }));
+  await reorderPhotos(plan, item, 1, [image]);
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ imageRevision: 1, imageIds: [image] });
+  expect(fetch.mock.calls[0][1]).toMatchObject({ method: 'POST', credentials: 'include', headers: { 'X-CSRF-Protection': '1' } });
+  fetch.mockResolvedValueOnce(reply({ imageRevision: 3, upload: { ...operation, state: 'delete_pending', cleanupPending: true } }, 202));
+  await deletePhoto(plan, item, image, 2); expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({ imageRevision: 2, action: 'delete' });
+});
+test('management rejects wrong-ID/state replies and noncanonical orders without retrying POST', async () => {
+  expect(validPhotoOrder([ready(image, 1)])).toBe(false); expect(validPhotoOrder([ready(image, 0), ready(image, 1)])).toBe(false);
+  fetch.mockResolvedValue(reply({ imageRevision: 3, upload: { ...operation, id: 'd'.repeat(24), state: 'deleted' } }));
+  await expect(deletePhoto(plan, item, image, 2)).rejects.toMatchObject({ uncertain: true }); expect(fetch).toHaveBeenCalledTimes(1);
+  fetch.mockResolvedValue(reply({ imageRevision: 3, images: [ready('d'.repeat(24), 0)] }));
+  await expect(reorderPhotos(plan, item, 2, [image])).rejects.toMatchObject({ uncertain: true }); expect(fetch).toHaveBeenCalledTimes(2);
+  expect(() => reorderPhotos(plan, item, 2, [image, image])).toThrow(); expect(fetch).toHaveBeenCalledTimes(2);
 });

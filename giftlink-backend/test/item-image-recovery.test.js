@@ -138,6 +138,24 @@ describe('durable local physical image recovery on real MongoDB and SeaweedFS', 
         const q = await quota(); assert.deepEqual((await apply(await preview())).results, []); assert.deepEqual(await quota(), q);
         assert.equal((await remove(r._id)).status, 200);
     });
+    it('keeps real cover/order deletion independent of text and refunds only verified physical cleanup', async function () {
+        const photos = [await ready(), await ready(), await ready()], idsOrder = photos.map(photo => photo._id.toHexString());
+        const original = await db.collection('items').findOne({ _id: item._id }), q = await quota();
+        const ordered = [idsOrder[2], idsOrder[0], idsOrder[1]];
+        await service.reorder(...ids(), { imageRevision: original.imageRevision, imageIds: ordered });
+        assert.deepEqual((await service.list(...ids())).images.map(photo => photo.id), ordered);
+        await remove(idsOrder[0]); assert.deepEqual((await service.list(...ids())).images.map(photo => photo.id), [idsOrder[2], idsOrder[1]]);
+        await remove(idsOrder[2]); const listed = await service.list(...ids());
+        assert.deepEqual(listed.images.map(photo => photo.id), [idsOrder[1]]); assert.equal(listed.images[0].sortPosition, 0);
+        assert.deepEqual(await quota(), q); assert.equal((await db.collection('items').findOne({ _id: item._id })).version, original.version);
+        for (const photo of [photos[0], photos[2]]) for (const name of ['thumbnail', 'display']) await storage.getVariant(storedInput(photo.variants[name]));
+        const applied = await apply(await preview()); assert.equal(applied.results.filter(result => result.status === 'deleted').length, 2);
+        const remaining = await row(photos[1]._id), after = await quota();
+        assert.equal(after.retainedBytes, remaining.charge.retainedBytes); assert.equal(after.successful, 3); assert.equal(after.attempts, 3); assert.equal(after.operationCount, 3);
+        for (const photo of [photos[0], photos[2]]) { assert.equal((await row(photo._id)).state, 'deleted'); for (const name of ['thumbnail', 'display']) await absent(photo, name); }
+        for (const name of ['thumbnail', 'display']) await storage.getVariant(storedInput(remaining.variants[name]));
+        assert.deepEqual((await apply(await preview())).results, []); assert.deepEqual(await quota(), after);
+    });
     it('dry-run performs no document, quota, object or index writes and preserves a real stored object', async function () {
         const r = await ready(); await remove(r._id);
         const before = digest({ row: await row(r._id), quota: await quota() });

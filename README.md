@@ -852,3 +852,7 @@ include the new native/frontend/HTTPS photo cases and existing lifecycle tests.
 Owner item classification uses a searchable type selector with automatic category
 assignment. See [classification UX and compatibility](docs/item-classification-ux.md)
 for the additive catalog, Other/custom validation and local visual evidence.
+
+[Owner photo management (C2)](docs/milestone-6.5c2-owner-photo-management.md)
+reuses the existing versioned ordering/deletion APIs inside Edit Item. Logical
+deletion and physical cleanup remain separate; production image gates stay disabled.

@@ -10,7 +10,8 @@ export const validOperation = value => value && id(value.id) && ['reserved', 'pr
 export const validReady = value => validOperation(value) && value.state === 'ready' && integer(value.sortPosition) && value.sortPosition < 5 &&
   ['thumbnail', 'display'].every(name => value[name]?.contentType === 'image/webp' && integer(value[name].width) && value[name].width >= 1 &&
     integer(value[name].height) && value[name].height >= 1 && Math.max(value[name].width, value[name].height) <= (name === 'thumbnail' ? 400 : 1280));
-export const validMetadata = value => value && integer(value.imageRevision) && Array.isArray(value.images) && value.images.length <= 5 && value.images.every(validReady) &&
+export const validPhotoOrder = images => Array.isArray(images) && images.length <= 5 && new Set(images.map(image => image?.id)).size === images.length && images.every((image, index) => validReady(image) && image.sortPosition === index);
+export const validMetadata = value => value && integer(value.imageRevision) && Array.isArray(value.images) && value.images.length <= 5 && validPhotoOrder(value.images) &&
   Array.isArray(value.uploads) && value.uploads.length <= 25 && value.uploads.every(validOperation) &&
   value.capabilities?.metadata === true && typeof value.capabilities.binaryUpload === 'boolean' && typeof value.capabilities.imageRead === 'boolean' &&
   value.limits?.photos === 5 && value.limits.inputBytes === PHOTO_BYTES && ['attempts', 'successes', 'accountBytes', 'concurrent', 'records'].every(key => integer(value.limits[key])) &&
@@ -66,6 +67,16 @@ export function readUpload(planId, itemId, operationId, clientUploadId) {
 export const reservePhoto = (planId, itemId, intent) => json(root(planId, itemId) + '/uploads', {
   method: 'POST', body: { imageRevision: intent.imageRevision, clientUploadId: intent.clientUploadId, byteLength: intent.byteLength, sha256: intent.sha256 }, validate: validStatus
 });
+export function reorderPhotos(planId, itemId, imageRevision, imageIds) {
+  if (!integer(imageRevision) || !Array.isArray(imageIds) || imageIds.length > 5 || !imageIds.every(id) || new Set(imageIds).size !== imageIds.length) throw localError('IMAGE_UNAVAILABLE');
+  return json(root(planId, itemId) + '/order', { method: 'POST', body: { imageRevision, imageIds },
+    validate: value => value && integer(value.imageRevision) && validPhotoOrder(value.images) && value.images.map(image => image.id).join(',') === imageIds.join(',') });
+}
+export function deletePhoto(planId, itemId, imageId, imageRevision) {
+  if (!id(imageId) || !integer(imageRevision)) throw localError('IMAGE_UNAVAILABLE');
+  return json(root(planId, itemId) + '/' + imageId + '/actions', { method: 'POST', body: { imageRevision, action: 'delete' },
+    validate: value => validStatus(value) && value.upload.id === imageId && ['delete_pending', 'deleted'].includes(value.upload.state) });
+}
 export function selectionError(file) {
   if (!file || !integer(file.size) || file.size < 1 || file.size > PHOTO_BYTES) return messages.FILE_SIZE;
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) && !(file.type === '' && /\.(jpe?g|png|webp)$/i.test(file.name))) return messages.FILE_UNSUPPORTED;
