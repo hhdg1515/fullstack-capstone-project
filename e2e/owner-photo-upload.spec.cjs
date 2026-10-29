@@ -36,7 +36,7 @@ async function evidence(page, testInfo, state) {
   const directory = path.resolve(process.env.PHOTO_UI_EVIDENCE_DIR); fs.mkdirSync(directory, { recursive: true });
   // Capture the actual item's form/card context, without injected styles.
   const panel = page.locator('#owner-photo-manager'), card = panel.locator('xpath=ancestor::li[contains(@class,"inventory-card")][1]');
-  const target = await card.count() ? card : panel.locator('xpath=ancestor::form[1]');
+  const target = state === 'leave-dialog' ? page.getByRole('dialog') : await card.count() ? card : panel.locator('xpath=ancestor::form[1]');
   const viewport = page.viewportSize(), bounds = await target.boundingBox();
   // A tall viewport captures the real form without Chromium painting offscreen
   // fixed skip links into an element capture. No app styles are changed.
@@ -60,7 +60,7 @@ async function audit(page, state) {
   await test.step('Photo UI ' + state + ' WCAG: ' + (violations.join(', ') || 'none'), async () => expect(violations).toEqual([]));
 }
 
-test('owner stages photos in the item form, explicitly uploads after saving, and sees correctly associated card thumbnails', async ({ browser, deployment }, testInfo) => {
+test('one explicit item submit sequences the real photo batch and preserves correctly associated ready cards', async ({ browser, deployment }, testInfo) => {
   const giver = await account(browser, deployment, testInfo, 'Photo owner'), other = await account(browser, deployment, testInfo, 'Other user');
   let gate;
   try {
@@ -88,16 +88,17 @@ test('owner stages photos in the item form, explicitly uploads after saving, and
       expect(first.y).toBe(second.y); expect(second.x).toBeGreaterThan(first.x + first.width);
       await page.setViewportSize({ width: 375, height: 1000 }); await audit(page, 'selected-375'); await page.setViewportSize({ width: 320, height: 1000 });
     }
-    await page.getByRole('button', { name: 'Save Draft', exact: true }).click();
-    const uploadTwo = page.getByRole('button', { name: 'Upload 2 photos', exact: true }); await expect(uploadTwo).toBeEnabled();
+    gate = deployment.deferNextPhotoResponse();
+    const savePhotos = page.getByRole('button', { name: 'Save draft with 2 photos', exact: true });
+    await savePhotos.focus(); await expect(savePhotos).toBeFocused(); await page.keyboard.press('Enter');
+    await upstream(gate, 'save then content', page);
     await expect(page.getByLabel('Item name', { exact: true })).toBeHidden();
     const saved = await deployment.db.collection('items').findOne({ name: 'Synthetic photo chair' });
     const prefix = root + '/' + saved._id + '/images';
     const card = page.getByRole('heading', { name: saved.name, exact: true }).locator('xpath=ancestor::li[1]');
-    await expect(card.getByAltText('Local preview of selected photo 1')).toBeVisible(); await expect(card.getByRole('button', { name: 'Upload 2 photos', exact: true })).toBeVisible();
-    expect(creations).toBe(1); expect(reservations).toBe(0); expect(contents).toBe(0);
-    await evidence(page, testInfo, 'saved-pending');
-    gate = deployment.deferNextPhotoResponse(); await uploadTwo.focus(); await expect(uploadTwo).toBeFocused(); await page.keyboard.press('Enter'); await upstream(gate, 'response', page);
+    await expect(card.getByAltText('Local preview of selected photo 1')).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Upload/ })).toHaveCount(0);
+    expect(creations).toBe(1); expect(reservations).toBe(1); expect(contents).toBe(1);
     await expect(page.getByRole('progressbar', { name: 'Processing photo 1', exact: true })).toBeVisible();
     await expect(card.getByAltText('Uploaded photo 1', { exact: true })).toHaveCount(0);
     await evidence(page, testInfo, 'processing'); await audit(page, 'processing'); gate.release(); gate = undefined;
@@ -116,22 +117,26 @@ test('owner stages photos in the item form, explicitly uploads after saving, and
     if (process.env.PHOTO_UI_EVIDENCE_DIR) await card.screenshot({ path: path.join(path.resolve(process.env.PHOTO_UI_EVIDENCE_DIR), testInfo.project.name + '-ready.png') });
     await audit(page, 'ready');
     await page.getByRole('button', { name: 'Edit ' + saved.name, exact: true }).click();
-    const description = page.getByLabel('Description', { exact: true }); await description.fill('Unsaved item text stays independent.');
+    await page.getByLabel('Description', { exact: true }).fill('Saved item text stays independent.');
     await expect(page.getByLabel('Choose photos')).toBeEnabled();
     for (const width of (testInfo.project.name === 'desktop' ? [320, 375, 390, 768, 1440] : [320])) { await page.setViewportSize({ width, height: 1000 }); await audit(page, 'reflow-' + width); }
     await picker.setInputFiles(file); gate = deployment.deferNextPhotoResponse();
-    await page.getByRole('button', { name: 'Upload 1 photo', exact: true }).click(); await upstream(gate, 'response', page); gate.discard(); gate = undefined;
+    await page.getByRole('button', { name: 'Save draft with 1 photo', exact: true }).click(); await upstream(gate, 'content result', page); gate.discard(); gate = undefined;
     await expect(page.getByText('Upload not confirmed. Check status.', { exact: true })).toBeVisible();
     await evidence(page, testInfo, 'uncertain'); await audit(page, 'uncertain');
     await page.getByRole('button', { name: 'Check upload 1 status', exact: true }).click();
     await expect(card.getByAltText('Uploaded photo 3', { exact: true })).toBeVisible(); expect(reservations).toBe(3); expect(contents).toBe(3);
-    await test.step('Photo lost content recovered', async () => {});
+    await expect(page.locator('#owner-photo-manager')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Edit ' + saved.name, exact: true }).click();
     await expect(picker).toBeEnabled(); await picker.setInputFiles(file); gate = deployment.deferNextPhotoResponse('reservation');
-    await page.getByRole('button', { name: 'Upload 1 photo', exact: true }).click(); await upstream(gate, 'response', page); gate.discard(); gate = undefined;
+    await page.getByRole('button', { name: 'Save draft with 1 photo', exact: true }).click(); await upstream(gate, 'reservation result', page); gate.discard(); gate = undefined;
     await expect(page.getByText('Upload not confirmed. Check status.', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Check upload 1 status', exact: true }).click();
-    await page.getByRole('button', { name: 'Upload 1 photo', exact: true }).click();
+    await page.getByRole('button', { name: 'Upload remaining 1 photo', exact: true }).click();
     await expect(card.getByAltText('Uploaded photo 4', { exact: true })).toBeVisible(); expect(reservations).toBe(4); expect(contents).toBe(4);
+    await expect(page.locator('#owner-photo-manager')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Edit ' + saved.name, exact: true }).click();
+    const description = page.getByLabel('Description', { exact: true }); await description.fill('Unsaved item text stays independent.');
     await expect(picker).toBeEnabled(); await picker.setInputFiles({ name: 'invalid.png', mimeType: 'image/png', buffer: Buffer.from('not an image') });
     await expect(page.getByRole('alert')).toContainText(/Couldn't (read|prepare)/); await expect(page.getByRole('alert')).toHaveCount(1);
     await evidence(page, testInfo, 'failed'); await audit(page, 'invalid-image');
@@ -143,8 +148,8 @@ test('owner stages photos in the item form, explicitly uploads after saving, and
     await page.getByRole('link', { name: 'Back to plan', exact: true }).click(); await expect(description).toHaveValue('Unsaved item text stays independent.'); expect(dialogs).toBe(2);
     const owner = await deployment.db.collection('users').findOne({ 'itemImageQuota.operationCount': 4 });
     expect(owner.itemImageQuota.attempts).toBe(4); expect(owner.itemImageQuota.successful).toBe(4); expect(owner.itemImageQuota.activeUploads).toBe(0); expect(owner.itemImageQuota.reservedBytes).toBe(0);
-    expect((await deployment.db.collection('items').findOne({ _id: saved._id })).description).toBe('');
-    expect((await deployment.db.collection('items').findOne({ _id: saved._id })).version).toBe(1);
+    expect((await deployment.db.collection('items').findOne({ _id: saved._id })).description).toBe('Saved item text stays independent.');
+    expect((await deployment.db.collection('items').findOne({ _id: saved._id })).version).toBe(3);
     expect(deployment.serverErrors).toEqual([]);
   } finally { gate?.discard(); await giver.close(); await other.close(); }
 });
@@ -165,13 +170,13 @@ test('a lost item save preserves staged photos, prevents another create and bind
     expect(bytes.length).toBeGreaterThan(3 * 1024 * 1024);
     await page.getByLabel('Choose photos').setInputFiles({ name: 'synthetic.png', mimeType: 'image/png', buffer: bytes });
     await expect(page.getByText(/Reloading will lose them/)).toBeVisible();
-    gate = local.deferNextPhotoResponse('item-save'); await page.getByRole('button', { name: 'Save Draft', exact: true }).click(); await upstream(gate, 'response', page); gate.discard(); gate = undefined;
-    await expect(page.getByRole('alert')).toContainText('Save not confirmed'); await expect(page.getByRole('button', { name: 'Save Draft', exact: true })).toBeDisabled();
+    gate = local.deferNextPhotoResponse('item-save'); await page.getByRole('button', { name: 'Save draft with 1 photo', exact: true }).click(); await upstream(gate, 'response', page); gate.discard(); gate = undefined;
+    await expect(page.getByRole('alert')).toContainText('Save not confirmed'); await expect(page.getByRole('button', { name: 'Save draft with 1 photo', exact: true })).toBeDisabled();
     expect(creations).toBe(1); expect(reservations).toBe(0); expect(contents).toBe(0); expect(await local.db.collection('items').countDocuments()).toBe(1);
     await page.getByRole('button', { name: 'Refresh inventory', exact: true }).click();
     await page.getByRole('button', { name: 'Edit Lost response synthetic item', exact: true }).click();
     await expect(page.getByAltText('Local preview of selected photo 1')).toBeVisible();
-    const upload = page.getByRole('button', { name: 'Upload 1 photo', exact: true }); await expect(upload).toBeEnabled();
+    const upload = page.getByRole('button', { name: 'Save draft with 1 photo', exact: true }); await expect(upload).toBeEnabled();
     expect(creations).toBe(1); expect(reservations).toBe(0); expect(contents).toBe(0);
     await evidence(page, testInfo, 'save-recovery'); await audit(page, 'save-recovery');
     await upload.click();
@@ -197,9 +202,8 @@ test('session expiry after the first batch upload clears private drafts and neve
     const bytes = await sharp({ create: { width: 400, height: 300, channels: 3, background: '#387ab2' } }).png().toBuffer();
     const file = { name: 'synthetic.png', mimeType: 'image/png', buffer: bytes };
     await page.getByLabel('Choose photos').setInputFiles([file, file, file]); await expect(page.getByAltText('Local preview of selected photo 3')).toBeVisible();
-    await page.getByRole('button', { name: 'Save Draft', exact: true }).click();
-    const upload = page.getByRole('button', { name: 'Upload 3 photos', exact: true }); await expect(upload).toBeEnabled();
-    gate = local.deferNextPhotoResponse(); await upload.click(); await upstream(gate, 'response', page);
+    gate = local.deferNextPhotoResponse();
+    await page.getByRole('button', { name: 'Save draft with 3 photos', exact: true }).click(); await upstream(gate, 'one-click batch', page);
     // This native connection belongs to the receipt-verified disposable fixture.
     expect(local.local).toBe(true); await local.db.collection('sessions').updateMany({}, { $set: { expiresAt: new Date(0) } });
     gate.release(); gate = undefined;
@@ -208,6 +212,66 @@ test('session expiry after the first batch upload clears private drafts and neve
     expect(contents).toBe(1); expect(reservations).toBe(1); expect(await local.db.collection('itemImages').countDocuments({ state: 'ready' })).toBe(1);
     expect(local.serverErrors).toEqual([]);
   } finally { gate?.discard(); if (context) await context.close(); await local.close(); }
+});
+
+test('public partial success and accessible navigation preserve the single submit and safe recovery across remounts', async ({ browser }, testInfo) => {
+  const local = await localEnvironment({ photos: true }); let context, firstGate, secondGate;
+  try {
+    context = await account(browser, local, testInfo, 'Public batch owner'); const { plan } = await setup(context, local, false);
+    const page = await context.newPage(); let creations = 0, contents = 0, nativeDialogs = 0;
+    const root = '/api/move-out-plans/' + plan.id + '/items';
+    page.on('dialog', async dialog => { nativeDialogs++; await dialog.dismiss(); });
+    page.on('request', request => {
+      const pathname = new URL(request.url()).pathname;
+      if (request.method() === 'POST' && pathname === root) creations++;
+      if (request.method() === 'PUT' && pathname.endsWith('/content')) contents++;
+    });
+    await page.goto('/app/plans/' + plan.id + '/items'); await page.getByLabel('Item name', { exact: true }).fill('Published synthetic chair');
+    for (const [label, value] of [['Category', 'office-lighting'], ['Item type', 'office-chair'], ['Description', 'Synthetic household chair for local testing.']]) {
+      const field = page.getByLabel(label, { exact: true }); if (label === 'Description') await field.fill(value); else await field.selectOption(value);
+    }
+    const bytes = await sharp({ create: { width: 500, height: 400, channels: 3, background: '#387ab2' } }).png().toBuffer();
+    const file = { name: 'synthetic.png', mimeType: 'image/png', buffer: bytes };
+    const picker = page.getByLabel('Choose photos'); await picker.setInputFiles([file, file, file]);
+    await expect(page.getByAltText('Local preview of selected photo 3')).toBeVisible();
+    expect(creations).toBe(0); expect(contents).toBe(0);
+    firstGate = local.deferNextPhotoResponse();
+    await page.getByRole('button', { name: 'Publish with 3 photos', exact: true }).click(); await upstream(firstGate, 'published first photo', page);
+    await expect(page.getByText('Item published.', { exact: true })).toBeVisible();
+    await page.getByRole('link', { name: 'Back to plan', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Leave photos behind?', exact: true }); await expect(dialog).toBeVisible();
+    const stay = dialog.getByRole('button', { name: 'Stay and keep photos', exact: true }), leave = dialog.getByRole('button', { name: 'Leave and discard photos', exact: true });
+    await expect(stay).toBeFocused(); await page.keyboard.press('Shift+Tab'); await expect(leave).toBeFocused();
+    await page.keyboard.press('Tab'); await expect(stay).toBeFocused();
+    await evidence(page, testInfo, 'leave-dialog'); await audit(page, 'leave-dialog');
+    await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Back to plan', exact: true })).toBeFocused();
+    expect(nativeDialogs).toBe(0); expect(contents).toBe(1); expect(creations).toBe(1);
+    secondGate = local.deferNextPhotoResponse(); firstGate.release(); firstGate = undefined;
+    await upstream(secondGate, 'published second photo', page); secondGate.discard(); secondGate = undefined;
+    await expect(page.getByText('Upload not confirmed. Check status.', { exact: true })).toBeVisible();
+    const card = page.getByRole('heading', { name: 'Published synthetic chair', exact: true }).locator('xpath=ancestor::li[1]');
+    await expect(card.getByAltText('Uploaded photo 1')).toBeVisible(); await expect(card.getByAltText(/Local preview/)).toHaveCount(2);
+    await expect(page.getByText('Item published.', { exact: true })).toBeVisible();
+    await evidence(page, testInfo, 'published-partial'); await audit(page, 'published-partial');
+    const saved = await local.db.collection('items').findOne({ name: 'Published synthetic chair' }); expect(saved.status).toBe('available'); expect(saved.version).toBe(1);
+    await page.getByRole('button', { name: 'Refresh inventory', exact: true }).click();
+    const check = page.getByRole('button', { name: 'Check upload 1 status', exact: true }); await expect(check).toBeEnabled();
+    expect(contents).toBe(2); expect(creations).toBe(1);
+    await check.click(); await expect(page.getByRole('button', { name: 'Upload remaining 1 photo', exact: true })).toBeEnabled();
+    expect(contents).toBe(2); await page.getByRole('button', { name: 'Upload remaining 1 photo', exact: true }).click();
+    await expect(card.getByAltText('Uploaded photo 3')).toBeVisible(); await expect(page.locator('#owner-photo-manager')).toHaveCount(0);
+    expect(creations).toBe(1); expect(contents).toBe(3); expect(nativeDialogs).toBe(0);
+    expect(await local.db.collection('items').countDocuments()).toBe(1); expect(await local.db.collection('itemImages').countDocuments({ state: 'ready' })).toBe(3);
+    await page.getByRole('button', { name: 'Edit Published synthetic chair', exact: true }).click(); await expect(picker).toBeEnabled(); await picker.setInputFiles(file);
+    await expect(page.getByRole('button', { name: 'Save changes with 1 photo', exact: true })).toBeEnabled();
+    await page.getByRole('link', { name: 'Back to plan', exact: true }).click(); await expect(dialog).toBeVisible();
+    await leave.click(); await expect(page).toHaveURL(new RegExp('/app/plans/' + plan.id + '$'));
+    await page.getByRole('link', { name: 'Manage items', exact: true }).click(); await expect(card.getByAltText('Uploaded photo 3')).toBeVisible();
+    await expect(page.getByAltText(/Local preview/)).toHaveCount(0); expect(contents).toBe(3); expect(nativeDialogs).toBe(0);
+    const unloadBlocked = await page.evaluate(() => { const event = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(event); return event.defaultPrevented; });
+    expect(unloadBlocked).toBe(false); expect(local.serverErrors).toEqual([]);
+  } finally { firstGate?.discard(); secondGate?.discard(); if (context) await context.close(); await local.close(); }
 });
 
 test('default deployed gates show disabled photo controls while text-only inventory remains usable', async ({ browser }, testInfo) => {

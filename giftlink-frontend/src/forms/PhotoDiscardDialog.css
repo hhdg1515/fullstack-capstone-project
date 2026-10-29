@@ -1,0 +1,5 @@
+.photo-discard-dialog.ui-page { font-family: var(--ui-font); max-height: calc(100vh - 2rem); overflow: auto; width: calc(100% - 2rem); max-width: 30rem; padding: var(--ui-space-4); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-surface); color: var(--ui-text); background: var(--ui-surface, #fff); }
+.photo-discard-dialog::backdrop { background: rgb(0 0 0 / 45%); }
+.photo-discard-dialog h2 { font-size: var(--ui-text-section, 1.25rem); }
+.photo-discard-actions { display: flex; flex-wrap: wrap; gap: var(--ui-space-3); }
+.photo-discard-actions button { min-height: 44px; }

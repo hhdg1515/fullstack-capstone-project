@@ -5,8 +5,8 @@ import { confirmPickupChanges } from '../../api/confirmPickupChanges';
 import usePlansData from '../MoveOutPlans/usePlansData';
 import ItemForm, { availabilityError } from './ItemForm';
 import ItemLabels from './ItemLabels';
-import ItemPhotos, { ReadyPhoto } from './ItemPhotos';
-import { useUnsavedForm } from '../../forms/UnsavedChanges';
+import ItemPhotos, { isQueuedPhoto, isUnsentPhoto, ReadyPhoto } from './ItemPhotos';
+import { photoDraftWarning, useUnsavedForm } from '../../forms/UnsavedChanges';
 import '../MoveOutPlans/Plans.css';
 import './Inventory.css';
 import JourneyNav from '../Journeys/JourneyNav';
@@ -28,8 +28,12 @@ function InventorySession({ planId, user }) {
   const textForm = useRef(), urls = useRef(new Set()), alive = useRef(true), initialLoad = useRef(false), pendingRefresh = useRef(false);
   const [photoEntries, setPhotoEntries] = useState([]), [photoBusy, setPhotoBusy] = useState(false), [photoOnly, setPhotoOnly] = useState(false);
   const [previews, setPreviews] = useState({}), [uncertainCreate, setUncertainCreate] = useState(false);
-  const photoGuard = useUnsavedForm({ photos: photoEntries.map(entry => entry.clientUploadId).join(',') }, { photos: '' },
-    'Discard unsent photos? They are kept only in this tab and cannot be restored after reloading.');
+  const intent = useRef(null), intentSequence = useRef(0), [uploadIntent, setUploadIntent] = useState(null);
+  const photoGuard = useUnsavedForm({ photos: photoEntries.filter(isUnsentPhoto).map(entry => entry.clientUploadId).join(',') }, { photos: '' }, photoDraftWarning);
+  const claimUploadIntent = (id, itemId) => {
+    if (!alive.current || intent.current?.id !== id || intent.current.itemId !== itemId) return null;
+    const authorized = intent.current; intent.current = null; setUploadIntent(null); return authorized;
+  };
   useEffect(() => { const owned = urls.current; alive.current = true; return () => { alive.current = false; owned.forEach(url => URL.revokeObjectURL(url)); owned.clear(); }; }, []);
   const [params] = useSearchParams();
   const request = usePlansData(`/api/move-out-plans/${encodeURIComponent(planId)}/items`, true);
@@ -42,7 +46,7 @@ function InventorySession({ planId, user }) {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const data = [403, 404].includes(request.error?.status) ? undefined : request.data;
-  const locked = busy || photoBusy || request.loading || Boolean(request.error);
+  const locked = busy || photoBusy || Boolean(uploadIntent) || request.loading || Boolean(request.error);
   const writing = useRef(false);
   const item = editSnapshot || data?.items.find(value => value.id === editor);
   useEffect(() => {
@@ -50,11 +54,11 @@ function InventorySession({ planId, user }) {
     if (!initialLoad.current) { initialLoad.current = true; if (!data.items.length && !editor) setEditor('new'); else if (editor) setEditSnapshot(data.items.find(value => value.id === editor) || null); }
     if (pendingRefresh.current) { pendingRefresh.current = false; setEditSnapshot(data.items.find(value => value.id === editor) || null); setSequence(value => value + 1); }
   }, [data, request.loading, editor]);
-  const clearPhotos = () => { urls.current.forEach(url => URL.revokeObjectURL(url)); urls.current.clear(); setPhotoEntries([]); };
-  const confirmEdits = () => (!textForm.current || textForm.current.confirmDiscard({ release: false })) && photoGuard.confirmDiscard({ release: false });
+  const clearPhotos = () => { intent.current = null; setUploadIntent(null); urls.current.forEach(url => URL.revokeObjectURL(url)); urls.current.clear(); setPhotoEntries([]); };
+  const confirmEdits = async () => photoGuard.dirty ? photoGuard.requestDiscard({ release: false, alsoText: textForm.current?.dirty }) : (!textForm.current || textForm.current.confirmDiscard({ release: false }));
   const closeEditor = () => { clearPhotos(); setEditSnapshot(null); setEditor(null); setPhotoOnly(false); setUncertainCreate(false); itemsHeading.current?.focus(); };
-  const openNew = () => {
-    if (editor && !confirmEdits()) return;
+  const openNew = async () => {
+    if (editor && !await confirmEdits()) return;
     if (uncertainCreate && !window.confirm('The previous save is unconfirmed. Check inventory for an existing item before starting a separate draft. Continue?')) return;
     clearPhotos(); setEditSnapshot(null); setEditor('new'); setPhotoOnly(false); setUncertainCreate(false); setSequence(value => value + 1); setError('');
   };
@@ -63,16 +67,17 @@ function InventorySession({ planId, user }) {
     pendingRefresh.current = true; request.retry();
   };
   useEffect(() => {
-    if (photoOnly && photoEntries.length === 0 && !photoBusy) { const id = editor; setTimeout(() => { if (alive.current) document.getElementById('inventory-item-' + id)?.focus(); }, 0); setEditSnapshot(null); setEditor(null); setPhotoOnly(false); request.retry(); }
+    if (photoOnly && photoEntries.length === 0 && !photoBusy) { const id = editor; intent.current = null; setUploadIntent(null); setTimeout(() => { if (alive.current) document.getElementById('inventory-item-' + id)?.focus(); }, 0); setEditSnapshot(null); setEditor(null); setPhotoOnly(false); request.retry(); }
     // Only completed/removed selections close the saved-item confirmation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photoOnly, photoEntries.length, photoBusy]);
   const root = `/api/move-out-plans/${encodeURIComponent(planId)}/items`;
   const save = async (details, publish, committed) => {
-    if (photoBusy || photoEntries.some(entry => entry.phase === 'preparing')) throw new Error('Wait for photo preparation to finish before saving.');
+    if (photoBusy || intent.current || photoEntries.some(entry => entry.phase === 'preparing')) throw new Error('Wait for the current photo work to finish before saving.');
     if (uncertainCreate && !item) throw Object.assign(new Error('Check inventory before creating another item.'), { handledByInventory: true });
     if (writing.current) throw new Error('Another inventory change is saving. Wait for it to finish, then try again.');
     writing.current = true; setBusy(true);
+    const clientIds = photoEntries.filter(isQueuedPhoto).map(entry => entry.clientUploadId);
     try {
       const result = await confirmPickupChanges(item ? `${root}/${item.id}` : root, { method: item ? 'PATCH' : 'POST', notifyUnauthorized: false,
         body: item ? { ...details, version: item.version, publish } : { ...details, publish } });
@@ -80,11 +85,15 @@ function InventorySession({ planId, user }) {
       if (!result?.item || !/^[a-f0-9]{24}$/i.test(result.item.id) || !Number.isSafeInteger(result.item.version) || result.item.version < 1 || result.item.planId !== planId || !itemStates.includes(result.item.status) || (item && result.item.id !== item.id)) throw Object.assign(new Error('Save not confirmed. Check inventory before continuing.'), { status: 0 });
       committed?.();
       const saved = result.item; setEditSnapshot(saved);
+      if (clientIds.length) {
+        intent.current = { id: ++intentSequence.current, itemId: saved.id, clientIds };
+        setUploadIntent(intent.current);
+      }
       request.update(previous => {
         const items = previous.items.some(value => value.id === saved.id) ? previous.items.map(value => value.id === saved.id ? { ...value, ...saved } : value) : previous.items.concat(saved);
         return { ...previous, items, progress: { total: items.length, cleared: items.filter(value => value.status === 'cleared').length } };
       });
-      setMessage(photoEntries.length ? '' : publish ? 'Item published.' : 'Item saved.');
+      setMessage(publish ? 'Item published.' : 'Item saved.');
       if (!photoEntries.length) setTimeout(() => { if (alive.current) document.getElementById('inventory-item-' + saved.id)?.focus(); }, 0);
       setEditor(photoEntries.length ? saved.id : null); setPhotoOnly(photoEntries.length > 0); setUncertainCreate(false); request.retry();
     } catch (failure) {
@@ -95,12 +104,12 @@ function InventorySession({ planId, user }) {
       throw failure;
     } finally { writing.current = false; setBusy(false); }
   };
-  const edit = entry => {
+  const edit = async entry => {
     if (editor === entry.id) { setPhotoOnly(false); return; }
     if (editor !== entry.id) {
       if (uncertainCreate && photoEntries.length) {
         if (!window.confirm('Use this saved item and keep the selected photos? Unsaved item text will be replaced.')) return;
-      } else { if (!confirmEdits()) return; clearPhotos(); }
+      } else { if (!await confirmEdits()) return; clearPhotos(); }
     }
     setEditSnapshot(entry); setEditor(entry.id); setPhotoOnly(false); setUncertainCreate(false); setError(''); setSequence(value => value + 1);
   };
@@ -112,7 +121,7 @@ function InventorySession({ planId, user }) {
     }
     // Retain the current edit (and its guard) if the later action confirmation
     // is cancelled. Photo drafts are independent of this text editor.
-    if (editor === entry.id && !confirmEdits()) return;
+    if (editor === entry.id && !await confirmEdits()) return;
     if (!window.confirm(confirmations[name])) return;
     writing.current = true; setBusy(true); setError(''); setMessage('');
     try {
@@ -123,14 +132,15 @@ function InventorySession({ planId, user }) {
     finally { writing.current = false; setBusy(false); }
   };
   const renderEditor = entry => <>
-    {photoOnly && <p role="status">Item saved. Photos have not all been uploaded.</p>}
+    {photoOnly && photoEntries.some(isUnsentPhoto) && <p role="status">{photoBusy || uploadIntent ? 'Saving photos…' : 'Some photos still need attention. Your item is saved.'}</p>}
     <ItemForm ref={textForm} key={user.id + ':' + planId + ':' + (entry?.id || 'new') + ':' + sequence} plan={data.plan} item={entry ? item : null}
-      onSave={save} onCancel={closeEditor} onBeforeClose={confirmEdits} focusName={!photoOnly} textHidden={photoOnly}
+      onSave={save} onCancel={closeEditor} onBeforeClose={confirmEdits} focusName={!photoOnly} textHidden={photoOnly} photoCount={photoEntries.filter(isQueuedPhoto).length}
       disabled={locked || uncertainCreate} photos={<ItemPhotos embedded allowStaging planId={planId} item={entry ? item : {}}
         entries={photoEntries} onEntriesChange={setPhotoEntries} previewUrls={urls.current} capabilities={data.photoCapabilities}
         disabled={busy || uncertainCreate} onBusyChange={setPhotoBusy}
+        uploadIntent={uploadIntent} claimUploadIntent={claimUploadIntent} recovery={photoOnly}
         onMetadata={(id, metadata) => { if (alive.current) setPreviews(previous => ({ ...previous, [id]: { availability: metadata.capabilities.imageRead ? 'ready' : 'disabled', images: metadata.capabilities.imageRead ? metadata.images : [], imageRevision: metadata.imageRevision } })); }} />} />
-    {photoOnly && <button className="item-photos-link" disabled={busy || photoBusy} onClick={() => { if (confirmEdits()) closeEditor(); }}>Done</button>}
+    {photoOnly && <button className="item-photos-link" disabled={busy || photoBusy || Boolean(uploadIntent)} onClick={async () => { if (await confirmEdits()) closeEditor(); }}>Done</button>}
   </>;
   return <main className="ui-page inventory-page">
     <JourneyNav journey="give" planId={planId} />

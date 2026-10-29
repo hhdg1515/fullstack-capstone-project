@@ -825,17 +825,22 @@ be established; a temporary missing object never authorizes a refund.
 ## Owner photo selection and upload (6.5C1)
 
 The [C1 interaction, transport and verification notes](docs/milestone-6.5c1-owner-photo-upload.md)
-describe optional photo selection inside Add/Edit item, immediate explicit
-**Upload N photos** after saving, and ready thumbnails on each owner inventory
-card. Saving an item does not upload photos; the batch sends sequentially only
-after confirmation. Each successful save closes creation fields; Add item starts
-another. Text and photo drafts are independent, with tab-only file loss warnings.
-Browser preparation accepts supported sources up to 20 MiB/48 MP, creates a new
-bounded derivative, and never uploads the original as fallback. The backend's
-3 MiB upload cap and Sharp validation remain unchanged. HEIC needs JPEG export.
-Partial/uncertain batches retain confirmed photos and unsent files for explicit
-status recovery. An uncertain new-item save requires inventory review, never an
-automatic second create. Reorder/cover/deletion and public galleries are deferred.
+describe optional photos inside Add/Edit item and ready thumbnails on the owner
+inventory card. **Publish with N photos** / **Save draft with N photos** explicitly
+authorizes one save-then-upload workflow. The real item ID comes first, followed
+by bounded sequential uploads; there is no second initial Upload confirmation.
+Item save/publication remains successful if photos fail. Item-scoped status checks
+and **Upload remaining N photos** recover eligible files without recreating items
+or automatically replaying uncertain PUTs. A consumed submit intent cannot replay
+on refresh/remount. An uncertain create requires explicit inventory review.
+
+Creation fields close after save; Add item starts another. Text/photo drafts are
+independent. In-app photo loss uses **Stay and keep photos** / **Leave and discard
+photos**, with native protection for actual tab reload/close. Unsent files live
+only in this tab. Browser preparation accepts supported sources up to 20 MiB/48 MP
+and sends a new derivative within the unchanged 3 MiB cap; Sharp remains
+authoritative. HEIC needs JPEG export. Reorder/cover/deletion and public galleries
+remain deferred.
 
 Deployed binary upload/read gates stay **disabled**. The UI requires actual
 server capabilities; metadata-off/binary-unavailable servers show disabled

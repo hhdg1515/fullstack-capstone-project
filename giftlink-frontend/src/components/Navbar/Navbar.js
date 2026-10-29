@@ -17,7 +17,7 @@ export default function Navbar() {
   const find = location.pathname.startsWith('/app/items') || location.pathname === '/app/pickups' || location.state?.journey === 'find';
   const account = ['/app/profile', '/app/login', '/app/register'].includes(location.pathname);
   const handleLogout = async () => {
-    if (drafts && !drafts.confirmDiscard({ release: false })) return;
+    if (drafts && !await drafts.requestDiscard({ release: false })) return;
     setBusy(true); setError('');
     try { await logout(); drafts?.discard(); setOpen(false); navigate('/'); }
     catch { setError('Logout could not be confirmed. Please try again.'); }

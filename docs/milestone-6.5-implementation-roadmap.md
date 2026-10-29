@@ -62,7 +62,7 @@ pass; do not deploy an incomplete upload path. Photos stay optional throughout.
 | B2 | Metadata/policy/account usage + reservations, versions, safe serializers; **new** `services/item-images.js`, `services/item-image-policy.js`, `routes/itemImageRoutes.js`, native-driver tests | `routes/itemRoutes.js` nested photo router under validated owner item scope, `services/inventory.js` plan boundary/additive imageRevision preservation, `services/identity.js` serializer regression, `services/database-indexes.js`, preparation tests | Atomic five-slot/account quotas across plans/instances on `users.itemImageQuota`; idempotent intent/status; strict references; registry dry-run/repeat/conflict tests; still no enabled binary route |
 | B3 | Strict intake/decode/variants and authenticated binary reads; **new** `services/item-image-processing.js` and media validation tests | `middleware/identity.js` narrow content-type exception, `app-factory.js`, image routes, config, reviewed Sharp dependency/lock | Session/Origin/CSRF before parsing; strict raster corpus; orientation/GPS removal; bounded output/CPU; proxy permission matrix; no public keys/originals; feature still disabled until B4 |
 | B4 | Durable delete/compensation/reconcile; **new** `util/reconcile-item-images.js`, crash/cleanup tests | Image service/storage tests, lint script's explicit util/test list, local setup docs | Guarded dry-run/apply and receipt/manifest controls; partial/unknown PUT and killed-worker races; no early accounting refund; verified object absence; operator recovery procedure |
-| C1 | Owner selection/upload/progress; **new** `components/Inventory/ItemPhotos.js`, `api/itemImages.js` | `Inventory.js`, `ItemForm.js`, browser preparation, bounded owner inventory thumbnail summaries, design-token scoped CSS/component tests | Five-file bounded local preparation in Add/Edit; real ID before explicit sequential batch upload; owner-card thumbnails, independent drafts/recovery; no automatic upload/item creation |
+| C1 | Owner selection/upload/progress; **new** `components/Inventory/ItemPhotos.js`, `api/itemImages.js` | `Inventory.js`, `ItemForm.js`, browser preparation, bounded owner inventory thumbnail summaries, design-token scoped CSS/component tests | Five-file bounded local preparation in Add/Edit; real ID before one labeled save/publish followed by sequential upload; owner-card thumbnails, independent drafts/recovery; no automatic upload/item creation |
 | C2 | Owner reorder/cover/delete and independent draft recovery | ItemPhotos/transport tests, `forms/UnsavedChanges.js` **reuse**, no blanket rewrite | Up/down/Make cover/Delete native controls, stale revisions, explicit discard and lost-response status recovery; no item-form draft reset/localStorage |
 | D1 | Public cover/gallery; **new** small `ItemImage`/`ItemGallery` components | `services/discovery.js` bounded enrichment after page/count, `PublicItemCard.js`, `PublicItems.js` + `validFeed`, scoped styles/tests | Exact counts/cursors/owner behavior unchanged; safe relative app URLs/dimensions; 400px covers only, gallery display on demand; distinguish none from unavailable |
 | D2 | Request-detail thumbnail with independent photo access | `services/pickups.js` **serialize** only if a thumbnail DTO is needed; `Pickups.js` detail, image-policy tests | Closed conversation stays readable without inheriting private photos; no message attachments, archived copies, global inbox or state-machine changes |
@@ -77,26 +77,32 @@ advisories in the photo PRs.
 
 ## 6.5C interaction contract
 
-The photo operation belongs to an **existing saved item ID**, while optional
-local selection/preview belongs inside Add/Edit item before saving. An explicit
-save binds the retained selections to the returned item ID, closes creation
-fields and shows **Upload N photos** directly in that card. Only this next explicit
-confirmation transfers binaries. Existing ready owner thumbnails are shown on
-that card. No detached panel, invisible autosave, automatic next blank form,
-combined cross-store transaction or photo-required publication rule.
+Optional local selection/preview belongs inside Add/Edit item. The labeled
+**Publish with N photos** / **Save draft with N photos** action authorizes both
+parts of the workflow. Save the item first, validate its returned ID, then consume
+a tab-only scoped intent exactly once to run sequential photo operations. There
+is no second initial Upload action or per-photo visibility prompt. No invisible
+autosave, automatic next blank form, cross-store transaction or required-photo
+publication rule. Add item explicitly starts another form.
 
-The stable inventory session owns selected derivatives/object URLs separately
-from text. Prepare supported source files locally (up to 20 MiB/48 MP/10,000px
-edge) to at most 1280px and the unchanged 3 MiB wire limit. Never use the original
-as fallback. Native browser limits and HEIC export guidance are documented in
-[C1](milestone-6.5c1-owner-photo-upload.md); Sharp remains authoritative.
+Save/publication success survives partial photo failure. Ready owner thumbnails
+stay on the corresponding card; uncertain work and other files remain in context.
+Canonical status checks and an explicit Upload remaining action recover only
+eligible work. Refresh/remount never replays a consumed intent or uncertain PUT.
+An ambiguous create requires owner inventory review before another submit.
 
-At most five selected/active images; one explicit bounded batch, sequential
-operations with individual UUIDs, reservations and recovery. Stop on uncertain
-or failed work; retain confirmed images and unrelated files. Posted-item batches
-confirm visibility once. Shared account limits still cover other tabs/devices.
-Revoke object URLs on removal/confirmed discard/scope teardown; never persist
-private drafts/files in localStorage. Warn before losing unsent files on reload.
+The stable inventory session owns derivatives/object URLs independently of text.
+Prepare supported sources locally (20 MiB/48 MP/10,000px edge) to at most 1280px
+and the unchanged 3 MiB wire limit; never upload the original as fallback. Native
+browser limits/HEIC export guidance are documented in [C1](milestone-6.5c1-owner-photo-upload.md).
+Sharp and shared account limits remain authoritative.
+
+Meaningful unsent files use an accessible in-app Stay and keep photos / Leave and
+discard photos dialog; preserve native beforeunload for actual tab close/reload.
+Remove the photo guard after confirmed Ready or explicit discard while retaining
+unrelated text protection. No file/private draft persistence in localStorage.
+Leaving can abort browser continuation but cannot undo backend work already
+accepted; durable status/cleanup rules still govern that work.
 
 The new API helper reuses urlConfig/session/error conventions but sends native
 FormData, **without manually setting multipart Content-Type/boundary**, includes

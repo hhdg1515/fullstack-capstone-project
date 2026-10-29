@@ -11,55 +11,80 @@ The [architecture](milestone-6.5-photo-architecture.md),
 ## Owner interaction
 
 Photos are optional **inside Add/Edit item**, next to the existing text fields.
-An empty plan opens the first form; populated plans show their existing cards
-first. Every successful save closes the creation fields. **Add item** explicitly
-starts another item; there is no automatic next blank form or detached Photos
-panel. The duplicate Complete listing action has been removed in favor of Edit;
-publication rules and category/type fields are unchanged.
+An empty plan opens the first form; populated plans show existing cards first.
+The explicit primary action names the selected prepared batch: **Publish with
+3 photos**, **Save draft with 3 photos**, or **Save changes with 3 photos**.
+Without photos, the existing simple save/publish controls remain. Every successful
+save closes creation fields; **Add item** explicitly starts another item.
 
-Selecting with **Add photos** prepares private previews in this tab. It does not
-save an item, reserve quota or transmit binary data. After Save Draft/Publish
-returns the real item ID, the same selections appear immediately inside that
-saved item's card with **Upload N photos**. The message explicitly distinguishes
-item save from photo success. The owner then confirms the bounded batch; a
-published item has one visibility confirmation for that batch, not one per file.
-Files are processed sequentially with their own UUID, reservation, progress and
-recovery state. The batch stops on failure, uncertainty or pending processing.
-Only an authoritative ready result removes that selection. Remaining files and
-confirmed thumbnails survive recoverable failures; status checks and Refresh
-photos work without a full inventory reload. There is no background retry.
+Selecting with **Add photos** prepares private previews in this tab. The labeled
+submit authorizes the item save and its selected photos together. Internally the
+item is saved first and its authoritative ID/plan/version is validated; only then
+can the existing sequential pipeline reserve and upload the captured selection.
+There is no second initial Upload button or per-photo visibility dialog. Existing
+pickup-cancellation confirmations still apply when an edit affects requests.
 
-Ready thumbnails render on the corresponding **owner inventory card**, even when
-the editor is closed. They use the fixed authenticated application image route,
-not object-storage URLs. The metadata editor remains within that card; no public
-gallery, cover, reorder or saved-photo deletion controls are included.
+A tab-only submit intent binds the exact selected UUIDs to the returned item ID.
+The parent consumes it synchronously before async photo work. Status refreshes,
+rerenders and component remounts cannot replay the intent. Initial metadata
+failure also consumes it without uploading; after a successful manual read, the
+owner explicitly chooses **Upload remaining N photos**. That action continues
+only eligible files. Ambiguous PUTs still require canonical status checks and
+cannot be automatically resent. Each file retains its own reservation, progress,
+idempotency and recovery state; the batch stops on failure or uncertainty.
 
-The compact UI uses Photos, a count, previews and short buttons. Progress appears
-only while preparing/transferring/processing. Photo tips is an accessible
-collapsed disclosure, associated with Add photos. It reminds owners to remove
-visible addresses, labels, documents and identifying people; metadata removal is
-not visual redaction. Errors are actionable and local to the affected selection.
-No private filename, operation ID, hash or storage key appears in the interface.
+**Publication/save success is independent of photo success.** The item remains
+saved/published if a photo fails, with accurate item status and per-photo feedback.
+Ready thumbnails appear on the corresponding **owner inventory card**, even when
+the editor is closed. Confirmed thumbnails and unrelated selections survive
+recoverable failures. Status checks and Refresh photos operate in that item's
+context. These actions do not recreate or republish the item. No cover, reorder,
+saved-photo deletion or public gallery controls are included.
 
-Text and photo drafts are independent. File entries and object URLs are owned
-by the stable inventory session, so binding a newly saved ID or refreshing item
-text does not discard them. Switching/closing/editing and global navigation
-check meaningful drafts before discarding. Declining a second confirmation does
-not release the first guard. An explicit inventory refresh may discard confirmed
-text edits but keeps the file selections. Account/plan changes clear private
-selections and suppress late results. No files, private drafts or upload IDs are
-persisted in localStorage/IndexedDB. **Reloading/closing the tab loses unsent
-files**; visible guidance and the native beforeunload prompt warn about this.
-Browsers choose the native prompt's wording and may not prompt in every shutdown
-scenario. Object URLs are revoked on removal, confirmed discard or scope teardown.
-
-An ambiguous new-item save freezes that form's create action. The owner refreshes
-inventory and explicitly selects the actual saved card to associate the retained
-files, after confirming replacement of unsaved text. No guessed name match,
+An ambiguous new-item save freezes repeat creation and starts no photo upload.
+The owner refreshes inventory and explicitly selects the actual saved card,
+confirming replacement of unsaved text while keeping files. A labeled submit then
+saves that existing item and authorizes its photos. No guessed name match,
 automatic second POST or invisible autosave is used. This is not server-side
 item-create idempotency: after a full reload or when choosing a separate new
-draft, owners must review inventory before creating again. Upload idempotency
-and durable reservation semantics are unchanged.
+draft, owners must review inventory before creating again.
+
+The compact Photos section uses a count, previews and short buttons. Progress
+appears only during preparation/transfer/processing; Ready requires an actual
+server result. Photo tips is an accessible collapsed disclosure. It reminds
+owners to remove visible addresses, labels, documents and identifying people;
+metadata removal is not visual redaction. No private filename, operation ID,
+hash or storage key appears in the interface.
+
+## Draft and navigation protection
+
+The stable inventory session owns file entries/object URLs separately from item
+text. Binding a saved ID or refreshing inventory does not discard files. Text
+edits made later remain protected independently of completed photo work.
+
+For in-app navigation, editor switching/closing and logout, meaningful unsent
+photos use a native accessible dialog with **Stay and keep photos** (initial
+focus) and **Leave and discard photos**. Escape stays; Tab/Shift+Tab remain inside;
+focus returns to the initiating control. If text will also be lost, the dialog
+says so. A generic OK/Cancel prompt never silently discards photos. Cancelling a
+later business action or a failed logout leaves guards/files intact. Native
+confirmation for unrelated text-only drafts remains unchanged.
+
+Leaving during upload aborts this browser's transfer/continuation. Work already
+accepted by the backend may still finish, and the dialog states this. Durable
+status/quota/recovery rules remain authoritative; local discard does not delete
+server objects or refund quota. When all photos are confirmed Ready or explicitly
+discarded, the photo guard is removed. A decision dialog open when work completes
+closes and stays on the item; unrelated text remains protected. Session/account
+changes clear private state and dismiss decisions without holding logout/expiry
+open. Old async responses cannot affect the new identity.
+
+No files/private drafts/upload IDs are persisted in localStorage/IndexedDB.
+**Reloading/closing the tab loses unsent files**; visible guidance and the native
+beforeunload prompt warn about this. Browsers control that prompt's wording and
+may not show it in every shutdown scenario. Object URLs are revoked on confirmed
+completion, explicit discard or scope teardown. No claim is made that files
+survive a full reload.
 
 ## Local browser preparation
 
@@ -187,8 +212,8 @@ No successful response, capability or stored object is fabricated by that harnes
 ## Verification and visual evidence
 
 Frontend transport/component tests cover selection, hashing, safe multipart,
-pre-save selection, derivative-only upload, explicit batch confirmation, partial
-success, lost item-save review, real progress vs ready, all quota classes, stale revisions, duplicate clicks,
+pre-save selection, derivative-only upload, one labeled save/publish, partial
+success, lost item-save review, custom navigation focus/choices, real progress vs ready, all quota classes, stale revisions, duplicate clicks,
 ambiguous PUT and reservation recovery, same-UUID explicit retry, definitive
 busy rejection, session/account/item changes, URL cleanup and independent guards.
 Native backend tests cover safe allowances (including read-only expiry preview),
@@ -207,15 +232,16 @@ Actual local synthetic UI captures, reviewed visually (PNG files, not mockups):
 
 | State | Desktop | 320px mobile |
 | --- | --- | --- |
-| Empty panel | [Desktop](verification/m65c1-workflow/desktop-empty.png) | [Mobile](verification/m65c1-workflow/mobile-empty.png) |
-| Selection before item save | [Desktop](verification/m65c1-workflow/desktop-selected.png) | [Mobile](verification/m65c1-workflow/mobile-selected.png) |
-| Saved item / explicit upload | [Desktop](verification/m65c1-workflow/desktop-saved-pending.png) | [Mobile](verification/m65c1-workflow/mobile-saved-pending.png) |
-| Bytes sent / awaiting confirmation | [Desktop](verification/m65c1-workflow/desktop-processing.png) | [Mobile](verification/m65c1-workflow/mobile-processing.png) |
-| Confirmed ready thumbnail | [Desktop](verification/m65c1-workflow/desktop-ready.png) | [Mobile](verification/m65c1-workflow/mobile-ready.png) |
-| Lost success / explicit recovery | [Desktop](verification/m65c1-workflow/desktop-uncertain.png) | [Mobile](verification/m65c1-workflow/mobile-uncertain.png) |
-| Local invalid image rejection | [Desktop](verification/m65c1-workflow/desktop-failed.png) | [Mobile](verification/m65c1-workflow/mobile-failed.png) |
-| Lost item-save recovery | [Desktop](verification/m65c1-workflow/desktop-save-recovery.png) | [Mobile](verification/m65c1-workflow/mobile-save-recovery.png) |
-| Default-disabled backend | [Desktop](verification/m65c1-workflow/desktop-disabled.png) | [Mobile](verification/m65c1-workflow/mobile-disabled.png) |
+| Empty panel | [Desktop](verification/m65c1-unified/desktop-empty.png) | [Mobile](verification/m65c1-unified/mobile-empty.png) |
+| Selection before item save | [Desktop](verification/m65c1-unified/desktop-selected.png) | [Mobile](verification/m65c1-unified/mobile-selected.png) |
+| Bytes sent / awaiting confirmation | [Desktop](verification/m65c1-unified/desktop-processing.png) | [Mobile](verification/m65c1-unified/mobile-processing.png) |
+| Confirmed ready thumbnail | [Desktop](verification/m65c1-unified/desktop-ready.png) | [Mobile](verification/m65c1-unified/mobile-ready.png) |
+| Lost success / explicit recovery | [Desktop](verification/m65c1-unified/desktop-uncertain.png) | [Mobile](verification/m65c1-unified/mobile-uncertain.png) |
+| Local invalid image rejection | [Desktop](verification/m65c1-unified/desktop-failed.png) | [Mobile](verification/m65c1-unified/mobile-failed.png) |
+| Lost item-save recovery | [Desktop](verification/m65c1-unified/desktop-save-recovery.png) | [Mobile](verification/m65c1-unified/mobile-save-recovery.png) |
+| Leave/discard decision | [Desktop](verification/m65c1-unified/desktop-leave-dialog.png) | [Mobile](verification/m65c1-unified/mobile-leave-dialog.png) |
+| Published item / partial batch | [Desktop](verification/m65c1-unified/desktop-published-partial.png) | [Mobile](verification/m65c1-unified/mobile-published-partial.png) |
+| Default-disabled backend | [Desktop](verification/m65c1-unified/desktop-disabled.png) | [Mobile](verification/m65c1-unified/mobile-disabled.png) |
 
 All account/listing/image content is synthetic; solid-color inputs prove real
 processing and are not presented as photographs of real offered goods. No
@@ -224,14 +250,16 @@ The refreshed captures show the real Add/Edit form or saved inventory card,
 without injected screenshot styles. Tall forms use a taller capture viewport
 to avoid Chromium painting an offscreen fixed skip link into element captures;
 layout/axe checks still run at the normal test viewport. Photos are in context with the item; the
-post-save action is immediately visible. Ready card thumbnails remain after the
+submit action clearly includes the selected photos; saved-item processing/recovery
+is immediately visible. Ready card thumbnails remain after the
 editor closes. Two selections fit at 320px; controls retain accessible labels and
 44px targets. Selected-file Remove affects only in-memory files, not server data.
 
-Comparison with the prior C1 panel (immutable pre-correction commit):
-[Desktop selection](https://github.com/hhdg1515/fullstack-capstone-project/blob/c1b7e870c726f355fe1a68106cd36969fcda742f/docs/verification/m65c1/desktop-selected.png),
-[320px selection](https://github.com/hhdg1515/fullstack-capstone-project/blob/c1b7e870c726f355fe1a68106cd36969fcda742f/docs/verification/m65c1/mobile-selected.png).
-The earlier evidence remains in `verification/m65c1/` for comparison.
+Comparison with the prior two-step workflow (immutable commit):
+[Desktop selection](https://github.com/hhdg1515/fullstack-capstone-project/blob/4a4376501b769115010d8c9ea4bbf4971ccd6e8d/docs/verification/m65c1-workflow/desktop-selected.png),
+[320px saved-item Upload step](https://github.com/hhdg1515/fullstack-capstone-project/blob/4a4376501b769115010d8c9ea4bbf4971ccd6e8d/docs/verification/m65c1-workflow/mobile-saved-pending.png).
+Earlier evidence remains under `verification/m65c1/` and
+`verification/m65c1-workflow/` for comparison.
 
 The Docker-dependent normal CI jobs use Ubuntu 24.04, the runtime verified by
 the prior successful CI (Docker 28/overlay2). During this correction,
@@ -260,7 +288,7 @@ Optional screenshot regeneration from repository root during the isolated photo
 spec only (the absolute path is required because npm runs the spec in `e2e/`):
 
 ```sh
-PHOTO_UI_EVIDENCE_DIR="$PWD/docs/verification/m65c1-workflow" npm --prefix e2e test -- owner-photo-upload.spec.cjs
+PHOTO_UI_EVIDENCE_DIR="$PWD/docs/verification/m65c1-unified" npm --prefix e2e test -- owner-photo-upload.spec.cjs
 ```
 
 Use the existing Chromium setup/Playwright commands. No `.env`, R2 or Atlas
