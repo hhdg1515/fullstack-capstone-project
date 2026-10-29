@@ -233,6 +233,14 @@ Comparison with the prior C1 panel (immutable pre-correction commit):
 [320px selection](https://github.com/hhdg1515/fullstack-capstone-project/blob/c1b7e870c726f355fe1a68106cd36969fcda742f/docs/verification/m65c1/mobile-selected.png).
 The earlier evidence remains in `verification/m65c1/` for comparison.
 
+The Docker-dependent normal CI jobs use Ubuntu 24.04, the runtime verified by
+the prior successful CI (Docker 28/overlay2). During this correction,
+ubuntu-latest moved to Ubuntu 26.04/Docker 29/containerd; the unchanged fixture
+rejected its image identity at `image_assertion_193` before creating storage
+resources. Pinning the verified runner retains every digest, image/receipt and
+cleanup assertion. Future Docker/containerd support requires a separate fixture
+compatibility review; the check is not bypassed.
+
 Exact test totals, immutable commit and GitHub CI evidence are recorded in the
 PR. Physical Windows/macOS/Safari/iOS picker, screen reader and mobile keyboard
 behavior are not certified by Chromium emulation or axe.
