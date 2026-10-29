@@ -1,0 +1,197 @@
+jest.mock('../../context/AuthContext', () => {
+  const React = require('react'), Context = React.createContext();
+  return { TestAuthContext: Context, useAppContext: () => React.useContext(Context) };
+});
+jest.mock('../../api/itemImages', () => ({ ...jest.requireActual('../../api/itemImages'), readPhotos: jest.fn(), readUpload: jest.fn(),
+  reservePhoto: jest.fn(), uploadPhoto: jest.fn(), fileDigest: jest.fn(), uploadId: jest.fn(), securePhotoBrowser: jest.fn(() => true) }));
+import React, { useEffect, useState } from 'react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { createMemoryRouter, Link, Route, RouterProvider, Routes } from 'react-router-dom';
+import { TestAuthContext } from '../../context/AuthContext';
+import { UnsavedChangesProvider, useUnsavedForm } from '../../forms/UnsavedChanges';
+import { fileDigest, photoError, readPhotos, readUpload, reservePhoto, securePhotoBrowser, uploadId, uploadPhoto } from '../../api/itemImages';
+import ItemPhotos from './ItemPhotos';
+
+const plan = 'a'.repeat(24), item = { id: 'b'.repeat(24), name: 'Synthetic chair', status: 'draft' }, image = 'c'.repeat(24);
+const owner = { id: 'owner-a', firstName: 'A' };
+const operation = state => ({ id: image, state, cleanupPending: false, reservationExpired: false, createdAt: '2026-10-28T12:00:00Z' });
+const readyImage = () => ({ ...operation('ready'), sortPosition: 0, thumbnail: { width: 200, height: 150, contentType: 'image/webp' }, display: { width: 200, height: 150, contentType: 'image/webp' } });
+const metadata = () => ({ imageRevision: 0, images: [], uploads: [], capabilities: { metadata: true, binaryUpload: true, imageRead: true },
+  limits: { photos: 5, inputBytes: 3145728, attempts: 50, successes: 20, accountBytes: 104857600, concurrent: 2, records: 1000 },
+  allowance: { itemSlots: 5, attempts: 50, successes: 20, storageBytes: 104857600, concurrent: 2, records: 1000, newUploadsAllowed: true } });
+let data, updateScene, sequence;
+function TextDraft() {
+  const [text, setText] = useState(''); useUnsavedForm({ text }, { text: '' });
+  return <label>Independent item text<input value={text} onChange={event => setText(event.target.value)} /></label>;
+}
+function Scene() {
+  const [state, setState] = useState({ user: owner, status: 'authenticated', item, open: true }); updateScene = setState;
+  useEffect(() => {
+    const expired = () => setState(value => ({ ...value, user: null, status: 'anonymous' }));
+    window.addEventListener('giftlink:unauthorized', expired); return () => window.removeEventListener('giftlink:unauthorized', expired);
+  }, []);
+  return <TestAuthContext.Provider value={state}><UnsavedChangesProvider><p>Actor {state.user?.firstName || 'anonymous'}</p><Routes>
+    <Route path="/" element={<><TextDraft />{state.open && <ItemPhotos planId={plan} item={state.item} onClose={() => setState(value => ({ ...value, open: false }))} />}<Link to="/away">Leave page</Link></>} />
+    <Route path="/away" element={<h1>Away</h1>} />
+  </Routes></UnsavedChangesProvider></TestAuthContext.Provider>;
+}
+function mount() {
+  const router = createMemoryRouter([{ path: '*', element: <Scene /> }], { future: { v7_relativeSplatPath: true } });
+  const rendered = render(<RouterProvider router={router} future={{ v7_startTransition: true }} />); return { router, ...rendered };
+}
+const choose = (files = [new File(['synthetic'], 'private-address-and-name.png', { type: 'image/png' })]) => fireEvent.change(screen.getByLabelText('Choose photos'), { target: { files } });
+const loaded = async () => waitFor(() => expect(screen.getByLabelText('Choose photos')).toBeEnabled());
+const begin = () => fireEvent.click(screen.getByRole('button', { name: 'Upload photo 1' }));
+const unload = () => { const event = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(event); return event.defaultPrevented; };
+beforeEach(() => {
+  data = metadata(); sequence = 0;
+  readPhotos.mockImplementation(async () => data); readUpload.mockResolvedValue({ imageRevision: 0, upload: operation('reserved') });
+  reservePhoto.mockResolvedValue({ imageRevision: 0, upload: operation('reserved') }); fileDigest.mockResolvedValue('d'.repeat(64));
+  uploadId.mockImplementation(() => '00000000-0000-4000-8000-' + String(++sequence).padStart(12, '0')); securePhotoBrowser.mockReturnValue(true);
+  uploadPhoto.mockImplementation(async () => { data = { ...data, imageRevision: 1, images: [readyImage()], allowance: { ...data.allowance, itemSlots: 4 } }; return { imageRevision: 1, upload: operation('ready') }; });
+  URL.createObjectURL = jest.fn(() => 'blob:synthetic-' + sequence); URL.revokeObjectURL = jest.fn();
+  jest.spyOn(window, 'confirm').mockReturnValue(false);
+});
+afterEach(() => { jest.clearAllMocks(); jest.restoreAllMocks(); });
+
+test('requires an explicitly saved item and makes no invisible save or metadata request', async () => {
+  mount(); act(() => updateScene(value => ({ ...value, item: { name: 'Unsaved item' } })));
+  expect(screen.getByText('Save this item before adding photos.')).toBeInTheDocument(); expect(screen.queryByLabelText('Choose photos')).not.toBeInTheDocument();
+  expect(reservePhoto).not.toHaveBeenCalled();
+});
+test('shows clear formats/privacy guidance and a truthful no-photo state without requiring an upload', async () => {
+  mount(); await loaded(); expect(screen.getByText(/Maximum 5 photos/)).toBeInTheDocument(); expect(screen.getByText(/Export HEIC/)).toBeInTheDocument();
+  expect(screen.getByText(/Removing metadata does not hide/)).toBeInTheDocument(); expect(screen.getByText(/No ready photos/)).toBeInTheDocument();
+  expect(reservePhoto).not.toHaveBeenCalled(); expect(uploadPhoto).not.toHaveBeenCalled();
+});
+test('file selection creates local previews only, keeps filenames private and never persists a binary draft', async () => {
+  const storage = jest.spyOn(Storage.prototype, 'setItem'); mount(); await loaded(); choose();
+  expect(screen.getByAltText('Local preview of selected photo 1')).toHaveAttribute('src', 'blob:synthetic-1');
+  expect(screen.queryByText('private-address-and-name.png')).not.toBeInTheDocument(); expect(fileDigest).not.toHaveBeenCalled();
+  expect(reservePhoto).not.toHaveBeenCalled(); expect(uploadPhoto).not.toHaveBeenCalled(); expect(storage).not.toHaveBeenCalled(); expect(unload()).toBe(true);
+});
+test('rejects a sixth selection and counts saved/pending slots before creating object URLs', async () => {
+  mount(); await loaded(); choose(Array.from({ length: 6 }, () => new File(['a'], 'a.png', { type: 'image/png' })));
+  expect(await screen.findByRole('alert')).toHaveTextContent(/at most five/); expect(URL.createObjectURL).not.toHaveBeenCalled();
+  expect(screen.getByLabelText('Choose photos')).toHaveAttribute('aria-invalid', 'true');
+  expect(screen.getByLabelText('Choose photos')).toHaveAccessibleDescription(expect.stringContaining('at most five'));
+  data = { ...data, allowance: { ...data.allowance, itemSlots: 1 } }; fireEvent.click(screen.getByRole('button', { name: 'Refresh photos' })); await loaded();
+  choose([new File(['a'], 'a.png', { type: 'image/png' }), new File(['b'], 'b.png', { type: 'image/png' })]); expect(URL.createObjectURL).not.toHaveBeenCalled();
+});
+test.each([['HEIC', () => new File(['a'], 'phone.heic', { type: 'image/heic' }), /Export HEIC/],
+  ['large', () => new File([new Uint8Array(3145729)], 'large.png', { type: 'image/png' }), /3 MiB/]])('makes %s errors immediately actionable without a forced metadata refresh', async (name, file, message) => {
+  mount(); await loaded(); choose([file()]); expect(await screen.findByRole('alert')).toHaveTextContent(message);
+  await waitFor(() => expect(screen.getByLabelText('Choose photos')).toHaveFocus()); expect(screen.getByLabelText('Choose photos')).toBeEnabled();
+  choose(); expect(screen.getByAltText('Local preview of selected photo 1')).toBeInTheDocument(); expect(reservePhoto).not.toHaveBeenCalled();
+});
+test('distinguishes byte transfer from readiness and prevents duplicate in-flight sends', async () => {
+  let finish, progress; uploadPhoto.mockImplementation((p, i, id, file, options) => { progress = options.onProgress; return new Promise(resolve => { finish = resolve; }); });
+  mount(); await loaded(); choose(); begin(); begin(); await waitFor(() => expect(uploadPhoto).toHaveBeenCalledTimes(1));
+  expect(reservePhoto.mock.calls[0][2]).toEqual({ imageRevision: 0, clientUploadId: '00000000-0000-4000-8000-000000000001', byteLength: 9, sha256: 'd'.repeat(64) });
+  act(() => progress(42, false)); expect(screen.getByRole('progressbar')).toHaveAttribute('value', '42');
+  act(() => progress(100, true)); expect(screen.getByText(/not ready yet/)).toBeInTheDocument(); expect(screen.queryByText('Photo ready.')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Upload photo 1' })).toBeDisabled();
+  await act(async () => { data = { ...data, images: [readyImage()], imageRevision: 1 }; finish({ imageRevision: 1, upload: operation('ready') }); });
+  expect(await screen.findByAltText('Uploaded photo 1')).toHaveAttribute('src', '/api/item-images/' + image + '/thumbnail');
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:synthetic-1'); expect(unload()).toBe(false);
+  await waitFor(() => expect(screen.getByLabelText('Choose photos')).toHaveFocus()); expect(reservePhoto).toHaveBeenCalledTimes(1);
+});
+test('recovering an ambiguous PUT queries canonical status and never resends the file, even when a read still says reserved', async () => {
+  uploadPhoto.mockRejectedValue(photoError({ status: 0 }, true)); mount(); await loaded(); choose(); begin();
+  expect(await screen.findByText(/Outcome uncertain/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Check upload 1 status' }));
+  await waitFor(() => expect(readUpload).toHaveBeenCalledWith(plan, item.id, image, expect.any(String)));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Check upload 1 status' })).toBeEnabled());
+  expect(screen.getByRole('button', { name: 'Upload photo 1' })).toBeDisabled(); expect(screen.getByAltText('Local preview of selected photo 1')).toBeInTheDocument();
+  readUpload.mockImplementation(async () => { data = { ...data, images: [readyImage()] }; return { imageRevision: 1, upload: operation('ready') }; });
+  fireEvent.click(screen.getByRole('button', { name: 'Check upload 1 status' })); expect(await screen.findByText('Photo ready.')).toBeInTheDocument();
+  expect(uploadPhoto).toHaveBeenCalledTimes(1); expect(reservePhoto).toHaveBeenCalledTimes(1);
+});
+test('recovers a lost reservation response by the same UUID before its first binary send', async () => {
+  reservePhoto.mockRejectedValue(photoError({ status: 0 }, true)); mount(); await loaded(); choose(); begin(); await screen.findByText(/Outcome uncertain/);
+  fireEvent.click(screen.getByRole('button', { name: 'Check upload 1 status' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Upload photo 1' })).toBeEnabled());
+  expect(readUpload).toHaveBeenCalledWith(plan, item.id, undefined, '00000000-0000-4000-8000-000000000001');
+  begin(); expect(await screen.findByText('Photo ready.')).toBeInTheDocument(); expect(reservePhoto).toHaveBeenCalledTimes(1); expect(uploadPhoto).toHaveBeenCalledTimes(1);
+});
+test('a definite pre-claim busy rejection permits a manual same-reservation retry only after a successful status check', async () => {
+  uploadPhoto.mockRejectedValueOnce(photoError({ status: 429, code: 'IMAGE_PROCESSOR_BUSY' }, true));
+  mount(); await loaded(); choose(); begin(); await screen.findByRole('alert');
+  fireEvent.click(screen.getByRole('button', { name: 'Check upload 1 status' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Upload photo 1' })).toBeEnabled());
+  begin(); await screen.findByText('Photo ready.'); expect(reservePhoto).toHaveBeenCalledTimes(1);
+  expect(uploadPhoto).toHaveBeenCalledTimes(2); expect(uploadPhoto.mock.calls[0][2]).toBe(uploadPhoto.mock.calls[1][2]);
+});
+test('a missing lost reservation permits only an explicit same-UUID retry, never an automatic replacement', async () => {
+  reservePhoto.mockRejectedValueOnce(photoError({ status: 0 }, true)); readUpload.mockRejectedValue(photoError({ status: 404, code: 'IMAGE_UNAVAILABLE' }));
+  mount(); await loaded(); choose(); begin(); await screen.findByText(/Outcome uncertain/); expect(reservePhoto).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Check upload 1 status' }));
+  const retry = await screen.findByRole('button', { name: 'Retry same reservation 1 and upload' }); await waitFor(() => expect(retry).toBeEnabled());
+  expect(reservePhoto).toHaveBeenCalledTimes(1); fireEvent.click(retry); await screen.findByText('Photo ready.');
+  expect(reservePhoto).toHaveBeenCalledTimes(2); expect(reservePhoto.mock.calls[0][2].clientUploadId).toBe(reservePhoto.mock.calls[1][2].clientUploadId); expect(uploadId).toHaveBeenCalledTimes(1);
+});
+test.each([['IMAGE_DAILY_ATTEMPTS', /daily photo attempt limit/i], ['IMAGE_DAILY_UPLOADS', /daily photo allowance/i],
+  ['IMAGE_STORAGE_CAPACITY', /Photo storage is full/], ['IMAGE_UPLOAD_CAPACITY', /Upload capacity is reserved/],
+  ['IMAGE_RECORD_LIMIT', /waiting does not reset/], ['IMAGE_ITEM_LIMIT', /five photos/], ['IMAGE_CHANGED', /Refresh photos/]])('retains local files on %s and does not retry the write', async (code, message) => {
+  reservePhoto.mockRejectedValue(photoError({ status: code === 'IMAGE_CHANGED' ? 409 : 429, code })); mount(); await loaded(); choose(); begin();
+  expect(await screen.findByRole('alert')).toHaveTextContent(message); expect(screen.getByAltText('Local preview of selected photo 1')).toBeInTheDocument();
+  expect(reservePhoto).toHaveBeenCalledTimes(1); expect(uploadPhoto).not.toHaveBeenCalled();
+});
+test('does not confuse failed uploads needing cleanup with ready photos or released capacity', async () => {
+  data.uploads = [{ ...operation('failed'), cleanupPending: true }]; data.allowance.itemSlots = 4;
+  mount(); await loaded(); screen.getByText('Other upload operations').closest('details').open = true;
+  expect(screen.getByText(/Failed — cleanup pending/)).toBeInTheDocument(); expect(screen.getByText(/Capacity may remain held/)).toBeInTheDocument();
+  expect(screen.queryByAltText('Uploaded photo 1')).not.toBeInTheDocument();
+});
+test('renders unavailable capability truthfully and cannot send or reserve on a disabled server', async () => {
+  data.capabilities.binaryUpload = false; mount(); await screen.findByText(/Photo uploads are disabled/);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh photos' })).toBeEnabled());
+  expect(screen.getByLabelText('Choose photos')).toBeDisabled(); expect(screen.queryByRole('button', { name: 'Upload photo 1' })).not.toBeInTheDocument();
+  expect(reservePhoto).not.toHaveBeenCalled();
+});
+test('unavailable metadata is not presented as an empty photo collection', async () => {
+  readPhotos.mockRejectedValue(photoError({ status: 404, code: 'NOT_FOUND' })); mount(); await screen.findByText(/not enabled on this server/);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh photos' })).toBeEnabled());
+  expect(screen.queryByText(/No ready photos/)).not.toBeInTheDocument(); expect(screen.getByLabelText('Choose photos')).toBeDisabled();
+});
+test('requires HTTPS-capable browser crypto instead of falling back to weak upload IDs', async () => {
+  securePhotoBrowser.mockReturnValue(false); mount(); await screen.findByText(/Secure photo preparation needs/);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh photos' })).toBeEnabled());
+  expect(screen.getByLabelText('Choose photos')).toBeDisabled(); expect(uploadId).not.toHaveBeenCalled();
+});
+test('revokes object URLs on local removal, accepted close and unmount without deleting server data', async () => {
+  const view = mount(); await loaded(); choose(); fireEvent.click(screen.getByRole('button', { name: 'Remove selection 1' }));
+  expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1); choose(); fireEvent.click(screen.getByRole('button', { name: 'Close photos' }));
+  expect(screen.getByAltText('Local preview of selected photo 1')).toBeInTheDocument();
+  window.confirm.mockReturnValue(true); fireEvent.click(screen.getByRole('button', { name: 'Close photos' }));
+  expect(screen.queryByLabelText('Choose photos')).not.toBeInTheDocument(); expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2);
+  view.unmount(); expect(uploadPhoto).not.toHaveBeenCalled(); expect(reservePhoto).not.toHaveBeenCalled();
+});
+test('warns before navigation/reload and leaves an unrelated text draft guarded after photo completion', async () => {
+  const { router } = mount(); await loaded(); choose(); fireEvent.click(screen.getByRole('link', { name: 'Leave page' }));
+  await waitFor(() => expect(window.confirm).toHaveBeenCalled()); expect(router.state.location.pathname).toBe('/'); expect(unload()).toBe(true);
+  fireEvent.change(screen.getByLabelText('Independent item text'), { target: { value: 'Keep the unsaved item text' } }); begin(); await screen.findByText('Photo ready.');
+  expect(screen.getByLabelText('Independent item text')).toHaveValue('Keep the unsaved item text'); expect(unload()).toBe(true);
+  fireEvent.click(screen.getByRole('link', { name: 'Leave page' })); expect(router.state.location.pathname).toBe('/');
+});
+test('switching items releases previews and ignores stale metadata results', async () => {
+  const old = metadata(); old.images = [readyImage()]; let finish;
+  mount(); await loaded(); choose(); readPhotos.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh photos' }));
+  act(() => updateScene(value => ({ ...value, item: { ...item, id: 'e'.repeat(24), name: 'Other saved item' } })));
+  await loaded(); await act(async () => finish(old)); expect(screen.queryByAltText('Uploaded photo 1')).not.toBeInTheDocument();
+  expect(screen.queryByAltText('Local preview of selected photo 1')).not.toBeInTheDocument(); expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:synthetic-1');
+});
+test('a late reservation/session error from the old account cannot send its file or log out the new account', async () => {
+  let reject; reservePhoto.mockImplementation(() => new Promise((resolve, failure) => { reject = failure; }));
+  mount(); await loaded(); choose(); begin(); await waitFor(() => expect(reservePhoto).toHaveBeenCalledTimes(1));
+  act(() => updateScene(value => ({ ...value, user: { id: 'owner-b', firstName: 'B' } })));
+  await loaded(); await act(async () => reject(photoError({ status: 401, code: 'SESSION_EXPIRED' })));
+  expect(screen.getByText('Actor B')).toBeInTheDocument(); expect(uploadPhoto).not.toHaveBeenCalled();
+  expect(screen.queryByAltText('Local preview of selected photo 1')).not.toBeInTheDocument(); expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:synthetic-1');
+});
+test('session expiration clears private file state immediately without waiting for a draft confirmation', async () => {
+  reservePhoto.mockRejectedValue(photoError({ status: 401, code: 'SESSION_EXPIRED' })); mount(); await loaded(); choose(); begin();
+  expect(await screen.findByText('Actor anonymous')).toBeInTheDocument(); expect(screen.queryByAltText('Local preview of selected photo 1')).not.toBeInTheDocument();
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:synthetic-1'); expect(window.confirm).not.toHaveBeenCalled();
+});

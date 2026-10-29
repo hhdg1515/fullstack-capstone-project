@@ -821,3 +821,18 @@ complete arguments, bounds and safe shutdown. No `.env` or remote URI fallback.
 No scheduler, retention purge, R2 access, Atlas write, production activation or
 photo UI is introduced. Unknown PUTs remain charged when their outcome cannot
 be established; a temporary missing object never authorizes a refund.
+
+## Owner photo selection and upload (6.5C1)
+
+The [C1 interaction, transport and verification notes](docs/milestone-6.5c1-owner-photo-upload.md)
+describe the saved-item **Photos** panel, private in-memory previews, explicit
+one-at-a-time upload, truthful processing/ready states and manual recovery.
+Photos remain optional; existing item text and photo drafts are independent.
+Reorder/cover/deletion controls and public galleries are deferred.
+
+Deployed binary upload/read gates stay **disabled**. The UI requires actual
+server capabilities; metadata-off/binary-unavailable servers show disabled
+controls. Real uploads run only through the existing verified disposable local
+MongoDB + SeaweedFS pipeline injection. No new frontend flag enables production
+uploads, creates indexes or selects a remote provider. The normal local/CI suites
+include the new native/frontend/HTTPS photo cases and existing lifecycle tests.

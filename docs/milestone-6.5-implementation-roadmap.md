@@ -6,7 +6,9 @@ PR #61 is merged. PR #62 merged B3's [isolated local binary pipeline and verific
 B4 adds [local physical deletion and durable recovery](milestone-6.5b4-photo-recovery.md),
 with guarded manifests, conservative unknown-write holds and exact-once settlement.
 Deployed uploads/delivery remain disabled, including after B4 tests pass.
-Photo UI, R2/remote preparation and hosted compatibility/rollout remain deferred;
+C1 adds the [owner selection/preview/upload UI](milestone-6.5c1-owner-photo-upload.md)
+and isolated browser integration; C2 management, public galleries, R2/remote
+preparation and hosted compatibility/rollout remain deferred;
 the architecture's future API descriptions are not claims of user-facing uploads.
 
 **6.5A delivers architecture only.** Base is main

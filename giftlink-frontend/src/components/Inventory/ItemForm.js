@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { isCalendarDate, utcToday } from '../MoveOutPlans/dates';
 import { useUnsavedForm } from '../../forms/UnsavedChanges';
 import useFormErrors from '../../forms/useFormErrors';
@@ -31,7 +31,7 @@ export function publicationIssues(values) {
   if (!values.description.trim()) issues.description = 'Describe the item before publishing.';
   return issues;
 }
-export default function ItemForm({ plan, item, onSave, onCancel, disabled, focusName }) {
+export default forwardRef(function ItemForm({ plan, item, onSave, onCancel, disabled, focusName }, ref) {
   const nameInput = useRef(), inFlight = useRef(false);
   useEffect(() => { if (!disabled && (item || focusName)) nameInput.current?.focus(); }, [item, focusName, disabled]);
   const catalog = usePublicCatalog('/api/item-taxonomy');
@@ -41,6 +41,7 @@ export default function ItemForm({ plan, item, onSave, onCancel, disabled, focus
   const [values, setValues] = useState(initial);
   const [busy, setBusy] = useState(false);
   const guard = useUnsavedForm(values, initial);
+  useImperativeHandle(ref, () => ({ confirmDiscard: guard.confirmDiscard }));
   const validation = useFormErrors(busy);
   const { errors, error } = validation;
   const editablePublication = !item || ['draft', 'unlisted', 'expired'].includes(item.status);
@@ -70,6 +71,7 @@ export default function ItemForm({ plan, item, onSave, onCancel, disabled, focus
   return <Surface as="form" ref={validation.formRef} className="inventory-form" onSubmit={event => { event.preventDefault(); submit(false); }} noValidate aria-busy={busy}>
     <div className="inventory-card-heading"><h2>{item ? 'Edit ' + item.name : 'Add an item or group'}</h2>{item && <span className="ui-status">{ownerStatus(item)}</span>}</div>
     <p className="inventory-form-help">To publish, add a name, category, item type and description. Save a draft with just a name.</p>
+    {!item && <p className="inventory-form-help">Photos are optional. Save this item first, then choose Photos on its inventory card.</p>}
     <fieldset disabled={busy || disabled}>
       <legend className="visually-hidden">Item details</legend>
       <div className="ui-field"><label htmlFor="item-name">Item name</label>
@@ -116,4 +118,4 @@ export default function ItemForm({ plan, item, onSave, onCancel, disabled, focus
       </div>
     </fieldset>
   </Surface>;
-}
+});

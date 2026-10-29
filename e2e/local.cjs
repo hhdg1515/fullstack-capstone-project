@@ -23,11 +23,23 @@ async function localEnvironment({ photos = false } = {}) {
     }
     directory = fs.mkdtempSync(path.join(os.tmpdir(), 'moveout-e2e-'));
     execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-keyout', path.join(directory, 'key.pem'), '-out', path.join(directory, 'cert.pem'), '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost,IP:127.0.0.1'], { stdio: 'ignore' });
-    let online = true; let clock; const serverErrors = [];
+    let online = true; let clock; const serverErrors = []; let nextPhotoResponse;
+    const photoGates = new Set();
     const web = express();
     web.use('/api', (req, res) => {
       if (!online) return res.status(req.method === 'GET' ? 200 : 404).type('html').send('<!doctype html><title>Frontend fallback</title>');
-      const proxy = http.request({ hostname: '127.0.0.1', port: api.address().port, path: req.originalUrl, method: req.method, headers: req.headers }, upstream => { res.writeHead(upstream.statusCode, upstream.headers); upstream.pipe(res); });
+      const proxy = http.request({ hostname: '127.0.0.1', port: api.address().port, path: req.originalUrl, method: req.method, headers: req.headers }, upstream => {
+        const kind = req.method === 'PUT' && /\/images\/[a-f0-9]{24}\/content$/.test(req.originalUrl) ? 'content' :
+          req.method === 'POST' && /\/images\/uploads$/.test(req.originalUrl) ? 'reservation' : null;
+        const gate = photos && nextPhotoResponse?.kind === kind ? nextPhotoResponse : null;
+        if (gate) {
+          nextPhotoResponse = undefined; gate.arrived();
+          gate.decision.then(deliver => { photoGates.delete(gate); if (deliver) { res.writeHead(upstream.statusCode, upstream.headers); upstream.pipe(res); }
+            else { upstream.resume(); if (!res.destroyed) res.status(503).set('Cache-Control', 'private, no-store').json({
+              error: { code: 'IMAGE_UPLOAD_UNCERTAIN', message: 'The upstream result is unavailable. Check the existing operation.' }
+            }); } });
+        } else { res.writeHead(upstream.statusCode, upstream.headers); upstream.pipe(res); }
+      });
       proxy.on('error', () => res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Service unavailable' } })); req.pipe(proxy);
     });
     web.use(express.static(root + '/giftlink-frontend/build')); web.get('*', (req, res) => res.sendFile(root + '/giftlink-frontend/build/index.html'));
@@ -54,9 +66,17 @@ async function localEnvironment({ photos = false } = {}) {
           const apply = createLocalImageRecovery(maintenance);
           try { return await apply.apply(manifest, { ...maintenance.identity, manifest: manifest.digest }); } finally { apply.close(); }
         } finally { await maintenance.close(); }
+      }, deferNextPhotoResponse: (kind = 'content') => {
+        if (process.env.E2E_APP_ORIGIN || !['content', 'reservation'].includes(kind) || nextPhotoResponse) throw Error('Local photo response gate refused');
+        let arrived, finish;
+        const gate = { kind, arrived: () => arrived(), decision: new Promise(resolve => { finish = resolve; }), cancel: () => finish(false) };
+        const observed = new Promise(resolve => { arrived = resolve; });
+        photoGates.add(gate); nextPhotoResponse = gate;
+        return { arrived: observed, release: () => finish(true), discard: () => finish(false) };
       } } : {}),
       now: () => clock === undefined ? Date.now() : clock, advance: value => { clock = value; }, setOnline: value => { online = value; },
-      close: async () => { await new Promise(resolve => front.close(resolve)); await new Promise(resolve => api.close(resolve)); await hosted.close();
+      close: async () => { for (const gate of photoGates) gate.cancel();
+        await new Promise(resolve => front.close(resolve)); await new Promise(resolve => api.close(resolve)); await hosted.close();
         if (imagePipeline) imagePipeline.close(); try { if (storage) await storage.close(); } finally { await isolated.close(); }
         fs.rmSync(directory, { recursive: true, force: true }); } };
   } catch (error) {

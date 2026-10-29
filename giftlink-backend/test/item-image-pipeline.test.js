@@ -116,6 +116,14 @@ describe('native image pipeline with owned MongoDB and real private SeaweedFS', 
         assert.throws(() => makeApp({ enabled: true }), /Invalid local/);
         assert.throws(() => createLocalItemImagePipeline({ connectToDatabase: async () => db, configuration: config, storageConfig: {} }));
     });
+    it('reports binary/read capability only for an actual sealed local pipeline while retaining the deployed product gate', async function () {
+        const local = await request(app).get(root()).set('Cookie', owner.cookie).expect(200);
+        assert.deepEqual(local.body.capabilities, { metadata: true, binaryUpload: true, imageRead: true });
+        assert.equal(local.body.binaryUploadsEnabled, false);
+        const disabled = await request(makeApp(null)).get(root()).set('Cookie', owner.cookie).expect(200);
+        assert.deepEqual(disabled.body.capabilities, { metadata: true, binaryUpload: false, imageRead: false });
+        assert.equal(disabled.body.allowance.itemSlots, 5);
+    });
     it('rejects encoding and oversized request declarations without claiming the reservation', async function () {
         const id = await reserve();
         await upload(id).set('Content-Encoding', 'gzip').expect(415);

@@ -5,10 +5,10 @@ import { confirmPickupChanges } from '../../api/confirmPickupChanges';
 import usePlansData from '../MoveOutPlans/usePlansData';
 import ItemForm, { availabilityError } from './ItemForm';
 import ItemLabels from './ItemLabels';
+import ItemPhotos from './ItemPhotos';
 import '../MoveOutPlans/Plans.css';
 import './Inventory.css';
 import JourneyNav from '../Journeys/JourneyNav';
-import { useDiscardChanges } from '../../forms/UnsavedChanges';
 import { Feedback, PageHeader, Surface } from '../../design-system/primitives';
 import { inventoryFilters, ownerStatus, publicationComplete } from './inventoryStatus';
 import { validPickupTimeZone } from '../../forms/pickupTime';
@@ -22,7 +22,8 @@ const confirmations = { publish: 'Publish this item for everyone to see? Future 
 export default function Inventory() {
   const { planId } = useParams();
   const { user } = useAppContext();
-  const drafts = useDiscardChanges();
+  const textForm = useRef(), photoManager = useRef(), photoTrigger = useRef();
+  const [photoItemId, setPhotoItemId] = useState(null);
   const [params] = useSearchParams();
   const request = usePlansData(`/api/move-out-plans/${encodeURIComponent(planId)}/items`, true);
   const [editor, setEditor] = useState(params.get('edit'));
@@ -37,6 +38,7 @@ export default function Inventory() {
   const locked = busy || request.loading || Boolean(request.error);
   const writing = useRef(false);
   const item = data?.items.find(value => value.id === editor);
+  const photoItem = data?.items.find(value => value.id === photoItemId);
   const formVisible = !data?.items.length || Boolean(item) || adding;
   const root = `/api/move-out-plans/${encodeURIComponent(planId)}/items`;
   const save = async (details, publish, committed) => {
@@ -51,7 +53,7 @@ export default function Inventory() {
     } finally { writing.current = false; setBusy(false); }
   };
   const edit = entry => {
-    if (editor !== entry.id && drafts && !drafts.confirmDiscard()) return;
+    if (editor !== entry.id && textForm.current && !textForm.current.confirmDiscard()) return;
     setEditor(entry.id); setAdding(false); setError('');
   };
   const action = async (entry, name) => {
@@ -60,7 +62,9 @@ export default function Inventory() {
       const invalid = availabilityError(entry, data.plan, true);
       if (invalid) { setError(invalid); return; }
     }
-    if (editor === entry.id && drafts && !drafts.confirmDiscard({ release: false })) return;
+    // Retain the current edit (and its guard) if the later action confirmation
+    // is cancelled. Photo drafts are independent of this text editor.
+    if (editor === entry.id && textForm.current && !textForm.current.confirmDiscard({ release: false })) return;
     if (!window.confirm(confirmations[name])) return;
     writing.current = true; setBusy(true); setError(''); setMessage('');
     try {
@@ -76,7 +80,7 @@ export default function Inventory() {
     <PageHeader title="Plan inventory" description={data ? data.plan.neighborhood + ', ' + data.plan.city + ' · Move out by ' + data.plan.moveOutDeadline : undefined}
       action={<button className="ui-button ui-button--secondary" disabled={busy || request.loading} onClick={() => {
         if (item) {
-          if (drafts ? !drafts.confirmDiscard() : !window.confirm('Refresh and review the latest saved item details? An outdated edit draft may be replaced.')) return;
+          if (textForm.current && !textForm.current.confirmDiscard()) return;
           setSequence(value => value + 1);
         }
         request.retry();
@@ -95,7 +99,7 @@ export default function Inventory() {
       {data.plan.status !== 'active' && <p>This plan is inactive. <Link to={'/app/plans/' + planId + '/edit'}>Activate it</Link> before publishing.</p>}
       <section aria-label="Inventory items">
         {data.items.length > 0 && <div className="plan-page-header"><h2 ref={itemsHeading} tabIndex={-1}>Your items</h2>
-          <button className="ui-button" disabled={locked} onClick={() => { if (item && drafts && !drafts.confirmDiscard()) return; setEditor(null); setAdding(true); }}>Add item</button></div>}
+          <button className="ui-button" disabled={locked} onClick={() => { if (item && textForm.current && !textForm.current.confirmDiscard()) return; setEditor(null); setAdding(true); }}>Add item</button></div>}
         {data.items.length > 0 && <div className="ui-field inventory-filter"><label htmlFor="inventory-filter">Show items</label>
           <select id="inventory-filter" value={filter} onChange={event => setFilter(event.target.value)}>
             <option value="all">All items</option>{inventoryFilters.map(state => <option key={state} value={state}>{state}</option>)}
@@ -113,6 +117,11 @@ export default function Inventory() {
           {entry.status === 'expired' && <p>Edit pickup dates or the plan deadline, then publish again.</p>}
           <div className="inventory-actions">
             <button aria-label={'Edit ' + entry.name} disabled={locked} className="ui-button ui-button--secondary" onClick={() => edit(entry)}>Edit</button>
+            <button type="button" className="ui-button ui-button--secondary" aria-label={'Photos for ' + entry.name}
+              aria-expanded={photoItemId === entry.id} aria-controls={photoItemId === entry.id ? 'owner-photo-manager' : undefined} onClick={event => {
+                if (photoItemId !== entry.id && photoManager.current && !photoManager.current.confirmDiscard()) return;
+                photoTrigger.current = event.currentTarget; setPhotoItemId(entry.id);
+              }}>Photos</button>
             {['draft', 'unlisted', 'expired'].includes(entry.status) && <button aria-label={(publicationComplete(entry) ? 'Publish ' : 'Complete ') + entry.name + (publicationComplete(entry) ? '' : ' for publication')} disabled={locked || data.plan.status !== 'active'} className="ui-button" onClick={() => publicationComplete(entry) ? action(entry, 'publish') : edit(entry)}>{publicationComplete(entry) ? 'Publish' : 'Complete listing'}</button>}
             {['available', 'expired'].includes(entry.status) && <button aria-label={'Hide ' + entry.name} disabled={locked} className="ui-button ui-button--secondary" onClick={() => action(entry, 'unlist')}>Hide listing</button>}
             {entry.isPublic && <Link to={'/app/items/' + entry.id}>Public listing</Link>}
@@ -124,9 +133,13 @@ export default function Inventory() {
           </details>
         </Surface>)}</ul>
       </section>
+      {photoItem && <ItemPhotos ref={photoManager} planId={planId} item={photoItem} onClose={() => {
+        setPhotoItemId(null);
+        if (photoTrigger.current?.isConnected) photoTrigger.current.focus(); else itemsHeading.current?.focus();
+      }} />}
       <div hidden={!formVisible}>
         {data.items.length > 0 && !item && <button className="ui-button ui-button--secondary" onClick={() => { setAdding(false); itemsHeading.current?.focus(); }}>Back to items</button>}
-        <ItemForm key={user.id + ':' + planId + ':' + (item?.id || 'new') + ':' + (item?.version || 0) + ':' + sequence} plan={data.plan} item={item}
+        <ItemForm ref={textForm} key={user.id + ':' + planId + ':' + (item?.id || 'new') + ':' + (item?.version || 0) + ':' + sequence} plan={data.plan} item={item}
           onSave={save} onCancel={() => { setEditor(null); setAdding(false); itemsHeading.current?.focus(); }}
           focusName={formVisible && !item && (adding || sequence > 0)} disabled={locked} />
       </div>
