@@ -114,7 +114,7 @@ not automatic re-POST. Known rejected files require an explicit new reservation.
 Input file/preview stays in memory on recoverable failure; browser termination
 can lose it, while the durable server operation is discoverable after refresh.
 
-**C2 only:** Up/down buttons or Make cover update the complete ready-ID order with its current
+**C2:** [Owner management implementation and verification](milestone-6.5c2-owner-photo-management.md). Up/down buttons or Make cover update the complete ready-ID order with its current
 imageRevision. No drag-only interaction. Delete confirms removal, hides only
 after acknowledged logical deletion, and says Cleanup pending until physical
 settlement. Removing photos does not cancel requests, clear inventory, change an

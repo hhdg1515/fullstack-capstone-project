@@ -31,7 +31,9 @@ async function localEnvironment({ photos = false } = {}) {
       const proxy = http.request({ hostname: '127.0.0.1', port: api.address().port, path: req.originalUrl, method: req.method, headers: req.headers }, upstream => {
         const kind = req.method === 'PUT' && /\/images\/[a-f0-9]{24}\/content$/.test(req.originalUrl) ? 'content' :
           req.method === 'POST' && /\/images\/uploads$/.test(req.originalUrl) ? 'reservation' :
-          req.method === 'POST' && /^\/api\/move-out-plans\/[a-f0-9]{24}\/items$/.test(req.originalUrl) ? 'item-save' : null;
+          req.method === 'POST' && /^\/api\/move-out-plans\/[a-f0-9]{24}\/items$/.test(req.originalUrl) ? 'item-save' :
+          req.method === 'POST' && /\/images\/order$/.test(req.originalUrl) ? 'photo-order' :
+          req.method === 'POST' && /\/images\/[a-f0-9]{24}\/actions$/.test(req.originalUrl) ? 'photo-delete' : null;
         const gate = photos && nextPhotoResponse?.kind === kind ? nextPhotoResponse : null;
         if (gate) {
           nextPhotoResponse = undefined; gate.arrived();
@@ -68,7 +70,7 @@ async function localEnvironment({ photos = false } = {}) {
           try { return await apply.apply(manifest, { ...maintenance.identity, manifest: manifest.digest }); } finally { apply.close(); }
         } finally { await maintenance.close(); }
       }, deferNextPhotoResponse: (kind = 'content') => {
-        if (process.env.E2E_APP_ORIGIN || !['content', 'reservation', 'item-save'].includes(kind) || nextPhotoResponse) throw Error('Local photo response gate refused');
+        if (process.env.E2E_APP_ORIGIN || !['content', 'reservation', 'item-save', 'photo-order', 'photo-delete'].includes(kind) || nextPhotoResponse) throw Error('Local photo response gate refused');
         let arrived, finish;
         const gate = { kind, arrived: () => arrived(), decision: new Promise(resolve => { finish = resolve; }), cancel: () => finish(false) };
         const observed = new Promise(resolve => { arrived = resolve; });

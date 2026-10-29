@@ -382,6 +382,32 @@ describe('owner image metadata and quota transactions on verified isolated Mongo
         assert.equal(deleted.sortPosition, null); assert.ok(deleted.lease.fenceToken); assert.equal(deleted.needsMaintenance, true);
         assert.deepEqual(await quota(), before); assert.equal((await currentItem()).version, 1);
     });
+    it('serializes delete versus order and preserves the winner without losing the cover or unrelated item text', async function () {
+        const rows = await ready(3), ids = rows.map(row => row._id.toString()), before = await quota();
+        const results = await Promise.all([
+            remove(ids[0]), post(root() + '/order', { imageRevision: 0, imageIds: ids.slice().reverse() }, owner, app2)
+        ]);
+        assert.equal(results.filter(result => result.status === 409).length, 1);
+        const list = (await read().expect(200)).body;
+        assert.equal(list.imageRevision, 1); assert.deepEqual(list.images.map(row => row.sortPosition), list.images.map((_, index) => index));
+        assert.deepEqual(list.images.map(row => row.id), results[0].status === 202 ? ids.slice(1) : ids.slice().reverse());
+        assert.deepEqual(await quota(), before); assert.equal((await currentItem()).version, 1);
+        assert.equal((await currentItem()).name, 'Synthetic chair');
+    });
+    it('denies anonymous, CSRF, foreign-participant and mismatched-item management without changing photos or accounting', async function () {
+        const rows = await ready(2), ids = rows.map(row => row._id.toString()), before = await quota();
+        const beforeRows = await db.collection('itemImages').find({}).toArray(); const second = await parentAndItem();
+        const order = { imageRevision: 0, imageIds: ids.slice().reverse() }, deletion = { imageRevision: 0, action: 'delete' };
+        for (const [path, input] of [[root() + '/order', order], [root() + '/' + ids[0] + '/actions', deletion]]) {
+            await write(request(app).post(path)).send(input).expect(401);
+            await request(app).post(path).set('Cookie', owner.cookie).send(input).expect(403);
+            await post(path, input, other).expect(404);
+        }
+        await post(root(second.p, second.i) + '/' + ids[0] + '/actions', deletion).expect(404);
+        await post(root(second.p, second.i) + '/order', order).expect(409);
+        assert.deepEqual(await db.collection('itemImages').find({}).toArray(), beforeRows); assert.deepEqual(await quota(), before);
+        assert.equal(await revision(), 0);
+    });
     it('rejects stale revisions and malformed ready ordering without silently repairing data', async function () {
         const rows = await ready(2);
         await remove(rows[0]._id.toString(), 7).expect(409);

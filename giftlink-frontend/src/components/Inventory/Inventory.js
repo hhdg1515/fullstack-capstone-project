@@ -27,6 +27,7 @@ export default function Inventory() {
 function InventorySession({ planId, user }) {
   const textForm = useRef(), urls = useRef(new Set()), alive = useRef(true), initialLoad = useRef(false), pendingRefresh = useRef(false);
   const [photoEntries, setPhotoEntries] = useState([]), [photoBusy, setPhotoBusy] = useState(false), [photoOnly, setPhotoOnly] = useState(false);
+  const [photoChanges, setPhotoChanges] = useState({});
   const [previews, setPreviews] = useState({}), [uncertainCreate, setUncertainCreate] = useState(false);
   const intent = useRef(null), intentSequence = useRef(0), [uploadIntent, setUploadIntent] = useState(null);
   const photoGuard = useUnsavedForm({ photos: photoEntries.filter(isUnsentPhoto).map(entry => entry.clientUploadId).join(',') }, { photos: '' }, photoDraftWarning);
@@ -138,6 +139,7 @@ function InventorySession({ planId, user }) {
       disabled={locked || uncertainCreate} photos={<ItemPhotos embedded allowStaging planId={planId} item={entry ? item : {}}
         entries={photoEntries} onEntriesChange={setPhotoEntries} previewUrls={urls.current} capabilities={data.photoCapabilities}
         disabled={busy || uncertainCreate} onBusyChange={setPhotoBusy}
+        changeIntent={entry ? photoChanges[entry.id] : null} onChangeIntent={value => { if (alive.current && entry) setPhotoChanges(previous => ({ ...previous, [entry.id]: value })); }}
         uploadIntent={uploadIntent} claimUploadIntent={claimUploadIntent} recovery={photoOnly}
         onMetadata={(id, metadata) => { if (alive.current) setPreviews(previous => ({ ...previous, [id]: { availability: metadata.capabilities.imageRead ? 'ready' : 'disabled', images: metadata.capabilities.imageRead ? metadata.images : [], imageRevision: metadata.imageRevision } })); }} />} />
     {photoOnly && <button className="item-photos-link" disabled={busy || photoBusy || Boolean(uploadIntent)} onClick={async () => { if (await confirmEdits()) closeEditor(); }}>Done</button>}
@@ -206,5 +208,5 @@ function OwnerPhotos({ item, preview, capabilities, refreshKey }) {
   const safe = value.images.every(image => /^[a-f0-9]{24}$/i.test(image.id) && Number.isSafeInteger(image.thumbnail?.width) && image.thumbnail.width > 0 && image.thumbnail.width <= 400 && Number.isSafeInteger(image.thumbnail?.height) && image.thumbnail.height > 0 && image.thumbnail.height <= 400);
   if (!safe) return <p>Photos unavailable.</p>;
   return value.images.length > 0 ? <ul className="item-photos-grid inventory-card-photos" aria-label={'Photos of ' + item.name}>
-    {value.images.map((image, index) => <ReadyPhoto key={image.id + ":" + refreshKey} image={image} position={index} />)}</ul> : null;
+    {value.images.map((image, index) => <ReadyPhoto key={image.id + ":" + refreshKey} image={image} position={index} cover={index === 0} />)}</ul> : null;
 }
