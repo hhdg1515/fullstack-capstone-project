@@ -81,7 +81,7 @@ test('does not invalidate another account from an unscoped late 401; the scoped 
   expect(listener).not.toHaveBeenCalled(); window.removeEventListener('giftlink:unauthorized', listener);
 });
 test('maps actual quota and stale-revision codes to actionable messages without forwarding private provider strings', () => {
-  expect(photoError({ code: 'IMAGE_RECORD_LIMIT', status: 429, message: 'PRIVATE' }).message).toMatch(/waiting does not reset/);
-  expect(photoError({ code: 'IMAGE_CHANGED', status: 409 }).message).toMatch(/Refresh photos/);
+  expect(photoError({ code: 'IMAGE_RECORD_LIMIT', status: 429, message: 'PRIVATE' }).message).toMatch(/Contact support/);
+  expect(photoError({ code: 'IMAGE_CHANGED', status: 409 }).message).toMatch(/Refresh and try/);
   expect(photoError({ code: 'IMAGE_DAILY_UPLOADS', status: 429 }).message).toMatch(/UTC/);
 });

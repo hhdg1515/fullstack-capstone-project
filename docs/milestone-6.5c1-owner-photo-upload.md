@@ -15,20 +15,26 @@ require saving first. Opening photos does not save text, create an item, change
 publication or require a photo for publication. The existing repeated-add form
 still resets/focuses the next name after an explicit save.
 
-The small photo panel uses existing design tokens, Surface/Feedback, native file
-input and buttons. Select up to five photos including saved/held spaces; each
+The compact photo panel uses existing design tokens, Surface, a native file
+picker and buttons. The default view has Photos, a count, item context and
+**Add photos**. Selecting files reveals contextual **Upload** buttons. Privacy
+and format guidance lives in a keyboard-accessible **Photo tips** disclosure,
+also associated with Add photos through `aria-describedby`. Quotas appear only
+as relevant errors; ready photos have thumbnails and screen-reader announcements
+instead of permanent success labels. Errors appear once beside the affected
+photo; pending history and manual status recovery remain available. Select up to five photos including saved/held spaces; each
 file is 1–3,145,728 bytes. JPEG, PNG and static WebP only; HEIC/HEIF needs export
 as JPEG. Picker MIME/extension and a successful preview are guidance, never image
 safety evidence. B3 still validates actual content, pixels/depth/animation, strips
 metadata, orients and verifies both sanitized outputs before ready.
 
-The visible privacy reminder names addresses, labels, documents and people:
+The collapsed, accessible privacy reminder names addresses, labels, documents and people:
 removing metadata does not hide visible details or replace permission. Local
 previews use temporary object URLs and browser orientation where supported. No
 filename appears in a preview label; no stock photo, upload URL or provider key
 is rendered. Local preview failure is distinct from server validation failure.
 
-**Selection never uploads automatically.** Choose Upload photo for each queued
+**Selection never uploads automatically.** Choose Upload for each queued
 file; one active upload per panel, no hidden upload queue. Posted-item changes
 retain an explicit visibility confirmation. Real transfer progress describes
 multipart bytes; 100% changes to waiting/processing, not upload success. Ready
@@ -155,6 +161,7 @@ Actual local synthetic UI captures, reviewed visually (PNG files, not mockups):
 
 | State | Desktop | 320px mobile |
 | --- | --- | --- |
+| Empty panel | [Desktop](verification/m65c1/desktop-empty.png) | [Mobile](verification/m65c1/mobile-empty.png) |
 | Selection / local preview | [Desktop](verification/m65c1/desktop-selected.png) | [Mobile](verification/m65c1/mobile-selected.png) |
 | Bytes sent / awaiting confirmation | [Desktop](verification/m65c1/desktop-processing.png) | [Mobile](verification/m65c1/mobile-processing.png) |
 | Confirmed ready thumbnail | [Desktop](verification/m65c1/desktop-ready.png) | [Mobile](verification/m65c1/mobile-ready.png) |
@@ -165,11 +172,19 @@ Actual local synthetic UI captures, reviewed visually (PNG files, not mockups):
 All account/listing/image content is synthetic; solid-color inputs prove real
 processing and are not presented as photographs of real offered goods. No
 credentials, cookies, tokens, filenames or private provider details are captured.
-Some long Chromium captures composite the existing fixed skip link inside the
-page. Read-only capture diagnostics confirmed it was unfocused and its DOM
-rectangle was above the viewport (`top: -80px`); it did not cover the live UI.
-The captures retain this browser artifact rather than hiding an accessibility
-control or changing application styles for evidence.
+The refreshed captures show the actual photo panel without injected screenshot
+styles. Compared with the original C1 panel, the default has no instructional
+paragraphs, allowance/history section or persistent Ready labels. Two selected
+previews fit side by side at 320px; active progress and contextual errors appear
+only when needed. Close/remove controls retain 44px touch targets and meaningful
+accessible labels; removal applies only to local selections, not saved photos.
+
+Original C1 comparison (immutable pre-simplification commit):
+[Desktop selection](https://github.com/hhdg1515/fullstack-capstone-project/blob/979ef3c2c6e059a3e3da83f070023912329c57b0/docs/verification/m65c1/desktop-selected.png),
+[320px selection](https://github.com/hhdg1515/fullstack-capstone-project/blob/979ef3c2c6e059a3e3da83f070023912329c57b0/docs/verification/m65c1/mobile-selected.png).
+The earlier full-page captures include the documented Chromium skip-link capture
+artifact. Current panel captures do not hide or restyle accessibility controls.
+
 Exact test totals, immutable commit and GitHub CI evidence are recorded in the
 PR. Physical Windows/macOS/Safari/iOS picker, screen reader and mobile keyboard
 behavior are not certified by Chromium emulation or axe.

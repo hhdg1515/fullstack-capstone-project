@@ -17,34 +17,34 @@ export const validMetadata = value => value && integer(value.imageRevision) && A
   ['itemSlots', 'attempts', 'successes', 'storageBytes', 'concurrent', 'records'].every(key => integer(value.allowance?.[key])) && typeof value.allowance.newUploadsAllowed === 'boolean';
 const validStatus = value => value && integer(value.imageRevision) && validOperation(value.upload);
 const messages = {
-  IMAGE_ITEM_LIMIT: 'This item already has five photos or held photo slots. Refresh photos to review them.',
-  IMAGE_DAILY_ATTEMPTS: 'The daily photo attempt limit is reached. Try again after the UTC day ends.',
-  IMAGE_DAILY_UPLOADS: 'The daily photo allowance is used or reserved. Review pending uploads or wait until the next UTC day.',
-  IMAGE_STORAGE_CAPACITY: 'Photo storage is full or reserved. Pending cleanup may need operator review.',
-  IMAGE_UPLOAD_CAPACITY: 'Upload capacity is reserved. Check pending operations before trying again.',
-  IMAGE_RECORD_LIMIT: 'The photo operation-history limit is reached. Contact support for review; waiting does not reset it.',
-  IMAGE_CHANGED: 'Photos changed in another request. Refresh photos before trying again.',
-  IMAGE_INTENT_CHANGED: 'This upload ID has different contents. Check its status; choose the file again for a separate attempt.',
-  IMAGE_INPUT_INVALID: 'This image could not be processed. Choose a static JPEG, PNG or WebP up to 3 MiB, 16 megapixels and 10,000 pixels per edge.',
-  IMAGE_INTENT_MISMATCH: 'The file no longer matches its reservation. Check its status, then select the file again.',
-  IMAGE_UPLOAD_UNAVAILABLE: 'New uploads need an active plan, an uncleared item and current pickup dates.',
-  IMAGE_UPLOAD_UNCERTAIN: 'The upload outcome is uncertain. Check its status before taking another action.',
-  IMAGE_PIPELINE_TIMEOUT: 'Processing did not finish in time. Check the upload status; do not resend it.',
-  IMAGE_METADATA_INVALID: 'Photo accounting or metadata needs operator review. No capacity has been released.',
-  IMAGE_PROCESSOR_BUSY: 'Photo processing is busy. Check upload status before trying this unclaimed reservation again.',
-  IMAGE_CONTROL_LIMIT: 'Too many photo requests. Wait a minute, then check the upload status.',
-  SESSION_EXPIRED: 'Your session ended. Please log in again.', UNAUTHENTICATED: 'Please log in again.',
-  IMAGE_UNAVAILABLE: 'This photo or saved item is unavailable. Refresh inventory.',
-  CSRF_REJECTED: 'The session or request origin could not be confirmed. Reload and log in again.',
-  FILE_UNSUPPORTED: 'Choose a JPEG, PNG or static WebP. Export HEIC or HEIF as JPEG first.',
-  FILE_SIZE: 'Choose a nonempty file no larger than 3 MiB (3,145,728 bytes).',
-  BROWSER_UNSUPPORTED: 'Use a current browser over HTTPS or localhost to prepare photos securely.',
-  REQUEST_ABORTED: 'The request stopped. Its server operation may still exist; check the status.',
-  NOT_FOUND: 'Photo uploads are not enabled on this server. You can still save and publish without photos.'
+  IMAGE_ITEM_LIMIT: 'All 5 photo spaces are used or held. Check pending uploads.',
+  IMAGE_DAILY_ATTEMPTS: 'Daily attempt limit reached. Try after midnight UTC.',
+  IMAGE_DAILY_UPLOADS: 'Daily allowance used or held. Try after midnight UTC.',
+  IMAGE_STORAGE_CAPACITY: 'Photo storage is full or held. Contact support if this continues.',
+  IMAGE_UPLOAD_CAPACITY: 'Uploads are pending. Check status before trying again.',
+  IMAGE_RECORD_LIMIT: 'Photo history limit reached. Contact support.',
+  IMAGE_CHANGED: 'Photos changed. Refresh and try again.',
+  IMAGE_INTENT_CHANGED: 'This upload no longer matches. Check status first.',
+  IMAGE_INPUT_INVALID: "Couldn't upload this photo. Try another JPEG, PNG or WebP.",
+  IMAGE_INTENT_MISMATCH: 'The file changed. Check status, then choose it again.',
+  IMAGE_UPLOAD_UNAVAILABLE: 'Update the plan and pickup dates to add photos.',
+  IMAGE_UPLOAD_UNCERTAIN: 'Upload not confirmed. Check status.',
+  IMAGE_PIPELINE_TIMEOUT: 'Upload timed out. Check status before continuing.',
+  IMAGE_METADATA_INVALID: 'Photo status needs review. Contact support; limits may still apply.',
+  IMAGE_PROCESSOR_BUSY: 'Photo processing is busy. Check status before trying again.',
+  IMAGE_CONTROL_LIMIT: 'Too many requests. Wait a minute, then check status.',
+  SESSION_EXPIRED: 'Session ended. Log in again.', UNAUTHENTICATED: 'Please log in again.',
+  IMAGE_UNAVAILABLE: 'Photo unavailable. Refresh inventory.',
+  CSRF_REJECTED: 'Session could not be confirmed. Reload and log in again.',
+  FILE_UNSUPPORTED: 'Use JPEG, PNG or WebP. Convert HEIC to JPEG.',
+  FILE_SIZE: 'Choose a nonempty photo up to 3 MiB.',
+  BROWSER_UNSUPPORTED: 'Use a current browser over HTTPS or localhost.',
+  REQUEST_ABORTED: 'Upload stopped. Check status before continuing.',
+  NOT_FOUND: 'Photo uploads are unavailable.'
 };
 export function photoError(error, writing = false) {
   const code = Object.hasOwn(messages, error?.code) ? error.code : 'PHOTO_SERVICE_UNAVAILABLE';
-  const result = new ApiError(messages[code] || 'The photo service is unavailable. Refresh photos or check the existing upload status.',
+  const result = new ApiError(messages[code] || 'Photo service unavailable. Refresh or check upload status.',
     Number.isInteger(error?.status) ? error.status : 0, code, undefined, undefined, error?.retryAfterSeconds);
   result.uncertain = writing && (result.status === 0 || result.status >= 500 || code === 'PHOTO_SERVICE_UNAVAILABLE');
   return result;

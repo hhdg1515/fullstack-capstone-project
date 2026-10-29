@@ -33,12 +33,8 @@ async function setup(context, deployment) {
 async function evidence(page, testInfo, state) {
   if (!process.env.PHOTO_UI_EVIDENCE_DIR) return;
   const directory = path.resolve(process.env.PHOTO_UI_EVIDENCE_DIR); fs.mkdirSync(directory, { recursive: true });
-  // Include the inventory entry point and independent text draft. Preserve the
-  // test's reading position; do not hide controls or alter application styles.
-  const previousScroll = await page.evaluate(() => ({ x: scrollX, y: scrollY }));
-  await page.evaluate(async () => { scrollTo(0, 0); await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); });
-  await page.screenshot({ path: path.join(directory, testInfo.project.name + '-' + state + '.png'), fullPage: true });
-  await page.evaluate(position => scrollTo(position.x, position.y), previousScroll);
+  // Actual panel capture: no injected styles, hidden controls or mocked UI.
+  await page.locator('#owner-photo-manager').screenshot({ path: path.join(directory, testInfo.project.name + '-' + state + '.png') });
 }
 async function audit(page, state) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
@@ -64,11 +60,29 @@ test('owner explicitly uploads real private photos, preserves text drafts and re
     const description = page.getByLabel('Description', { exact: true }); await description.fill('Unsaved item text stays independent.');
     await page.getByRole('button', { name: 'Photos for ' + item.name, exact: true }).click();
     const picker = page.getByLabel('Choose photos', { exact: true }); await expect(picker).toBeEnabled();
-    await picker.setInputFiles(file); await expect(page.getByAltText('Local preview of selected photo 1')).toBeVisible();
+    const panel = page.locator('#owner-photo-manager');
+    await expect(panel.getByText('0 / 5')).toBeVisible();
+    await expect(panel.getByRole('button', { name: 'Add photos', exact: true })).toBeEnabled();
+    await expect(panel.getByText(/Remove visible addresses/)).toBeHidden();
+    await expect(panel.getByRole('progressbar')).toHaveCount(0);
+    await evidence(page, testInfo, 'empty'); await audit(page, 'empty');
+    const chooser = page.waitForEvent('filechooser'); await panel.getByRole('button', { name: 'Add photos', exact: true }).click();
+    await (await chooser).setFiles([file, file]);
+    await expect(page.getByAltText('Local preview of selected photo 2')).toBeVisible();
+    await expect(panel.getByText('2 / 5')).toBeVisible();
     expect(reservations).toBe(0); expect(contents).toBe(0); await evidence(page, testInfo, 'selected'); await audit(page, 'selected');
+    if (testInfo.project.name === 'mobile') {
+      const first = await page.getByAltText('Local preview of selected photo 1').boundingBox(), second = await page.getByAltText('Local preview of selected photo 2').boundingBox();
+      expect(first.y).toBe(second.y); expect(second.x).toBeGreaterThan(first.x + first.width);
+      await page.setViewportSize({ width: 375, height: 1000 }); await audit(page, 'selected-375');
+      await page.setViewportSize({ width: 320, height: 1000 });
+    }
+    await page.getByRole('button', { name: 'Remove selection 2', exact: true }).click();
+    await expect(panel.getByText('1 / 5')).toBeVisible();
     gate = deployment.deferNextPhotoResponse();
     await page.getByRole('button', { name: 'Upload photo 1', exact: true }).click(); await gate.arrived;
-    await expect(page.getByText(/Bytes transferred. Waiting for server processing/)).toBeVisible();
+    await expect(page.getByRole('progressbar', { name: 'Processing photo 1', exact: true })).toBeVisible();
+    await expect(page.getByText('Bytes transferred; not ready yet.')).toHaveCount(1);
     await expect(page.getByText('Photo ready.', { exact: true })).toHaveCount(0);
     expect(await deployment.db.collection('itemImages').countDocuments({ state: 'ready' })).toBe(1);
     await evidence(page, testInfo, 'processing'); await audit(page, 'processing'); gate.release(); gate = undefined;
@@ -91,7 +105,7 @@ test('owner explicitly uploads real private photos, preserves text drafts and re
     // It never fabricates upload success, metadata, capability or stored objects.
     await picker.setInputFiles(file); gate = deployment.deferNextPhotoResponse();
     await page.getByRole('button', { name: 'Upload photo 1', exact: true }).click(); await gate.arrived; gate.discard(); gate = undefined;
-    await expect(page.getByText(/Outcome uncertain/)).toBeVisible();
+    await expect(page.getByText(/Upload not confirmed/)).toBeVisible();
     await expect(page.getByAltText('Local preview of selected photo 1')).toBeVisible();
     expect(reservations).toBe(2); expect(contents).toBe(2);
     await evidence(page, testInfo, 'uncertain'); await audit(page, 'uncertain');
@@ -99,14 +113,15 @@ test('owner explicitly uploads real private photos, preserves text drafts and re
     await expect(page.getByAltText('Uploaded photo 2')).toBeVisible(); expect(reservations).toBe(2); expect(contents).toBe(2);
     await picker.setInputFiles(file); gate = deployment.deferNextPhotoResponse('reservation');
     await page.getByRole('button', { name: 'Upload photo 1', exact: true }).click(); await gate.arrived; gate.discard(); gate = undefined;
-    await expect(page.getByText(/Outcome uncertain/)).toBeVisible(); expect(reservations).toBe(3); expect(contents).toBe(2);
+    await expect(page.getByText(/Upload not confirmed/)).toBeVisible(); expect(reservations).toBe(3); expect(contents).toBe(2);
     await page.getByRole('button', { name: 'Check upload 1 status', exact: true }).click();
     const upload = page.getByRole('button', { name: 'Upload photo 1', exact: true }); await expect(upload).toBeEnabled(); await upload.click();
     await expect(page.getByAltText('Uploaded photo 3')).toBeVisible(); expect(reservations).toBe(3); expect(contents).toBe(3);
     await picker.setInputFiles({ name: 'invalid.png', mimeType: 'image/png', buffer: Buffer.from('not an image') });
-    await upload.click(); await expect(page.getByRole('alert')).toContainText(/could not be processed/);
+    await upload.click(); await expect(page.getByRole('alert')).toContainText(/Couldn't upload this photo/);
+    await expect(page.getByRole('alert')).toHaveCount(1); await evidence(page, testInfo, 'failed');
     await page.getByRole('button', { name: 'Check upload 1 status', exact: true }).click();
-    await expect(page.locator('#owner-photo-manager')).toContainText('Failed'); await audit(page, 'invalid-image'); await evidence(page, testInfo, 'failed');
+    await expect(page.getByRole('alert')).toContainText("Couldn't upload. Choose another photo."); await audit(page, 'invalid-image');
     await page.getByRole('button', { name: 'Remove selection 1', exact: true }).click(); await expect(description).toHaveValue('Unsaved item text stays independent.');
     expect(await page.evaluate(() => !/blob:|data:image|private-address/.test(JSON.stringify(localStorage)))).toBe(true);
     let dialogs = 0; page.on('dialog', async dialog => { dialogs++; await dialog.dismiss(); });
@@ -129,7 +144,7 @@ test('default deployed gates show disabled photo controls while text-only invent
     context = await account(browser, local, testInfo, 'Disabled photo owner'); const { plan, item } = await setup(context, local);
     const page = await context.newPage(); await page.goto('/app/plans/' + plan.id + '/items');
     await page.getByRole('button', { name: 'Photos for ' + item.name, exact: true }).click();
-    await expect(page.getByText(/Photo uploads are not enabled on this server/)).toBeVisible(); await expect(page.getByLabel('Choose photos')).toBeDisabled();
+    await expect(page.getByText(/Photo uploads are unavailable/)).toBeVisible(); await expect(page.getByRole('button', { name: 'Add photos', exact: true })).toBeDisabled();
     await expect(page.getByText(/No ready photos/)).toHaveCount(0); expect(await local.db.collection('itemImages').countDocuments()).toBe(0);
     await evidence(page, testInfo, 'disabled'); await audit(page, 'disabled');
     await page.getByRole('button', { name: 'Close photos', exact: true }).click();
