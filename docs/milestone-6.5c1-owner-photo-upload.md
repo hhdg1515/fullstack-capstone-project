@@ -2,6 +2,8 @@
 
 Base: merged main `dc50e5fac07518a3c0effb733c2b5c5c9c530422`, PR #63 merged.
 Branch: `codex/m65c1-owner-photo-upload`.
+The one-submit correction follows merged PR #64 (`4a43765`) on this same branch;
+[PR #65](https://github.com/hhdg1515/fullstack-capstone-project/pull/65) targets current main (`40123e1`).
 The [architecture](milestone-6.5-photo-architecture.md),
 [security/lifecycle policy](milestone-6.5-security-and-lifecycle.md),
 [B1 storage](milestone-6.5b1-storage.md), [B2 metadata](milestone-6.5b2-photo-metadata.md),
@@ -252,7 +254,8 @@ to avoid Chromium painting an offscreen fixed skip link into element captures;
 layout/axe checks still run at the normal test viewport. Photos are in context with the item; the
 submit action clearly includes the selected photos; saved-item processing/recovery
 is immediately visible. Ready card thumbnails remain after the
-editor closes. Two selections fit at 320px; controls retain accessible labels and
+editor closes. Browser regressions verify every rendered Ready thumbnail has
+finished loading actual pixels; evidence capture also waits for image decoding. Two selections fit at 320px; controls retain accessible labels and
 44px targets. Selected-file Remove affects only in-memory files, not server data.
 
 Comparison with the prior two-step workflow (immutable commit):

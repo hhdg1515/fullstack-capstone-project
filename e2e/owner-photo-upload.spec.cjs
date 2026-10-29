@@ -31,6 +31,11 @@ async function setup(context, deployment, withItem = true) {
   const { item } = await post('/api/move-out-plans/' + plan.id + '/items', { name: 'Synthetic photo chair' });
   return { plan, item, post, prefix: '/api/move-out-plans/' + plan.id + '/items/' + item.id + '/images' };
 }
+async function loadedPictures(container) {
+  for (const picture of await container.locator('img').all()) {
+    await expect.poll(() => picture.evaluate(element => element.complete && element.naturalWidth > 0)).toBe(true);
+  }
+}
 async function evidence(page, testInfo, state) {
   if (!process.env.PHOTO_UI_EVIDENCE_DIR) return;
   const directory = path.resolve(process.env.PHOTO_UI_EVIDENCE_DIR); fs.mkdirSync(directory, { recursive: true });
@@ -42,6 +47,7 @@ async function evidence(page, testInfo, state) {
   // fixed skip links into an element capture. No app styles are changed.
   try {
     if (bounds.height > viewport.height - 100) await page.setViewportSize({ width: viewport.width, height: Math.ceil(bounds.height) + 1000 });
+    await target.scrollIntoViewIfNeeded(); await loadedPictures(target);
     await target.screenshot({ path: path.join(directory, testInfo.project.name + '-' + state + '.png') });
   } finally { await page.setViewportSize(viewport); }
 }
@@ -114,6 +120,7 @@ test('one explicit item submit sequences the real photo batch and preserves corr
     await page.getByRole('button', { name: 'Refresh inventory', exact: true }).click();
     const secondCard = page.getByRole('heading', { name: second.name, exact: true }).locator('xpath=ancestor::li[1]');
     await expect(secondCard).toBeVisible(); await expect(secondCard.getByRole('img')).toHaveCount(0); await expect(card.getByRole('img', { name: /Uploaded photo/ })).toHaveCount(2);
+    await loadedPictures(card);
     if (process.env.PHOTO_UI_EVIDENCE_DIR) await card.screenshot({ path: path.join(path.resolve(process.env.PHOTO_UI_EVIDENCE_DIR), testInfo.project.name + '-ready.png') });
     await audit(page, 'ready');
     await page.getByRole('button', { name: 'Edit ' + saved.name, exact: true }).click();
