@@ -43,6 +43,27 @@ const submit = async () => { await act(async () => { fireEvent.submit(screen.get
 const click = async name => { await act(async () => { fireEvent.click(screen.getByRole('button', { name })); }); };
 const apiCalls = () => fetch.mock.calls.filter(([url]) => !url.includes('/api/items/locations'));
 
+const publicPhoto = '64b000000000000000000001';
+const publicVariant = name => ({ url: `/api/item-images/${publicPhoto}/${name}`, width: 300, height: 200 });
+test('optional malformed cover data cannot hide real counts or send requests to an external image host', async () => {
+  handler = async () => feed([{ ...a, imageAvailability: 'ready', coverImage: { id: publicPhoto, thumbnail: { ...publicVariant('thumbnail'), url: 'https://example.invalid/private' } } }], null, 1);
+  mount(); await ready();
+  expect(screen.getByRole('heading', { name: '1 available item' })).toBeInTheDocument();
+  expect(screen.getByText('Photo unavailable')).toBeInTheDocument();
+  expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+test('authoritative refresh removes a revoked gallery and its request action', async () => {
+  handler = async () => reply(200, { item: { ...a, imageAvailability: 'ready', images: [{ id: publicPhoto, thumbnail: publicVariant('thumbnail'), display: publicVariant('display') }] } });
+  mount('/app/items/' + a.id);
+  expect(await screen.findByRole('img', { name: a.name + ' (1 of 1)' })).toBeInTheDocument();
+  handler = async () => reply(404, { error: { code: 'NOT_FOUND', message: 'Item not found' } });
+  await click('Refresh listings');
+  expect(await screen.findByRole('alert')).toHaveTextContent('This listing is no longer available.');
+  expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Request pickup' })).not.toBeInTheDocument();
+});
+
 test('uses the server owner flag to replace the public request action without hiding the listing', async () => {
   handler = async () => reply(200, { item: { ...a, pickupTimeZone: 'UTC', isOwner: true } });
   mount('/app/items/' + a.id);

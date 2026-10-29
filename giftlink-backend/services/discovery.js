@@ -68,7 +68,7 @@ function readCursor(token, query, now) {
     if (now.getTime() - value.at > cursorLifetime || todayUTC(new Date(value.at)) !== todayUTC(now)) throw staleCursor();
     return value;
 }
-const projection = { name: 1, description: 1, category: 1, categoryId: 1, itemTypeId: 1, customItemType: 1, condition: 1, status: 1, availableFrom: 1, availableUntil: 1,
+const projection = { planId: 1, name: 1, description: 1, category: 1, categoryId: 1, itemTypeId: 1, customItemType: 1, condition: 1, status: 1, availableFrom: 1, availableUntil: 1,
     publishedAt: 1, effectiveAvailableUntil: 1, isReserved: 1, ownerId: 1, 'plan.stateId': 1, 'plan.metroId': 1, 'plan.city': 1, 'plan.neighborhood': 1, 'plan.moveOutDeadline': 1, 'plan.pickupTimeZone': 1 };
 function publicItem(row, today, viewerId) {
     return Object.assign({ id: row._id.toString(), name: row.name, description: row.description, category: row.category, classification: classificationResponse(row),
@@ -122,7 +122,8 @@ const normalizedField = input => ({ $reduce: {
     in: { $concat: ['$$value', { $cond: [{ $eq: ['$$value', ''] }, '', ' '] }, '$$this.match'] }
 } });
 
-function createDiscoveryService({ connectToDatabase, now = () => new Date() }) {
+function createDiscoveryService({ connectToDatabase, now = () => new Date(), imageMetadata = null, imageRead = false }) {
+    const media = imageMetadata && imageRead ? require('./public-item-media').createPublicItemMedia({ connectToDatabase, configuration: imageMetadata, visibilityPipeline, initialMatch }) : null;
     async function aggregate(pipeline, options = {}, collection = 'items') {
         try {
             const db = await connectToDatabase();
@@ -165,7 +166,8 @@ function createDiscoveryService({ connectToDatabase, now = () => new Date() }) {
         const last = selected[selected.length - 1];
         const nextCursor = hasMore ? Buffer.from(JSON.stringify({ v: 1, at, filter: fingerprint(query), sort: query.sort,
             id: last._id.toString(), value: query.sort === 'newest' ? last.publishedAt.toISOString() : last.effectiveAvailableUntil })).toString('base64url') : null;
-        return { items: selected.map(row => publicItem(row, today, viewerId)), total: result.total.length ? result.total[0].value : 0, today,
+        const summaries = media ? await media(selected, false, current) : [];
+        return { items: selected.map((row, index) => Object.assign(publicItem(row, today, viewerId), summaries[index])), total: result.total.length ? result.total[0].value : 0, today,
             page: { limit: query.limit, hasMore, nextCursor } };
     }
     async function detail(id, viewerId) {
@@ -174,7 +176,8 @@ function createDiscoveryService({ connectToDatabase, now = () => new Date() }) {
         const rows = await aggregate(visibilityPipeline(Object.assign(initialMatch(current.getTime()), { _id: new ObjectId(id) }), today)
             .concat(pickupReservationStages(), [{ $project: Object.assign({}, projection, { ownerId: 1 }) }]));
         if (!rows.length) throw new InventoryError(404, 'ITEM_NOT_FOUND', 'Listing unavailable');
-        return { item: publicItem(rows[0], today, viewerId), today };
+        const summaries = media ? await media(rows, true, current) : [];
+        return { item: Object.assign(publicItem(rows[0], today, viewerId), summaries[0]), today };
     }
     async function locations(raw) {
         if (Object.keys(raw).some(key => !['stateId', 'metroId'].includes(key))) throw invalid('Location options accept only state and metro IDs.');

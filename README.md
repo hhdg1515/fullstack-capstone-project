@@ -856,3 +856,12 @@ for the additive catalog, Other/custom validation and local visual evidence.
 [Owner photo management (C2)](docs/milestone-6.5c2-owner-photo-management.md)
 reuses the existing versioned ordering/deletion APIs inside Edit Item. Logical
 deletion and physical cleanup remain separate; production image gates stay disabled.
+
+## Public item covers and gallery (6.5D1)
+
+[Public photo contracts, privacy, query bounds, verification and rollback](docs/milestone-6.5d1-public-photos.md)
+describe optional thumbnail covers on discovery cards and ordered detail galleries.
+They reuse authorized application delivery and C2's first-Ready cover order. Photo
+failures preserve item information and real listing counts. Private buckets,
+revocation checks, quotas and default-disabled production gates remain unchanged;
+no remote migration or storage activation occurs on merge.

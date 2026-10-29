@@ -1,0 +1,17 @@
+.public-item-cover { position: relative; aspect-ratio: 4 / 3; width: 100%; background: var(--ui-subtle); border-radius: var(--ui-radius-control); display: grid; place-items: center; margin-bottom: var(--ui-space-3); color: var(--ui-muted); font-size: var(--ui-text-small); overflow: hidden; }
+.public-item-cover img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; }
+.public-item-card-link { display: block; text-decoration: none; }
+.public-item-card-link h3 { text-decoration: underline; text-underline-offset: .2em; min-height: var(--ui-control-height); }
+.public-item-gallery { max-width: 44rem; margin-block: var(--ui-space-4); min-width: 0; }
+.public-item-gallery h2 { margin-bottom: var(--ui-space-3); }
+.public-gallery-primary { position: relative; aspect-ratio: 4 / 3; background: var(--ui-subtle); border-radius: var(--ui-radius-control); display: grid; place-items: center; overflow: hidden; }
+.public-gallery-primary img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; }
+.public-gallery-primary p { margin: 0; padding: var(--ui-space-3); }
+.public-gallery-loading { position: absolute; }
+.public-gallery-navigation { display: flex; gap: var(--ui-space-2); flex-wrap: wrap; justify-content: space-between; align-items: center; margin-block: var(--ui-space-3); }
+.public-gallery-navigation p { margin: 0; font-size: var(--ui-text-small); }
+.public-gallery-thumbnails { max-width: 24rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(44px, 1fr)); gap: var(--ui-space-2); }
+.ui-page .public-gallery-thumbnails button { min-width: 0; min-height: 44px; padding: var(--ui-space-1); aspect-ratio: 1; background: var(--ui-subtle); }
+.public-gallery-thumbnails img { width: 100%; height: 100%; object-fit: contain; }
+.ui-page .public-gallery-thumbnails button[aria-pressed="true"] { outline: 2px solid var(--ui-primary); outline-offset: -2px; }
+@media (max-width: 420px) { .public-gallery-navigation p { flex: 1 0 100%; order: -1; text-align: center; } }

@@ -87,7 +87,8 @@ jobs:
     needs: client_build
     # Match the reviewed local storage fixture runtime without weakening image checks.
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # Main already takes ~12.5 minutes; real D1 storage/gallery cases add bounded work.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1; Node 24 action runtime
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0; application Node remains 22

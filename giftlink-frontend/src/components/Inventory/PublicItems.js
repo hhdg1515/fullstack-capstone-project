@@ -12,6 +12,7 @@ import ItemLabels from './ItemLabels';
 import { PageHeader, Surface, Feedback } from '../../design-system/primitives';
 import './Discovery.css';
 import PublicItemCard from './PublicItemCard';
+import PublicItemGallery from './PublicItemPhotos';
 import { validPickupTimeZone } from '../../forms/pickupTime';
 
 const normalize = value => value.trim().replace(/\s+/g, ' ');
@@ -276,24 +277,25 @@ function PublicItemDetail({ itemId }) {
     try { await navigator.clipboard.writeText(shareUrl); setMessage('Link copied.'); }
     catch { setMessage('Copy the link from the field above.'); }
   };
-  return <main className="plans-page discovery-page">
+  return <main className="ui-page plans-page discovery-page">
     <JourneyNav journey="find" discoverySearch={previous || ''} />
     <Link to={`/app/items${typeof previous === 'string' && previous.startsWith('?') ? previous : ''}`}>Back to free items</Link>
     {current.loading && <p role="status">Loading listing…</p>}
     {current.error && <div role="alert"><p>{current.error.status === 404 ? 'This listing is no longer available.' : current.error.message}</p>
-      <button className="btn btn-outline-secondary" onClick={() => setAttempt(value => value + 1)}>Retry listing</button></div>}
+      <button className="btn btn-outline-secondary ui-button ui-button--secondary" onClick={() => setAttempt(value => value + 1)}>Retry listing</button></div>}
     {item && <article className="plan-panel">
       <h1>{item.name}</h1><p>{item.neighborhood}, {item.city} · Free</p>
       <ItemLabels item={item} />
+      <PublicItemGallery key={`${scope}:${attempt}`} item={item} />
       <PickupWindow item={item} />
       <h2>Description</h2><p className="public-item-description">{item.description || 'No additional description provided.'}</p>
-      {item.isOwner === true ? <p role="status">Your listing. Manage this item from My plans.</p> : item.isReserved === true ? <p role="status">This item has an accepted pickup. Check back if it becomes available.</p> : item.pickupTimeZone ? <><p>Pickup timezone: {item.pickupTimeZone}</p><Link className="btn btn-primary" to={`/app/items/${item.id}/request`} state={{ discoverySearch: previous }}>Request pickup</Link>
+      {item.isOwner === true ? <p role="status">Your listing. Manage this item from My plans.</p> : item.isReserved === true ? <p role="status">This item has an accepted pickup. Check back if it becomes available.</p> : item.pickupTimeZone ? <><p>Pickup timezone: {item.pickupTimeZone}</p><Link className="btn btn-primary ui-button" to={`/app/items/${item.id}/request`} state={{ discoverySearch: previous }}>Request pickup</Link>
         <p>A request does not reserve the item. The giver must accept an appointment.</p></> : <p>The giver needs to set a pickup timezone before this listing can receive requests.</p>}
       {typeof item.isReserved !== 'boolean' && <p>Current pickup availability will be checked when you send a request.</p>}
       {item.publishedAt && <p>First published: <time dateTime={item.publishedAt}>{formatDeadline(item.publishedAt.slice(0, 10))}</time>. Publication is separate from pickup dates.</p>}
       <div className="plan-field"><label htmlFor="share-listing">Share this listing</label><input id="share-listing" type="url" readOnly value={shareUrl} onFocus={event => event.target.select()} /></div>
-      <button className="btn btn-outline-primary" onClick={copy}>Copy link</button>
-      <button className="btn btn-outline-secondary" onClick={() => setAttempt(value => value + 1)}>Refresh listings</button>
+      <button className="btn btn-outline-primary ui-button ui-button--secondary" onClick={copy}>Copy link</button>
+      <button className="btn btn-outline-secondary ui-button ui-button--secondary" onClick={() => setAttempt(value => value + 1)}>Refresh listings</button>
       {message && <p role="status">{message}</p>}
     </article>}
   </main>;
