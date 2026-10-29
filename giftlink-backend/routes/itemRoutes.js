@@ -20,7 +20,7 @@ function itemRules(editing) {
 }
 function createItemRoutes({ connectToDatabase, auth, discoveryLimit = 120, imageMetadata = null, imageControlLimit = 20, pipeline = null }) {
     const service = createInventoryService({ connectToDatabase, imageMetadata, imageRead: Boolean(imageMetadata && pipeline) });
-    const discovery = createDiscoveryService({ connectToDatabase });
+    const discovery = createDiscoveryService({ connectToDatabase, imageMetadata, imageRead: Boolean(imageMetadata && pipeline) });
     const privateRouter = express.Router({ mergeParams: true });
     privateRouter.use(auth.requireAuth, (req, res, next) => {
         if (!id(req.params.planId)) return errorResponse(res, 404, 'ITEM_NOT_FOUND', 'Item or plan not found');

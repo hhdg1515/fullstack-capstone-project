@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Surface } from '../../design-system/primitives';
+import { PublicItemCover } from './PublicItemPhotos';
 import { formatDeadline } from '../MoveOutPlans/dates';
 
 export default function PublicItemCard({ item, search, stateCode }) {
@@ -9,7 +10,9 @@ export default function PublicItemCard({ item, search, stateCode }) {
   const condition = item.classification?.condition?.label;
   return <Surface as="li" className="discovery-listing">
     <div className="discovery-listing-heading">
-      <h3><Link to={`/app/items/${item.id}`} state={{ discoverySearch: search ? `?${search}` : '' }}>{item.name}</Link></h3>
+      <Link className="public-item-card-link" aria-label={item.name} to={`/app/items/${item.id}`} state={{ discoverySearch: search ? `?${search}` : '' }}>
+        <PublicItemCover key={item.coverImage?.id || item.imageAvailability || 'legacy'} item={item} /><h3>{item.name}</h3>
+      </Link>
       {(type || category) && <p className="discovery-listing-type">{[type, category].filter((value, index, all) => value && all.indexOf(value) === index).join(' · ')}</p>}
     </div>
     <p className="discovery-listing-place">{[item.neighborhood, item.city, stateCode].filter(Boolean).join(', ')}</p>

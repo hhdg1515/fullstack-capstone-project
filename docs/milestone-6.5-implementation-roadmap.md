@@ -271,3 +271,11 @@ source was available and pinned. No physical image sanitization, storage cleanup
 resource benchmark, hosted compatibility or new visual UI is claimed as tested
 in 6.5A. There are no generated product photos, uploaded originals, new secrets,
 provider changes, remote database/index changes, deployment or automatic merge.
+
+### D1 public presentation
+
+[The D1 implementation notes](milestone-6.5d1-public-photos.md) document bounded
+public cover/detail DTOs, one selected-page metadata batch, strict client URL
+validation, ordered accessible galleries and privacy/caching/rollback limits.
+Existing delivery authorization is reused; D2 pickup integration remains deferred.
+Hosted photo activation still requires a separately approved rollout.

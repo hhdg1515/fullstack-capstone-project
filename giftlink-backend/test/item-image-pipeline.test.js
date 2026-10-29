@@ -413,4 +413,121 @@ describe('native image pipeline with owned MongoDB and real private SeaweedFS', 
             await db.collection(collection).updateOne({ _id: objectId }, { $set: { [field]: value } });
         }
     });
+    async function publicPhotos(count = 1) {
+        let revision = 0; const ids = [];
+        for (let index = 0; index < count; index++) {
+            const reserved = await write(request(app).post(root() + '/uploads')).set('Cookie', owner.cookie)
+                .send({ imageRevision: revision, clientUploadId: randomUUID(), byteLength: image.length, sha256: hash(image) }).expect(201);
+            const id = reserved.body.upload.id, result = await upload(id).expect(201); revision = result.body.imageRevision; ids.push(id);
+        }
+        await db.collection('items').updateOne({ _id: item._id }, { $set: { status: 'available', publishedAt: new Date() } });
+        return ids;
+    }
+    const discover = query => request(app).get('/api/items').query(Object.assign({ stateId: '06', metroId: '41860' }, query));
+    it('enriches public covers/gallery with bounded DTOs and no S3 reads, preserving owner and anonymous discovery', async function () {
+        const ids = await publicPhotos(5), send = sinon.spy(S3Client.prototype, 'send');
+        const feed = (await discover().expect(200)).body; assert.equal(feed.total, 1);
+        const cover = feed.items[0]; assert.equal(cover.imageAvailability, 'ready'); assert.equal(cover.coverImage.id, ids[0]);
+        assert.deepEqual(Object.keys(cover.coverImage).sort(), ['id', 'thumbnail']);
+        assert.equal(cover.coverImage.thumbnail.url, '/api/item-images/' + ids[0] + '/thumbnail');
+        assert.ok(cover.coverImage.thumbnail.width <= 400); assert.equal(cover.isOwner, false);
+        const detail = (await request(app).get('/api/items/' + item._id).expect(200)).body.item;
+        assert.deepEqual(detail.images.map(photo => photo.id), ids); assert.equal(detail.imageAvailability, 'ready');
+        assert.deepEqual(Object.keys(detail.images[0]).sort(), ['display', 'id', 'thumbnail']); assert.equal(send.callCount, 0);
+        assert.equal((await discover().set('Cookie', owner.cookie).expect(200)).body.items[0].isOwner, true);
+        for (const secret of [owner.id.toString(), plan._id.toString(), fixture.receipt.bucket, fixture.receipt.namespace, 'sha256', 'clientUploadId', 'sortPosition', 'imageRevision', 'cleanup', 'storageBinding']) assert.ok(!JSON.stringify([cover.coverImage, detail.images]).includes(secret));
+        const binary = await view(ids[0], 'thumbnail').expect(200); assert.equal(binary.headers['cache-control'], 'private, no-store');
+        assert.equal(binary.headers['content-type'], 'image/webp'); assert.equal(binary.headers['content-disposition'], 'inline; filename="item.webp"');
+    });
+    it('applies owner cover changes and deletion on authoritative refresh without changing publication or quotas', async function () {
+        const ids = await publicPhotos(3), before = await quota();
+        await write(request(app).post(root() + '/order')).set('Cookie', owner.cookie).send({ imageRevision: 3, imageIds: [ids[2], ids[0], ids[1]] }).expect(200);
+        assert.equal((await discover().expect(200)).body.items[0].coverImage.id, ids[2]);
+        await write(request(app).post(root() + '/' + ids[2] + '/actions')).set('Cookie', owner.cookie).send({ imageRevision: 4, action: 'delete' }).expect(202);
+        assert.equal((await discover().expect(200)).body.items[0].coverImage.id, ids[0]);
+        assert.deepEqual((await request(app).get('/api/items/' + item._id).expect(200)).body.item.images.map(photo => photo.id), ids.slice(0, 2));
+        await view(ids[2], 'thumbnail').expect(404); assert.deepEqual(await quota(), before);
+        assert.equal((await db.collection('items').findOne({ _id: item._id })).version, 1);
+    });
+    it('uses one selected-page media command rather than per-listing queries and preserves exact filters/cursors', async function () {
+        const { Collection } = require('mongodb'); const ids = await publicPhotos();
+        const original = await db.collection('items').findOne({ _id: item._id });
+        const noPhoto = Object.assign({}, original, { _id: new ObjectId(), name: 'No-photo legacy chair', imageRevision: 0 });
+        const reserved = Object.assign({}, original, { _id: new ObjectId(), name: 'Reserved chair' });
+        await db.collection('items').insertMany([noPhoto, reserved]); await db.collection('pickupRequests').insertOne({ itemId: reserved._id, status: 'accepted' });
+        const aggregation = sinon.spy(Collection.prototype, 'aggregate'), storage = sinon.spy(S3Client.prototype, 'send');
+        let cursor, seen = [], mediaCalls = 0;
+        do {
+            const body = (await discover(Object.assign({ categoryId: 'other-household', itemTypeId: 'other', limit: '1', sort: 'deadline' }, cursor ? { cursor } : {})).expect(200)).body;
+            assert.equal(body.total, 2); assert.equal(body.items.length, 1); seen.push(body.items[0]); cursor = body.page.nextCursor;
+        } while (cursor);
+        for (const call of aggregation.getCalls()) if (call.thisValue.collectionName === 'items') {
+            const selected = call.args[0][0].$match._id.$in; assert.equal(selected.length, 1); assert.ok(seen.some(row => row.id === selected[0].toString())); mediaCalls++;
+        }
+        assert.equal(mediaCalls, 2); assert.equal(aggregation.callCount, 4); assert.equal(storage.callCount, 0);
+        assert.equal(seen.find(row => row.id === item._id.toString()).coverImage.id, ids[0]);
+        const legacy = seen.find(row => row.id === noPhoto._id.toString()); assert.equal(legacy.imageAvailability, 'none'); assert.equal(legacy.coverImage, null);
+        assert.equal((await request(app).get('/api/items/' + reserved._id).expect(200)).body.item.isReserved, true);
+    });
+    it('fails optional media closed on corrupt ordering, scope, binding or revision while preserving text and counts', async function () {
+        const ids = await publicPhotos(), original = await row(ids[0]);
+        for (const change of [{ ownerId: other.id }, { planId: new ObjectId() }, { sortPosition: 3 }, { 'storageBinding.namespace': 'item-images-test-' + 'a'.repeat(32) }]) {
+            await db.collection('itemImages').updateOne({ _id: original._id }, { $set: change });
+            const body = (await discover().expect(200)).body; assert.equal(body.total, 1); assert.equal(body.items[0].name, item.name);
+            assert.equal(body.items[0].imageAvailability, 'unavailable'); assert.equal(body.items[0].coverImage, null);
+            assert.deepEqual((await request(app).get('/api/items/' + item._id).expect(200)).body.item.images, []);
+            await db.collection('itemImages').replaceOne({ _id: original._id }, original);
+        }
+        await db.collection('items').updateOne({ _id: item._id }, { $set: { imageRevision: -1 } });
+        assert.equal((await discover().expect(200)).body.items[0].imageAvailability, 'unavailable');
+    });
+    it('keeps optional media failure and disabled gates separate from an empty marketplace or schema requirement', async function () {
+        await publicPhotos(); const { Collection } = require('mongodb'), original = Collection.prototype.aggregate;
+        sinon.stub(Collection.prototype, 'aggregate').callsFake(function (pipeline, options) {
+            if (this.collectionName === 'items' && pipeline.some(stage => stage.$lookup && stage.$lookup.from === 'itemImages')) throw Error('Private DB failure');
+            return original.call(this, pipeline, options);
+        });
+        const result = (await discover().expect(200)).body; assert.equal(result.total, 1); assert.equal(result.items[0].imageAvailability, 'unavailable');
+        const disabled = createApp({ connectToDatabase: async () => db, imageMetadata: config, logger: pino({ level: 'silent' }) });
+        const noRead = (await request(disabled).get('/api/items?stateId=06&metroId=41860').expect(200)).body.items[0];
+        assert.equal(noRead.imageAvailability, undefined); assert.equal(noRead.coverImage, undefined);
+    });
+    it('withholds public metadata and stale bytes for withdrawn, expired, deleted and inactive targets, retaining owner authority', async function () {
+        const ids = await publicPhotos(), original = await db.collection('items').findOne({ _id: item._id });
+        for (const change of [{ status: 'draft' }, { status: 'unlisted' }, { status: 'cleared' }, { status: 'expired' }, { availableUntil: '2000-01-01' }, { publishedAt: null }]) {
+            await db.collection('items').updateOne({ _id: item._id }, { $set: change }); assert.equal((await discover().expect(200)).body.total, 0);
+            await request(app).get('/api/items/' + item._id).expect(404); await view(ids[0], 'thumbnail').expect(404); await view(ids[0], 'display', other).expect(404);
+            await view(ids[0], 'thumbnail', owner).expect(200); await db.collection('items').replaceOne({ _id: item._id }, original);
+        }
+        await db.collection('moveOutPlans').updateOne({ _id: plan._id }, { $set: { status: 'completed' } }); await request(app).get('/api/items/' + item._id).expect(404); await view(ids[0]).expect(404);
+        await db.collection('moveOutPlans').updateOne({ _id: plan._id }, { $set: { status: 'active' } }); await db.collection('items').deleteOne({ _id: item._id }); await view(ids[0], 'thumbnail', owner).expect(404);
+    });
+    it('preserves item data when display bytes are missing/corrupt and never repairs storage during public reads', async function () {
+        const ids = await publicPhotos(), current = await row(ids[0]), commands = require('@aws-sdk/client-s3'); await fixture.verify();
+        await fixture.client().send(new commands.DeleteObjectCommand({ Bucket: fixture.receipt.bucket, Key: current.variants.display.key }));
+        const before = await row(ids[0]); await view(ids[0], 'display').expect(503); await view(ids[0], 'thumbnail').expect(200);
+        assert.equal((await request(app).get('/api/items/' + item._id).expect(200)).body.item.name, item.name);
+        await fixture.client().send(new commands.PutObjectCommand({ Bucket: fixture.receipt.bucket, Key: current.variants.display.key, Body: Buffer.from('corrupt'), ContentType: 'image/webp', Metadata: { sha256: '0'.repeat(64) } }));
+        await view(ids[0], 'display').expect(503); assert.deepEqual(await row(ids[0]), before);
+    });
+
+    it('rechecks publication before returning image IDs when access changes after the listing/count snapshot', async function () {
+        const ids = await publicPhotos(), { Collection } = require('mongodb'), original = Collection.prototype.aggregate;
+        sinon.stub(Collection.prototype, 'aggregate').callsFake(function (pipeline, options) {
+            const collection = this;
+            if (this.collectionName === 'items' && pipeline.some(stage => stage.$lookup && stage.$lookup.from === 'itemImages')) return { toArray: async () => {
+                await db.collection('items').updateOne({ _id: item._id }, { $set: { status: 'unlisted' } });
+                return original.call(collection, pipeline, options).toArray();
+            } };
+            return original.call(collection, pipeline, options);
+        });
+        const body = (await discover().expect(200)).body; assert.equal(body.total, 1); assert.equal(body.items[0].imageAvailability, 'unavailable');
+        assert.equal(body.items[0].coverImage, null); await view(ids[0], 'thumbnail').expect(404);
+    });
+    it('withholds summaries and byte delivery when the original owner account no longer exists', async function () {
+        const ids = await publicPhotos(); await db.collection('users').deleteOne({ _id: owner.id });
+        const body = (await discover().expect(200)).body; assert.equal(body.total, 1); assert.equal(body.items[0].imageAvailability, 'unavailable');
+        assert.equal(body.items[0].coverImage, null); await view(ids[0], 'thumbnail').expect(404);
+    });
+
 });
