@@ -1,10 +1,14 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { useAppContext } from '../../context/AuthContext';
-import { useUnsavedForm } from '../../forms/UnsavedChanges';
+import { photoDraftWarning, useUnsavedForm } from '../../forms/UnsavedChanges';
 import { Feedback, Surface } from '../../design-system/primitives';
 import { fileDigest, photoError, photoUrl, readPhotos, readUpload, reservePhoto, securePhotoBrowser, uploadId, uploadPhoto, validReady } from '../../api/itemImages';
 import { preparePhoto, sourcePhotoError } from '../../api/photoPreparation';
 import './ItemPhotos.css';
+
+export const isQueuedPhoto = entry => ['selected', 'reserved'].includes(entry.phase) && !entry.putAttempted && !entry.recoveryCheckedMissing &&
+  (!entry.operation || (entry.operation.state === 'reserved' && !entry.operation.reservationExpired));
+export const isUnsentPhoto = entry => entry.phase !== 'ready' && entry.operation?.state !== 'ready';
 
 export function operationLabel(operation) {
   if (operation.cleanupPending) return 'Upload needs review';
@@ -34,7 +38,7 @@ export function ReadyPhoto({ image, position }) {
   </li>;
 }
 
-const PhotoSession = forwardRef(function PhotoSession({ planId, item = {}, onClose, entries: ownedEntries, onEntriesChange, previewUrls, capabilities, embedded = false, onMetadata, onBusyChange, disabled: saving = false }, ref) {
+const PhotoSession = forwardRef(function PhotoSession({ planId, item = {}, onClose, entries: ownedEntries, onEntriesChange, previewUrls, capabilities, embedded = false, onMetadata, onBusyChange, uploadIntent, claimUploadIntent, recovery = false, disabled: saving = false }, ref) {
   const [data, setData] = useState(null), [loading, setLoading] = useState(true), [error, setError] = useState(null);
   const [localEntries, setLocalEntries] = useState([]), [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [announcement, setAnnouncement] = useState(''), [refresh, setRefresh] = useState(0);
   const entries = ownedEntries ?? localEntries, setEntries = onEntriesChange || setLocalEntries;
@@ -42,7 +46,7 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item = {}, onClo
   const [batchBusy, setBatchBusy] = useState(false), [metadataStale, setMetadataStale] = useState(false);
   useEffect(() => { onBusyChange?.(busy || batchBusy); }, [busy, batchBusy, onBusyChange]);
   const alive = useRef(true), inFlight = useRef(false), urls = useRef(previewUrls || new Set()), activeUpload = useRef(), fileInput = useRef(), addButton = useRef(), heading = useRef(), feedback = useRef(), focusSelection = useRef(false);
-  const guard = useUnsavedForm({ photos: ownedEntries ? '' : entries.map(entry => entry.clientUploadId).join(',') }, { photos: '' }, 'Discard unsent photos? They are kept only in this tab and cannot be restored after reloading.');
+  const guard = useUnsavedForm({ photos: ownedEntries ? '' : entries.filter(isUnsentPhoto).map(entry => entry.clientUploadId).join(',') }, { photos: '' }, photoDraftWarning);
   useImperativeHandle(ref, () => ({ confirmDiscard: guard.confirmDiscard }));
   useEffect(() => {
     if (!busy && !loading && focusSelection.current) {
@@ -126,14 +130,14 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item = {}, onClo
           }
         }
       }
-      if (current()) { setMessage(''); setAnnouncement(preparedCount ? `${preparedCount} photos prepared. Choose Upload to confirm.` : 'No photos prepared. Check the photo errors.'); }
+      if (current()) { setMessage(''); setAnnouncement(preparedCount ? `${preparedCount} photos prepared. Save or publish to include them.` : 'No photos prepared. Check the photo errors.'); }
     } catch (failure) { failed(photoError(failure)); }
     finally { if (current()) { inFlight.current = false; setBusy(false); } }
   };
   const upload = async (entry, publicConfirmed = false) => {
     const data = dataRef.current;
     if (inFlight.current || !data || loading || error?.blockUploads || entry.putAttempted || entry.phase === 'uncertain' || (entry.operation && (entry.operation.state !== 'reserved' || entry.operation.reservationExpired))) return;
-    if (!publicConfirmed && item.status === 'available' && !window.confirm('Add this photo to the posted item? Ready photos follow its public visibility.')) return;
+    if (!embedded && !publicConfirmed && item.status === 'available' && !window.confirm('Add this photo to the posted item? Ready photos follow its public visibility.')) return;
     inFlight.current = true; setBusy(true); setError(null); setMessage('');
     let operation = entry.operation, attempted = entry.reservationAttempted, confirmedReady = false;
     try {
@@ -198,15 +202,24 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item = {}, onClo
       else failed({ ...failure, message: failure.message, clientUploadId: entry.clientUploadId });
     } finally { if (current()) { inFlight.current = false; setBusy(false); } }
   };
-  const uploadable = entries.filter(entry => ['selected', 'reserved'].includes(entry.phase) && !entry.putAttempted && !entry.recoveryCheckedMissing &&
-    (!entry.operation || (entry.operation.state === 'reserved' && !entry.operation.reservationExpired)));
-  const uploadSelected = async () => {
+  const uploadable = entries.filter(isQueuedPhoto);
+  const uploadSelected = async (authorization = null) => {
     if (draft || inFlight.current || batch.current || saving || metadataStale || !uploadable.length) return;
-    if (item.status === 'available' && !window.confirm('Upload these photos to the public listing?')) return;
-    batch.current = true; setBatchBusy(true);
-    try { for (const entry of uploadable) { if (!current() || !await upload(entry, true)) break; } }
+    const selected = authorization ? uploadable.filter(entry => authorization.clientIds.includes(entry.clientUploadId)) : uploadable;
+    if (!selected.length) return;
+    if (!embedded && item.status === 'available' && !window.confirm('Upload these photos to the public listing?')) return;
+    batch.current = true; setBatchBusy(true); onBusyChange?.(true);
+    try { for (const entry of selected) { if (!current() || !await upload(entry, true)) break; } }
     finally { if (current()) { batch.current = false; setBatchBusy(false); } }
   };
+  useEffect(() => {
+    if (!uploadIntent || uploadIntent.itemId !== item.id || draft || saving || loading || inFlight.current || batch.current) return;
+    const authorization = claimUploadIntent?.(uploadIntent.id, item.id);
+    if (authorization && data && !metadataStale && !error?.blockUploads) uploadSelected(authorization);
+    // The parent consumes an explicit submit intent before any async work. A
+    // status refresh, rerender or remount cannot authorize the same batch again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uploadIntent, item.id, draft, saving, loading, data, metadataStale, claimUploadIntent]);
   const disabled = saving || metadataStale || (draft ? capabilities?.binaryUpload !== true : !data || !data.capabilities.binaryUpload || !data.allowance.newUploadsAllowed) || Boolean(error?.blockUploads) || !securePhotoBrowser();
   const selectionSlots = draft ? 5 - entries.length : data ? data.allowance.itemSlots - entries.filter(entry => !entry.operation).length : 0;
   const pendingHistory = data?.uploads.filter(operation => !entries.some(entry => entry.operation?.id === operation.id)) || [];
@@ -222,12 +235,12 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item = {}, onClo
       <h2 ref={heading} tabIndex={-1} id="item-photos-title">Photos{item.name && <span className="visually-hidden"> for {item.name}</span>}</h2>
       <span className="item-photos-count" aria-label={count === null ? 'Photo count unavailable' : `${count} photos and selections, maximum 5`}>{count ?? '—'} / 5</span>
       {!embedded && <button type="button" className="item-photos-icon" aria-label="Close photos" title="Close photos"
-        onClick={() => { if (guard.confirmDiscard()) onClose?.(); }}>×</button>}
+        onClick={async () => { if (await guard.requestDiscard()) onClose?.(); }}>×</button>}
     </div>
     {!embedded && <p className="item-photos-context">{item.name}</p>}
     <div role="status" className="visually-hidden">{announcement}</div>
-    {entries.length > 0 && <p className="item-photo-note">Unsent photos stay in this tab. Reloading will lose them.</p>}
-    {!draft && uploadable.length > 0 && <button type="button" className="ui-button" disabled={disabled || busy || batchBusy || loading} onClick={uploadSelected}>Upload {uploadable.length} {uploadable.length === 1 ? 'photo' : 'photos'}</button>}
+    {entries.some(isUnsentPhoto) && <p className="item-photo-note">Unsent photos stay in this tab. Reloading will lose them.</p>}
+    {!draft && uploadable.length > 0 && (!embedded || recovery) && !uploadIntent && !busy && !batchBusy && <button type="button" className="ui-button" disabled={disabled || loading} onClick={() => uploadSelected()}>{embedded ? 'Upload remaining ' : 'Upload '}{uploadable.length} {uploadable.length === 1 ? 'photo' : 'photos'}</button>}
     {loading && <p role="status">Loading photos…</p>}
     {error && !error.clientUploadId && <p id="photo-error" className="item-photo-problem" role={error.code === 'NOT_FOUND' ? 'status' : 'alert'} ref={feedback} tabIndex={-1}>{error.message}</p>}
     {message && <p role="status" className="item-photo-note">{message}</p>}

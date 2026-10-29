@@ -197,13 +197,16 @@ test('revokes object URLs on local removal, accepted close and unmount without d
   const view = mount(); await loaded(); await choose(); await click(screen.getByRole('button', { name: 'Remove selection 1' }));
   expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1); await choose(); await click(screen.getByRole('button', { name: 'Close photos' }));
   expect(await screen.findByAltText('Local preview of selected photo 1')).toBeInTheDocument();
-  window.confirm.mockReturnValue(true); await click(screen.getByRole('button', { name: 'Close photos' }));
+  await click(screen.getByRole('button', { name: 'Stay and keep photos' }));
+  expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1);
+  await click(screen.getByRole('button', { name: 'Close photos' }));
+  await click(screen.getByRole('button', { name: 'Leave and discard photos' }));
   expect(screen.queryByLabelText('Choose photos')).not.toBeInTheDocument(); expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2);
   view.unmount(); expect(uploadPhoto).not.toHaveBeenCalled(); expect(reservePhoto).not.toHaveBeenCalled();
 });
 test('warns before navigation/reload and leaves an unrelated text draft guarded after photo completion', async () => {
   const { router } = mount(); await loaded(); await choose(); await click(screen.getByRole('link', { name: 'Leave page' }));
-  await waitFor(() => expect(window.confirm).toHaveBeenCalled()); expect(router.state.location.pathname).toBe('/'); expect(unload()).toBe(true);
+  await screen.findByRole('dialog'); await click(screen.getByRole('button', { name: 'Stay and keep photos' })); expect(router.state.location.pathname).toBe('/'); expect(unload()).toBe(true);
   fireEvent.change(screen.getByLabelText('Independent item text'), { target: { value: 'Keep the unsaved item text' } }); await begin(); await screen.findByAltText('Uploaded photo 1');
   expect(screen.getByLabelText('Independent item text')).toHaveValue('Keep the unsaved item text'); expect(unload()).toBe(true);
   await click(screen.getByRole('link', { name: 'Leave page' })); expect(router.state.location.pathname).toBe('/');

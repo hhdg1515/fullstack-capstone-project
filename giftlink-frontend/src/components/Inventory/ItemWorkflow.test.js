@@ -30,13 +30,17 @@ function Scene() {
     <Route path="/away" element={<h1>Away</h1>} />
   </Routes></UnsavedChangesProvider></TestAuthContext.Provider>;
 }
-function mount() {
+function mount(strict = false) {
   const router = createMemoryRouter([{ path: '*', element: <Scene /> }], { initialEntries: ['/app/plans/' + plan.id + '/items'], future: { v7_relativeSplatPath: true } });
-  render(<RouterProvider router={router} future={{ v7_startTransition: true }} />); return router;
+  const app = <RouterProvider router={router} future={{ v7_startTransition: true }} />;
+  render(strict ? <React.StrictMode>{app}</React.StrictMode> : app); return router;
 }
 const select = async (count = 1) => act(async () => { fireEvent.change(screen.getByLabelText('Choose photos'), { target: { files: Array.from({ length: count }, () => new File(['local'], 'private.png', { type: 'image/png' })) } }); });
-const create = async (count = 1) => { await screen.findByLabelText('Item name'); fireEvent.change(screen.getByLabelText('Item name'), { target: { value: 'Synthetic chair' } }); await select(count); await screen.findByAltText('Local preview of selected photo ' + count); await waitFor(() => expect(screen.getByRole('button', { name: 'Save Draft', exact: true })).toBeEnabled()); await click(screen.getByRole('button', { name: 'Save Draft', exact: true })); };
-const pending = async (count = 1) => { await waitFor(() => expect(screen.getByRole('button', { name: `Upload ${count} ${count === 1 ? 'photo' : 'photos'}`, exact: true })).toBeEnabled()); };
+const stage = async (count = 1) => { await screen.findByLabelText('Item name'); fireEvent.change(screen.getByLabelText('Item name'), { target: { value: 'Synthetic chair' } }); await select(count); await screen.findByAltText('Local preview of selected photo ' + count); };
+const save = async (count = 1, label = 'Save draft') => { const name = count ? `${label} with ${count} ${count === 1 ? 'photo' : 'photos'}` : 'Save Draft'; await waitFor(() => expect(screen.getByRole('button', { name, exact: true })).toBeEnabled()); await click(screen.getByRole('button', { name, exact: true })); };
+const create = async (count = 1) => { await stage(count); await save(count); };
+const pending = async (count = 1) => waitFor(() => expect(screen.getByRole('button', { name: `Upload remaining ${count} ${count === 1 ? 'photo' : 'photos'}`, exact: true })).toBeEnabled());
+const ready = async count => waitFor(() => expect(screen.getAllByAltText(/Uploaded photo/)).toHaveLength(count));
 const click = async target => act(async () => { fireEvent.click(target); });
 const submit = async target => act(async () => { fireEvent.submit(target); });
 const unload = () => { const event = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(event); return event.defaultPrevented; };
@@ -49,7 +53,7 @@ beforeEach(() => {
   readPhotos.mockImplementation(async (p, id) => media[id] ||= metadata());
   reservePhoto.mockImplementation(async (p, id) => ({ imageRevision: media[id].imageRevision, upload: { id: String(++operationSequence).padStart(24, 'c'), state: 'reserved', cleanupPending: false, reservationExpired: false } }));
   uploadPhoto.mockImplementation(async (p, id, imageId) => {
-    const data = media[id]; const image = { id: imageId, state: 'ready', sortPosition: data.images.length, thumbnail: { width: 400, height: 300 }, cleanupPending: false, reservationExpired: false };
+    const data = media[id]; const image = { id: imageId, state: 'ready', sortPosition: data.images.length, createdAt: '2026-10-29T12:00:00Z', thumbnail: { width: 400, height: 300, contentType: 'image/webp' }, display: { width: 800, height: 600, contentType: 'image/webp' }, cleanupPending: false, reservationExpired: false };
     data.images.push(image); data.imageRevision++; data.allowance.itemSlots--; return { imageRevision: data.imageRevision, upload: image };
   });
   readUpload.mockImplementation(async (p, id, imageId) => ({ imageRevision: media[id].imageRevision, upload: media[id].images.find(image => image.id === imageId) }));
@@ -59,7 +63,7 @@ beforeEach(() => {
     const body = JSON.parse(options.body); writes.push({ url, body, method: options.method });
     if (createFault === 'validation') return reply({ error: { code: 'VALIDATION_FAILED', message: 'Check the name.', fields: [{ field: 'name', message: 'Check the name.' }] } }, 400);
     if (options.method === 'POST') {
-      const item = { ...makeItem(nextId), ...body }; items.push(item);
+      const item = { ...makeItem(nextId), ...body, status: body.publish ? 'available' : 'draft', isPublic: body.publish === true }; items.push(item);
       if (createFault === 'lost') throw Error('Synthetic response loss');
       return reply({ item }, 201);
     }
@@ -68,157 +72,195 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => {}); jest.restoreAllMocks(); jest.clearAllMocks(); });
 
-test('stages before save, preserves previews across ID binding and offers explicit Upload N inside the saved card', async () => {
-  mount(); await create(2); await pending(2);
-  expect(writes).toHaveLength(1); expect(readPhotos).toHaveBeenCalledWith(plan.id, nextId);
-  expect(reservePhoto).not.toHaveBeenCalled(); expect(uploadPhoto).not.toHaveBeenCalled();
-  expect(screen.queryByRole('button', { name: 'Save Draft' })).not.toBeInTheDocument();
+test('one labeled submit saves first then sends the selected batch exactly once in its saved card', async () => {
+  let finish; const send = uploadPhoto.getMockImplementation(); uploadPhoto.mockImplementationOnce((...args) => new Promise(resolve => { finish = async () => resolve(await send(...args)); }));
+  mount(); await stage(2);
+  expect(screen.getByRole('button', { name: 'Save draft with 2 photos' })).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Publish with 2 photos' })).toBeVisible();
+  expect(writes).toHaveLength(0); expect(reservePhoto).not.toHaveBeenCalled(); expect(uploadPhoto).not.toHaveBeenCalled();
+  await save(2); await waitFor(() => expect(uploadPhoto).toHaveBeenCalledTimes(1));
+  expect(writes).toHaveLength(1); expect(writes[0].method).toBe('POST'); expect(uploadPhoto.mock.calls[0][1]).toBe(nextId);
   const card = screen.getByRole('heading', { name: 'Synthetic chair', exact: true }).closest('li');
-  expect(within(card).getByAltText('Local preview of selected photo 1')).toBeVisible();
-  expect(within(card).getByRole('button', { name: 'Upload 2 photos' })).toBeVisible();
-  expect(URL.revokeObjectURL).not.toHaveBeenCalled(); expect(unload()).toBe(true);
-  await click(screen.getByRole('button', { name: 'Upload 2 photos' }));
-  await waitFor(() => expect(within(card).getAllByRole('img', { name: /Uploaded photo/ })).toHaveLength(2));
-  expect(uploadPhoto).toHaveBeenCalledTimes(2); expect(reservePhoto).toHaveBeenCalledTimes(2);
-  expect(uploadPhoto.mock.calls.every(call => call[1] === nextId)).toBe(true);
+  expect(within(card).getByAltText('Local preview of selected photo 1')).toBeVisible(); expect(unload()).toBe(true);
+  expect(screen.queryByRole('button', { name: /^Upload/ })).not.toBeInTheDocument(); expect(window.confirm).not.toHaveBeenCalled();
+  await act(async () => finish()); await ready(2);
   await waitFor(() => expect(screen.queryByLabelText('Item name')).not.toBeInTheDocument());
-  expect(unload()).toBe(false); expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2);
+  expect(uploadPhoto).toHaveBeenCalledTimes(2); expect(reservePhoto).toHaveBeenCalledTimes(2); expect(unload()).toBe(false);
+  expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2); expect(screen.queryByText(/Reloading will lose/)).not.toBeInTheDocument();
   fireEvent.error(within(card).getByAltText('Uploaded photo 1'));
-  expect(within(card).getByText('Photo unavailable. Refresh to check again.')).toBeVisible();
   await click(screen.getByRole('button', { name: 'Refresh inventory' }));
   await waitFor(() => expect(within(card).getByAltText('Uploaded photo 1')).toBeVisible());
+  expect(uploadPhoto).toHaveBeenCalledTimes(2);
   await waitFor(() => expect(screen.getByRole('button', { name: 'Add item', exact: true })).toBeEnabled());
-  await click(screen.getByRole('button', { name: 'Add item', exact: true }));
-  expect(await screen.findByLabelText('Item name')).toHaveValue('');
+  await click(screen.getByRole('button', { name: 'Add item', exact: true })); expect(await screen.findByLabelText('Item name')).toHaveValue('');
 });
 
-test('a rejected save retains item text and files and sends no reservation or binary content', async () => {
+test('a definitively rejected save retains text/files and sends no photos until a new explicit submit', async () => {
   createFault = 'validation'; mount(); await create();
   await waitFor(() => expect(screen.getByLabelText('Item name')).toHaveFocus());
-  expect(screen.getByLabelText('Item name')).toHaveValue('Synthetic chair');
-  expect(await screen.findByAltText('Local preview of selected photo 1')).toBeVisible();
-  expect(reservePhoto).not.toHaveBeenCalled(); expect(URL.revokeObjectURL).not.toHaveBeenCalled();
-  createFault = ''; await waitFor(() => expect(screen.getByRole('button', { name: 'Save Draft', exact: true })).toBeEnabled()); await click(screen.getByRole('button', { name: 'Save Draft', exact: true })); await pending();
-  expect(writes).toHaveLength(2); expect(uploadPhoto).not.toHaveBeenCalled();
+  expect(screen.getByLabelText('Item name')).toHaveValue('Synthetic chair'); expect(screen.getByAltText('Local preview of selected photo 1')).toBeVisible();
+  expect(reservePhoto).not.toHaveBeenCalled(); createFault = ''; await save(); await ready(1);
+  expect(writes).toHaveLength(2); expect(uploadPhoto).toHaveBeenCalledTimes(1);
 });
 
-test('an uncertain item creation cannot repeat POST and requires explicit selection of an authoritative saved item', async () => {
-  createFault = 'lost'; mount(); await create();
-  await screen.findByText(/Save not confirmed. Check inventory/);
-  expect(screen.getByRole('button', { name: 'Save Draft', exact: true })).toBeDisabled();
-  await submit(screen.getByRole('button', { name: 'Save Draft', exact: true }).closest('form'));
-  expect(writes).toHaveLength(1); expect(uploadPhoto).not.toHaveBeenCalled();
-  window.confirm.mockReturnValue(true); await click(screen.getByRole('button', { name: 'Refresh inventory' }));
-  const edit = await screen.findByRole('button', { name: 'Edit Synthetic chair', exact: true });
-  await click(edit); await pending();
-  expect(await screen.findByAltText('Local preview of selected photo 1')).toBeVisible(); expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+test('uncertain item creation cannot repeat POST or upload until explicit authoritative item review and submit', async () => {
+  createFault = 'lost'; mount(); await create(2); await screen.findByText(/Save not confirmed. Check inventory/);
+  const button = screen.getByRole('button', { name: 'Save draft with 2 photos' }); expect(button).toBeDisabled(); await submit(button.closest('form'));
   expect(writes).toHaveLength(1); expect(reservePhoto).not.toHaveBeenCalled();
+  window.confirm.mockReturnValue(true); await click(screen.getByRole('button', { name: 'Refresh inventory' }));
+  await click(await screen.findByRole('button', { name: 'Edit Synthetic chair', exact: true }));
+  expect(screen.getAllByAltText(/Local preview/)).toHaveLength(2); expect(uploadPhoto).not.toHaveBeenCalled();
+  createFault = ''; await save(2); await ready(2);
+  expect(writes.filter(write => write.method === 'POST')).toHaveLength(1); expect(writes.filter(write => write.method === 'PATCH')).toHaveLength(1);
+  expect(items).toHaveLength(1); expect(uploadPhoto).toHaveBeenCalledTimes(2);
 });
 
-test('refreshing and declining close/navigation retain unsent files and warn that reload cannot preserve them', async () => {
-  const router = mount(); await create(); await pending();
-  await click(screen.getByRole('button', { name: 'Refresh inventory' })); await pending();
-  expect(await screen.findByAltText('Local preview of selected photo 1')).toBeVisible(); expect(URL.revokeObjectURL).not.toHaveBeenCalled();
-  await click(screen.getByRole('button', { name: 'Done', exact: true })); expect(window.confirm).toHaveBeenLastCalledWith(expect.stringContaining('cannot be restored after reloading'));
-  await click(screen.getByRole('link', { name: 'Leave inventory' }));
-  await waitFor(() => expect(router.state.location.pathname).not.toBe('/away'));
-  expect(unload()).toBe(true); expect(screen.getByText(/Reloading will lose them/)).toBeVisible();
+test('photo navigation uses explicit accessible choices, preserves on Escape and discards only on the labeled action', async () => {
+  const router = mount(); await stage(2); await click(screen.getByRole('link', { name: 'Leave inventory' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Leave photos behind?' });
+  expect(within(dialog).getByRole('button', { name: 'Stay and keep photos' })).toHaveFocus();
+  expect(dialog).toHaveAccessibleDescription(expect.stringContaining('Unsaved text changes'));
+  const keep = within(dialog).getByRole('button', { name: 'Stay and keep photos' }), leave = within(dialog).getByRole('button', { name: 'Leave and discard photos' });
+  fireEvent.keyDown(keep, { key: 'Tab', shiftKey: true }); expect(leave).toHaveFocus();
+  fireEvent.keyDown(leave, { key: 'Tab' }); expect(keep).toHaveFocus();
+  await act(async () => fireEvent.keyDown(dialog, { key: 'Escape' })); await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(router.state.location.pathname).not.toBe('/away'); expect(screen.getAllByAltText(/Local preview/)).toHaveLength(2); expect(unload()).toBe(true);
+  await click(screen.getByRole('button', { name: 'Cancel', exact: true }));
+  await screen.findByRole('dialog'); await click(screen.getByRole('button', { name: 'Stay and keep photos' }));
+  expect(screen.getByLabelText('Item name')).toHaveValue('Synthetic chair'); expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+  await click(screen.getByRole('link', { name: 'Leave inventory' })); await click(await screen.findByRole('button', { name: 'Leave and discard photos' }));
+  await screen.findByRole('heading', { name: 'Away' }); expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2); expect(unload()).toBe(false);
+  expect(window.confirm).not.toHaveBeenCalled(); expect(writes).toHaveLength(0);
 });
 
-test('upload uncertainty stops the selected batch, retains remaining files and never automatically resends', async () => {
-  uploadPhoto.mockImplementationOnce(async (p, id, imageId) => {
-    media[id].images.push({ id: imageId, state: 'ready', thumbnail: { width: 400, height: 300 } }); media[id].imageRevision++;
-    throw photoError({ status: 0 }, true);
-  });
-  mount(); await create(2); await pending(2); await click(screen.getByRole('button', { name: 'Upload 2 photos' }));
-  await screen.findByText('Upload not confirmed. Check status.'); expect(uploadPhoto).toHaveBeenCalledTimes(1);
-  expect(screen.getAllByAltText(/Local preview/)).toHaveLength(2);
-  await click(screen.getByRole('button', { name: 'Check upload 1 status' }));
-  await waitFor(() => expect(screen.getByRole('img', { name: 'Uploaded photo 1' })).toBeVisible());
-  expect(uploadPhoto).toHaveBeenCalledTimes(1); await pending(1);
-  expect(reservePhoto).toHaveBeenCalledTimes(1);
+test('uncertain PUT retains all selections and a remount never consumes the submit authorization twice', async () => {
+  const send = uploadPhoto.getMockImplementation(); uploadPhoto.mockImplementationOnce(async (...args) => { await send(...args); throw photoError({ status: 0 }, true); });
+  mount(); await create(2); await screen.findByText('Upload not confirmed. Check status.');
+  expect(screen.getAllByAltText(/Local preview/)).toHaveLength(2); expect(uploadPhoto).toHaveBeenCalledTimes(1);
+  await click(screen.getByRole('button', { name: 'Refresh inventory' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Check upload 1 status' })).toBeEnabled());
+  expect(uploadPhoto).toHaveBeenCalledTimes(1); expect(writes).toHaveLength(1);
+  await click(screen.getByRole('button', { name: 'Check upload 1 status' })); await ready(1); await pending(1);
+  expect(uploadPhoto).toHaveBeenCalledTimes(1);
+  await click(screen.getByRole('button', { name: 'Upload remaining 1 photo' })); await ready(2);
+  expect(uploadPhoto).toHaveBeenCalledTimes(2); expect(reservePhoto).toHaveBeenCalledTimes(2);
 });
 
-test('existing-item photo uploads leave unsaved text and its discard guard independent', async () => {
+test('saving edits and photos together preserves later independent text changes during status recovery', async () => {
+  const send = uploadPhoto.getMockImplementation(); uploadPhoto.mockImplementationOnce(async (...args) => { await send(...args); throw photoError({ status: 0 }, true); });
   items = [makeItem()]; mount(); await click(await screen.findByRole('button', { name: 'Edit Synthetic chair', exact: true }));
-  const text = await screen.findByLabelText('Description'); fireEvent.change(text, { target: { value: 'Keep this unsaved text.' } });
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Add photos' })).toBeEnabled()); await select(); await pending();
-  await click(screen.getByRole('button', { name: 'Upload 1 photo', exact: true }));
-  await screen.findByAltText('Uploaded photo 1'); expect(text).toHaveValue('Keep this unsaved text.');
-  expect(writes).toHaveLength(0); expect(unload()).toBe(true);
-  await click(screen.getByRole('button', { name: 'Cancel edit' })); expect(text).toBeVisible();
+  fireEvent.change(await screen.findByLabelText('Description'), { target: { value: 'Explicitly save this text.' } }); await select(); await save();
+  await screen.findByText('Upload not confirmed. Check status.'); expect(writes).toHaveLength(1); expect(writes[0].body.description).toBe('Explicitly save this text.');
+  await click(screen.getByRole('button', { name: 'Edit Synthetic chair', exact: true }));
+  fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Keep a later unsaved draft.' } });
+  await click(screen.getByRole('button', { name: 'Check upload 1 status' })); await ready(1);
+  expect(screen.getByLabelText('Description')).toHaveValue('Keep a later unsaved draft.'); expect(unload()).toBe(true); expect(writes).toHaveLength(1);
+  await click(screen.getByRole('link', { name: 'Leave inventory' })); expect(window.confirm).toHaveBeenCalledWith('Discard unsaved changes?');
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
 
-test('account switches revoke private previews and do not carry staged files into another editor', async () => {
-  mount(); await screen.findByLabelText('Item name'); await select(); expect(unload()).toBe(true);
+test('account switches revoke private previews and cannot carry submit intents into another account', async () => {
+  mount(); await stage(); expect(unload()).toBe(true);
   act(() => setActor({ id: 'owner-b', firstName: 'Other synthetic' }));
   await screen.findByLabelText('Item name'); expect(screen.queryByAltText(/Local preview/)).not.toBeInTheDocument();
   expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1); expect(uploadPhoto).not.toHaveBeenCalled();
 });
 
-
-test('published-item batch confirmation occurs once and a cancelled confirmation sends nothing', async () => {
+test('a public item uses one explicit labeled save for the entire batch without visibility dialogs', async () => {
   items = [{ ...makeItem(), status: 'available', isPublic: true }]; mount();
   await click(await screen.findByRole('button', { name: 'Edit Synthetic chair', exact: true }));
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Add photos' })).toBeEnabled()); await select(2); await pending(2);
-  await click(screen.getByRole('button', { name: 'Upload 2 photos' })); expect(window.confirm).toHaveBeenCalledTimes(1); expect(uploadPhoto).not.toHaveBeenCalled();
-  window.confirm.mockReturnValue(true); await click(screen.getByRole('button', { name: 'Upload 2 photos' }));
-  await waitFor(() => expect(uploadPhoto).toHaveBeenCalledTimes(2)); expect(window.confirm).toHaveBeenCalledTimes(2); expect(writes).toHaveLength(0);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Add photos' })).toBeEnabled()); await select(3); await save(3, 'Save changes'); await ready(3);
+  expect(writes).toHaveLength(1); expect(uploadPhoto).toHaveBeenCalledTimes(3); expect(reservePhoto).toHaveBeenCalledTimes(3); expect(window.confirm).not.toHaveBeenCalled();
 });
 
-test('partial success and a later ambiguous PUT retain confirmed thumbnails and safely continue only after status review', async () => {
+test('publication remains successful after partial upload failure; status review and continuation do not republish', async () => {
   const send = uploadPhoto.getMockImplementation(); uploadPhoto.mockImplementationOnce(send).mockImplementationOnce(async (...args) => { await send(...args); throw photoError({ status: 0 }, true); });
-  mount(); await create(3); await pending(3); await click(screen.getByRole('button', { name: 'Upload 3 photos' }));
-  await screen.findByText('Upload not confirmed. Check status.');
-  expect(screen.getByAltText('Uploaded photo 1')).toBeVisible(); expect(screen.getAllByAltText(/Local preview/)).toHaveLength(2); expect(uploadPhoto).toHaveBeenCalledTimes(2);
-  await click(screen.getByRole('button', { name: 'Check upload 1 status' })); await screen.findByAltText('Uploaded photo 2'); await pending(1);
-  await click(screen.getByRole('button', { name: 'Upload 1 photo', exact: true })); await screen.findByAltText('Uploaded photo 3');
-  expect(uploadPhoto).toHaveBeenCalledTimes(3); expect(reservePhoto).toHaveBeenCalledTimes(3);
+  mount(); await stage(3);
+  for (const [label, value] of [['Category', 'living-room'], ['Item type', 'sofa'], ['Description', 'Synthetic household chair.']]) fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  await save(3, 'Publish'); await screen.findByText('Upload not confirmed. Check status.');
+  expect(screen.getByText('Item published.')).toBeVisible(); expect(items[0].status).toBe('available'); expect(screen.getByAltText('Uploaded photo 1')).toBeVisible();
+  expect(screen.getAllByAltText(/Local preview/)).toHaveLength(2); expect(uploadPhoto).toHaveBeenCalledTimes(2);
+  await click(screen.getByRole('button', { name: 'Check upload 1 status' })); await ready(2); await pending(1);
+  await click(screen.getByRole('button', { name: 'Upload remaining 1 photo' })); await ready(3);
+  expect(writes).toHaveLength(1); expect(uploadPhoto).toHaveBeenCalledTimes(3); expect(window.confirm).not.toHaveBeenCalled(); expect(unload()).toBe(false);
 });
 
-test('quota exhaustion after partial success retains the ready image and unrelated files without an inventory reload', async () => {
+test('quota exhaustion retains the ready image and unrelated files for explicit local recovery', async () => {
   const reserve = reservePhoto.getMockImplementation(); reservePhoto.mockImplementationOnce(reserve).mockRejectedValueOnce(photoError({ status: 429, code: 'IMAGE_DAILY_UPLOADS' }));
-  mount(); await create(3); await pending(3); await click(screen.getByRole('button', { name: 'Upload 3 photos' }));
-  await screen.findByText(/Daily allowance used/); expect(screen.getByAltText('Uploaded photo 1')).toBeVisible(); expect(screen.getAllByAltText(/Local preview/)).toHaveLength(2);
+  mount(); await create(3); await screen.findByText(/Daily allowance used/);
+  expect(screen.getByAltText('Uploaded photo 1')).toBeVisible(); expect(screen.getAllByAltText(/Local preview/)).toHaveLength(2);
   expect(uploadPhoto).toHaveBeenCalledTimes(1); expect(reservePhoto).toHaveBeenCalledTimes(2);
   const inventoryReads = fetch.mock.calls.filter(([, options]) => options.method === 'GET').length;
-  await click(screen.getByRole('button', { name: 'Refresh photos' }));
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Add photos' })).toBeEnabled());
-  expect(fetch.mock.calls.filter(([, options]) => options.method === 'GET')).toHaveLength(inventoryReads);
-  expect(screen.getByAltText('Uploaded photo 1')).toBeVisible(); expect(screen.getAllByAltText(/Local preview/)).toHaveLength(2);
-});
-
-test('session expiry between batch files clears private staged files and never sends the remaining files', async () => {
-  const reserve = reservePhoto.getMockImplementation(); reservePhoto.mockImplementationOnce(reserve).mockRejectedValueOnce(photoError({ status: 401, code: 'SESSION_EXPIRED' }));
-  mount(); await create(3); await pending(3); await click(screen.getByRole('button', { name: 'Upload 3 photos' }));
-  await screen.findByRole('heading', { name: 'Login required' }); expect(uploadPhoto).toHaveBeenCalledTimes(1); expect(reservePhoto).toHaveBeenCalledTimes(2);
-  expect(screen.queryByAltText(/Local preview|Uploaded photo/)).not.toBeInTheDocument(); expect(URL.revokeObjectURL).toHaveBeenCalledTimes(3);
-});
-
-test('a local compression failure does not discard an unrelated valid selection or send the original', async () => {
-  preparePhoto.mockRejectedValueOnce(Object.assign(new Error('Could not prepare this photo.'), { code: 'PHOTO_PREPARATION_FAILED' }));
-  mount(); await screen.findByLabelText('Item name'); fireEvent.change(screen.getByLabelText('Item name'), { target: { value: 'Synthetic chair' } }); await select(2);
-  await screen.findByAltText('Local preview of selected photo 2'); await click(screen.getByRole('button', { name: 'Save Draft', exact: true })); await pending(1);
-  expect(screen.getByText('Could not prepare this photo.')).toBeVisible(); expect(screen.getByAltText('Local preview of selected photo 2')).toBeVisible();
-  expect(uploadPhoto).not.toHaveBeenCalled(); await click(screen.getByRole('button', { name: 'Upload 1 photo' }));
-  await screen.findByAltText('Uploaded photo 1'); expect(uploadPhoto).toHaveBeenCalledTimes(1); expect(screen.getByText('Could not prepare this photo.')).toBeVisible();
-});
-
-
-test('a failed metadata refresh after confirmed readiness retains the thumbnail and unrelated staged files', async () => {
-  const send = uploadPhoto.getMockImplementation();
-  uploadPhoto.mockImplementationOnce(async (...args) => {
-    const result = await send(...args);
-    Object.assign(result.upload, { createdAt: '2026-10-29T12:00:00Z', thumbnail: { width: 400, height: 300, contentType: 'image/webp' },
-      display: { width: 800, height: 600, contentType: 'image/webp' } });
-    readPhotos.mockRejectedValueOnce(photoError({ status: 503 })); return result;
-  });
-  mount(); await create(3); await pending(3); await click(screen.getByRole('button', { name: 'Upload 3 photos' }));
-  await screen.findByText('Photo uploaded. Refresh photos to update status.');
-  expect(screen.getByAltText('Uploaded photo 1')).toBeVisible(); expect(screen.getAllByAltText(/Local preview/)).toHaveLength(2);
-  expect(uploadPhoto).toHaveBeenCalledTimes(1); expect(reservePhoto).toHaveBeenCalledTimes(1); expect(unload()).toBe(true);
   await click(screen.getByRole('button', { name: 'Refresh photos' })); await pending(2);
-  expect(screen.getByAltText('Uploaded photo 1')).toBeVisible(); expect(uploadPhoto).toHaveBeenCalledTimes(1);
-  await click(screen.getByRole('button', { name: 'Upload 2 photos' })); await screen.findByAltText('Uploaded photo 3');
-  expect(uploadPhoto).toHaveBeenCalledTimes(3); expect(reservePhoto).toHaveBeenCalledTimes(3);
+  expect(uploadPhoto).toHaveBeenCalledTimes(1); expect(fetch.mock.calls.filter(([, options]) => options.method === 'GET')).toHaveLength(inventoryReads);
+});
+
+test('session expiry between batch files clears private staged state and sends no later files', async () => {
+  const reserve = reservePhoto.getMockImplementation(); reservePhoto.mockImplementationOnce(reserve).mockRejectedValueOnce(photoError({ status: 401, code: 'SESSION_EXPIRED' }));
+  mount(); await create(3); await screen.findByRole('heading', { name: 'Login required' });
+  expect(uploadPhoto).toHaveBeenCalledTimes(1); expect(reservePhoto).toHaveBeenCalledTimes(2); expect(screen.queryByAltText(/Local preview|Uploaded photo/)).not.toBeInTheDocument();
+  expect(URL.revokeObjectURL).toHaveBeenCalledTimes(3); expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
+
+test('a compression failure preserves other selections; valid photos upload only through the labeled submit', async () => {
+  preparePhoto.mockRejectedValueOnce(Object.assign(new Error('Could not prepare this photo.'), { code: 'PHOTO_PREPARATION_FAILED' }));
+  mount(); await stage(2); expect(screen.getByText('Could not prepare this photo.')).toBeVisible(); expect(uploadPhoto).not.toHaveBeenCalled();
+  await save(1); await ready(1); expect(screen.getByText('Could not prepare this photo.')).toBeVisible(); expect(uploadPhoto).toHaveBeenCalledTimes(1); expect(unload()).toBe(true);
+  await click(screen.getByRole('button', { name: 'Remove selection 1' })); await waitFor(() => expect(unload()).toBe(false));
+  expect(screen.queryByText(/Reloading will lose/)).not.toBeInTheDocument();
+});
+
+test('failed metadata after confirmed readiness retains thumbnails; refreshing never starts remaining files', async () => {
+  const send = uploadPhoto.getMockImplementation(); uploadPhoto.mockImplementationOnce(async (...args) => { const result = await send(...args); readPhotos.mockRejectedValueOnce(photoError({ status: 503 })); return result; });
+  mount(); await create(3); await screen.findByText('Photo uploaded. Refresh photos to update status.');
+  expect(screen.getByAltText('Uploaded photo 1')).toBeVisible(); expect(screen.getAllByAltText(/Local preview/)).toHaveLength(2); expect(uploadPhoto).toHaveBeenCalledTimes(1);
+  await click(screen.getByRole('button', { name: 'Refresh photos' })); await pending(2); expect(uploadPhoto).toHaveBeenCalledTimes(1);
+  await click(screen.getByRole('button', { name: 'Upload remaining 2 photos' })); await ready(3); expect(writes).toHaveLength(1);
+});
+
+test('a failed first metadata read consumes the intent without upload, requiring explicit recovery after refresh', async () => {
+  readPhotos.mockRejectedValueOnce(photoError({ status: 503 })); mount(); await create(2);
+  await screen.findByText(/Photo service unavailable/); expect(reservePhoto).not.toHaveBeenCalled();
+  await click(screen.getByRole('button', { name: 'Refresh photos' })); await pending(2); expect(uploadPhoto).not.toHaveBeenCalled();
+  await click(screen.getByRole('button', { name: 'Upload remaining 2 photos' })); await ready(2); expect(writes).toHaveLength(1);
+});
+
+test('duplicate submit while item save is pending cannot create duplicate items or batches', async () => {
+  const original = fetch.getMockImplementation(); let finish;
+  fetch.mockImplementation(async (url, options) => options.method === 'POST' ? new Promise(resolve => { finish = async () => resolve(await original(url, options)); }) : original(url, options));
+  mount(); await stage(2); const button = screen.getByRole('button', { name: 'Save draft with 2 photos' }), form = button.closest('form');
+  await click(button); await submit(form); expect(uploadPhoto).not.toHaveBeenCalled();
+  await act(async () => finish()); await ready(2);
+  expect(writes).toHaveLength(1); expect(items).toHaveLength(1); expect(uploadPhoto).toHaveBeenCalledTimes(2);
+});
+
+test('completion while a leave dialog is open removes the photo warning without discarding or duplicating work', async () => {
+  let finish; const send = uploadPhoto.getMockImplementation(); uploadPhoto.mockImplementationOnce((...args) => new Promise(resolve => { finish = async () => resolve(await send(...args)); }));
+  const router = mount(); await create(); await waitFor(() => expect(uploadPhoto).toHaveBeenCalledTimes(1));
+  await click(screen.getByRole('link', { name: 'Leave inventory' })); await screen.findByRole('dialog');
+  await act(async () => finish()); await ready(1); await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(router.state.location.pathname).not.toBe('/away'); expect(unload()).toBe(false); expect(uploadPhoto).toHaveBeenCalledTimes(1);
+  await click(screen.getByRole('link', { name: 'Leave inventory' })); await screen.findByRole('heading', { name: 'Away' }); expect(window.confirm).not.toHaveBeenCalled();
+});
+
+
+test('explicit leave during an active batch aborts the browser transfer and cannot send later files', async () => {
+  let signal;
+  uploadPhoto.mockImplementationOnce((p, id, op, file, options) => new Promise((resolve, reject) => {
+    signal = options.signal; signal.addEventListener('abort', () => reject(photoError({ status: 0, code: 'REQUEST_ABORTED' }, true)));
+  }));
+  mount(); await create(3); await waitFor(() => expect(uploadPhoto).toHaveBeenCalledTimes(1));
+  await click(screen.getByRole('link', { name: 'Leave inventory' })); await screen.findByRole('dialog');
+  await click(screen.getByRole('button', { name: 'Leave and discard photos' })); await screen.findByRole('heading', { name: 'Away' });
+  expect(signal.aborted).toBe(true); expect(uploadPhoto).toHaveBeenCalledTimes(1); expect(reservePhoto).toHaveBeenCalledTimes(1);
+  expect(URL.revokeObjectURL).toHaveBeenCalledTimes(3); expect(unload()).toBe(false); expect(writes).toHaveLength(1);
+});
+
+
+test('StrictMode effect remounts cannot replay a successful submit or its photo batch', async () => {
+  mount(true); await create(2); await ready(2);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh inventory' })).toBeEnabled());
+  await click(screen.getByRole('button', { name: 'Refresh inventory' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Add item', exact: true })).toBeEnabled());
+  expect(writes).toHaveLength(1); expect(uploadPhoto).toHaveBeenCalledTimes(2); expect(reservePhoto).toHaveBeenCalledTimes(2); expect(unload()).toBe(false);
 });

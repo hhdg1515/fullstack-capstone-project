@@ -31,7 +31,7 @@ export function publicationIssues(values) {
   if (!values.description.trim()) issues.description = 'Describe the item before publishing.';
   return issues;
 }
-export default forwardRef(function ItemForm({ plan, item, onSave, onCancel, disabled, focusName, photos, textHidden = false, onBeforeClose }, ref) {
+export default forwardRef(function ItemForm({ plan, item, onSave, onCancel, disabled, focusName, photos, photoCount = 0, textHidden = false, onBeforeClose }, ref) {
   const nameInput = useRef(), inFlight = useRef(false), alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => { if (!textHidden && (item?.id || focusName)) nameInput.current?.focus(); }, [item?.id, focusName, textHidden]);
@@ -42,7 +42,7 @@ export default forwardRef(function ItemForm({ plan, item, onSave, onCancel, disa
   const [values, setValues] = useState(initial);
   const [busy, setBusy] = useState(false);
   const guard = useUnsavedForm(values, initial);
-  useImperativeHandle(ref, () => ({ confirmDiscard: guard.confirmDiscard }));
+  useImperativeHandle(ref, () => ({ confirmDiscard: guard.confirmDiscard, dirty: guard.dirty }));
   const validation = useFormErrors(busy);
   const { errors, error } = validation;
   const editablePublication = !item || ['draft', 'unlisted', 'expired'].includes(item.status);
@@ -61,7 +61,7 @@ export default forwardRef(function ItemForm({ plan, item, onSave, onCancel, disa
     }
     if (publishing || (item?.status === 'available' && item.requiresPublicationDetails)) Object.assign(issues, publicationIssues(details));
     if (Object.keys(issues).length) { validation.show(issues); return; }
-    if (item?.status === 'available' && !window.confirm('Save changes to this public listing?')) return;
+    if (item?.status === 'available' && !photoCount && !window.confirm('Save changes to this public listing?')) return;
     inFlight.current = true; setBusy(true); validation.reset();
     try {
       await onSave({ ...details, availableFrom: details.availableFrom || null, availableUntil: details.availableUntil || null }, publishing, guard.markSaved);
@@ -116,9 +116,9 @@ export default forwardRef(function ItemForm({ plan, item, onSave, onCancel, disa
       <legend className="visually-hidden">Save item</legend>
       {error && <Feedback ref={validation.summaryRef} tabIndex={-1} error>{error}</Feedback>}
       <div className="plan-actions">
-        {editablePublication && <button type="button" className="ui-button" onClick={() => submit(true)} disabled={plan.status !== 'active' || catalog.loading || Boolean(catalog.error)}>{busy ? 'Saving…' : 'Publish'}</button>}
-        <button type="submit" className={'ui-button' + (editablePublication ? ' ui-button--secondary' : '')} disabled={busy}>{busy && !editablePublication ? 'Saving…' : item && item.status !== 'draft' ? 'Save Changes' : 'Save Draft'}</button>
-        {onCancel && <button type="button" className="ui-button ui-button--secondary" onClick={() => { if ((onBeforeClose || guard.confirmDiscard)()) onCancel(); }}>{item ? 'Cancel edit' : 'Cancel'}</button>}
+        {editablePublication && <button type="button" className="ui-button" onClick={() => submit(true)} disabled={plan.status !== 'active' || catalog.loading || Boolean(catalog.error)}>{busy ? 'Saving…' : photoCount ? `Publish with ${photoCount} ${photoCount === 1 ? 'photo' : 'photos'}` : 'Publish'}</button>}
+        <button type="submit" className={'ui-button' + (editablePublication ? ' ui-button--secondary' : '')} disabled={busy}>{busy && !editablePublication ? 'Saving…' : photoCount ? `${item && item.status !== 'draft' ? 'Save changes' : 'Save draft'} with ${photoCount} ${photoCount === 1 ? 'photo' : 'photos'}` : item && item.status !== 'draft' ? 'Save Changes' : 'Save Draft'}</button>
+        {onCancel && <button type="button" className="ui-button ui-button--secondary" onClick={async () => { if (await (onBeforeClose || guard.confirmDiscard)()) onCancel(); }}>{item ? 'Cancel edit' : 'Cancel'}</button>}
       </div>
     </fieldset>
   </Surface>;

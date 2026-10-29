@@ -6,7 +6,7 @@ import { createMemoryRouter, Link, Route, RouterProvider, Routes, useNavigate } 
 import { AuthProvider } from '../context/AuthContext';
 import RequireAuth from '../components/RequireAuth';
 import Navbar from '../components/Navbar/Navbar';
-import { meaningfulChanges, UnsavedChangesProvider, useUnsavedForm } from './UnsavedChanges';
+import { meaningfulChanges, photoDraftWarning, UnsavedChangesProvider, useUnsavedForm } from './UnsavedChanges';
 
 const user = { id: 'owner', firstName: 'Local', lastName: 'Owner', email: 'local@example.invalid' };
 const response = (body, status = 200) => ({ ok: status < 400, status, json: async () => body });
@@ -16,12 +16,16 @@ function Example() {
   return <><label>Draft name<input value={name} onChange={event => setName(event.target.value)} /></label>
     <button onClick={() => { guard.markSaved(); setSaved(name); }}>Save locally</button>
     <Link to="/away">Leave</Link><button onClick={() => navigate('/away', { replace: true })}>Replace route</button>
-    <button onClick={() => navigate(-1)}>Back</button><OtherDraft /></>;
+    <button onClick={() => navigate(-1)}>Back</button><OtherDraft /><PhotoDraft /></>;
 }
 function OtherDraft() {
   const [text, setText] = useState(''); const guard = useUnsavedForm({ text }, { text: '' });
   return <><label>Other draft<input value={text} onChange={event => setText(event.target.value)} /></label>
     <button onClick={() => { if (guard.confirmDiscard()) setText(''); }}>Discard other draft</button></>;
+}
+function PhotoDraft() {
+  const [photos, setPhotos] = useState(''); useUnsavedForm({ photos }, { photos: '' }, photoDraftWarning);
+  return <><label>Photo fixture draft<input value={photos} onChange={event => setPhotos(event.target.value)} /></label><button onClick={() => setPhotos('')}>Finish photo fixture</button></>;
 }
 function mount(entries = ['/edit']) {
   const router = createMemoryRouter([{ path: '*', element: <AuthProvider><UnsavedChangesProvider><Navbar /><Routes>
@@ -87,4 +91,26 @@ test('discarding one local form leaves another form’s meaningful edits protect
   window.confirm.mockReturnValue(false); fireEvent.click(screen.getByRole('link', { name: 'Leave' }));
   await waitFor(() => expect(window.confirm).toHaveBeenCalledTimes(2)); expect(router.state.location.pathname).toBe('/edit');
   expect(screen.getByLabelText('Draft name')).toHaveValue('Keep this conversation draft');
+});
+
+
+test('photo logout requires the named choice and a failed logout leaves photo protection active', async () => {
+  mount(); fireEvent.change(await screen.findByLabelText('Photo fixture draft'), { target: { value: 'tab-only' } });
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Logout' })));
+  await screen.findByRole('dialog'); expect(fetch.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true);
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Stay and keep photos' })));
+  expect(screen.getByLabelText('Photo fixture draft')).toHaveValue('tab-only');
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Logout' })));
+  await act(async () => fireEvent.click(await screen.findByRole('button', { name: 'Leave and discard photos' })));
+  await screen.findByText('Logout could not be confirmed. Please try again.');
+  await act(async () => fireEvent.click(screen.getByRole('link', { name: 'Leave', exact: true })));
+  await screen.findByRole('dialog'); expect(window.confirm).not.toHaveBeenCalled();
+});
+
+test('session invalidation dismisses an open photo decision and clears private drafts without approval', async () => {
+  mount(); fireEvent.change(await screen.findByLabelText('Photo fixture draft'), { target: { value: 'tab-only' } });
+  await act(async () => fireEvent.click(screen.getByRole('link', { name: 'Leave', exact: true })));
+  await screen.findByRole('dialog'); await act(async () => window.dispatchEvent(new Event('giftlink:unauthorized')));
+  await screen.findByRole('heading', { name: 'Login' }); expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Photo fixture draft')).not.toBeInTheDocument(); expect(window.confirm).not.toHaveBeenCalled();
 });
