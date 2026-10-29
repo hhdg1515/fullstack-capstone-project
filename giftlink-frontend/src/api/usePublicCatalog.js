@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { apiRequest } from './client';
 const named = entry => entry && typeof entry.id === 'string' && typeof entry.label === 'string';
+const namedType = type => named(type) &&
+  (type.searchTerms === undefined || (Array.isArray(type.searchTerms) && type.searchTerms.every(term => typeof term === 'string'))) &&
+  (type.custom === undefined || typeof type.custom === 'boolean');
 const validCatalog = (path, data) => path === '/api/regions' ?
   Array.isArray(data.states) && data.states.every(named) && Array.isArray(data.metros) && data.metros.every(entry => named(entry) &&
     (entry.shortLabel === undefined || typeof entry.shortLabel === 'string') && Array.isArray(entry.stateIds) && entry.stateIds.every(id => typeof id === 'string') && (entry.suggestedTimeZone == null || typeof entry.suggestedTimeZone === 'string')) :
-  Array.isArray(data.categories) && data.categories.every(entry => named(entry) && Array.isArray(entry.itemTypes) && entry.itemTypes.every(named)) &&
+  Array.isArray(data.categories) && data.categories.every(entry => named(entry) && Array.isArray(entry.itemTypes) && entry.itemTypes.every(namedType)) &&
   Array.isArray(data.conditions) && data.conditions.every(named);
 
 export default function usePublicCatalog(path) {

@@ -1,3 +1,4 @@
+const { selectItemType } = require('./item-type.cjs');
 const { randomUUID } = require('node:crypto');
 const AxeBuilder = require('@axe-core/playwright').default;
 const { test: base, expect } = require('./fixtures.cjs');
@@ -40,7 +41,7 @@ test('giver publishes a draft, distinguishes reservations and handoffs, and reco
     page.on('request', request => { const url = new URL(request.url()); if (url.pathname === root && request.method() === 'POST') creations++; if (url.pathname.startsWith(root + '/') && request.method() === 'PATCH') patches++; });
     await page.getByRole('button', { name: 'Publish', exact: true }).click(); await expect(page.getByLabel('Item name', { exact: true })).toBeFocused();
     await page.getByLabel('Item name', { exact: true }).fill('Local chair');
-    await page.getByRole('button', { name: 'Publish', exact: true }).click(); await expect(page.getByLabel('Category', { exact: true })).toBeFocused();
+    await page.getByRole('button', { name: 'Publish', exact: true }).click(); await expect(page.getByLabel('Item type', { exact: true })).toBeFocused();
     await audit('Publication errors'); expect(creations).toBe(0);
     await page.getByRole('button', { name: 'Save Draft', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Local chair', exact: true })).toBeVisible(); expect(creations).toBe(1);
@@ -48,7 +49,7 @@ test('giver publishes a draft, distinguishes reservations and handoffs, and reco
     await expect(page.getByRole('button', { name: 'Use plan availability', exact: true })).toHaveCount(0);
     await expect(page.getByLabel('Available until (optional)', { exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Edit Local chair', exact: true }).click();
-    await page.getByLabel('Category', { exact: true }).selectOption('office-lighting'); await page.getByLabel('Item type', { exact: true }).selectOption('office-chair');
+    await selectItemType(page, 'office-chair');
     await page.getByLabel('Description', { exact: true }).fill('Local chair with a detailed description. '.repeat(15));
     await page.getByLabel('Condition (optional)', { exact: true }).selectOption('good');
     await page.getByRole('button', { name: 'Publish', exact: true }).evaluate(node => { node.click(); node.click(); });

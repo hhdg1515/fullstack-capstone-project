@@ -18,4 +18,35 @@ describe('household classification catalog', function () {
         }
         assert.equal(previous.category, 'Legacy Furniture');
     });
+    it('adds common goods and category-specific fallbacks without reassigning any existing type ID', function () {
+        const original = {
+            'living-room': ['sofa', 'loveseat', 'coffee-table', 'tv-stand', 'bookshelf'],
+            bedroom: ['bed-frame', 'mattress', 'dresser', 'nightstand'],
+            'dining-kitchen': ['dining-table', 'dining-chair', 'bar-stool', 'kitchenware', 'small-appliance'],
+            'office-lighting': ['desk', 'office-chair', 'desk-lamp', 'floor-lamp'],
+            'storage-organization': ['cabinet', 'shelving', 'clothes-rack', 'hangers', 'storage-container'],
+            'other-household': ['plant', 'home-decor', 'books', 'childrens-items', 'other']
+        };
+        for (const group of taxonomy.categories) {
+            for (const id of original[group.id]) assert.ok(group.itemTypes.some(row => row.id === id));
+            assert.equal(group.itemTypes.filter(row => row.custom).length, 1);
+        }
+        const all = taxonomy.categories.flatMap(group => group.itemTypes);
+        for (const id of ['television', 'monitor', 'rug', 'curtains', 'bicycle', 'fan', 'heater', 'vacuum-cleaner', 'bedding']) assert.ok(all.some(row => row.id === id));
+        for (const row of all) { assert.match(row.id, /^[a-z][a-z-]+$/); assert.ok(Array.isArray(row.searchTerms)); }
+    });
+    it('bounds and normalizes explicit Other text, rejects non-text and markup, and never invents a canonical ID', function () {
+        const other = { categoryId: 'other-household', itemTypeId: 'other' };
+        assert.equal(classificationChanges(other, { customItemType: '  Sewing   machine  ' }).customItemType, 'Sewing machine');
+        for (const customItemType of [{ $ne: '' }, [], 1, true, '<img>', 'x'.repeat(61), 'bad\ntext', 'bad\u202etext', 'owner@example.test']) {
+            assert.throws(() => classificationChanges(other, { customItemType }), error => error.code === 'INVALID_CLASSIFICATION');
+        }
+        assert.throws(() => classificationChanges({ categoryId: 'living-room', itemTypeId: 'sofa' }, { customItemType: 'Different type' }));
+        assert.equal(classificationChanges(other, { customItemType: null }).customItemType, null);
+        assert.deepEqual(classificationChanges(Object.assign({}, other, { customItemType: 'Custom' }), { name: 'Renamed' }), {});
+        assert.equal(classificationChanges(Object.assign({}, other, { customItemType: 'Custom' }), { categoryId: 'bedroom', itemTypeId: 'bedding' }).customItemType, null);
+        assert.equal(classificationResponse(Object.assign({}, other, { customItemType: '<private>' })).customItemType, undefined);
+        assert.equal(classificationResponse(Object.assign({}, other, { customItemType: 'Sewing machine' })).itemType.id, 'other');
+    });
+
 });

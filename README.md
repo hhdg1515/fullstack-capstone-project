@@ -848,3 +848,7 @@ controls. Real uploads run only through the existing verified disposable local
 MongoDB + SeaweedFS pipeline injection. No new frontend flag enables production
 uploads, creates indexes or selects a remote provider. The normal local/CI suites
 include the new native/frontend/HTTPS photo cases and existing lifecycle tests.
+
+Owner item classification uses a searchable type selector with automatic category
+assignment. See [classification UX and compatibility](docs/item-classification-ux.md)
+for the additive catalog, Other/custom validation and local visual evidence.

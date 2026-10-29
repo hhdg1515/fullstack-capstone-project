@@ -92,14 +92,14 @@ item types and four optional conditions. IDs are stable slugs; display labels an
 a small explicit search-term list live in backend `data/item-taxonomy.json`.
 Category and type are optional on drafts and historical posts; 6.4B requires
 complete classification/description on explicit publication. Other Household
-→ Other is the explicit fallback. Condition is independently optional: Like New,
+→ Other is the original global fallback. The additive [classification UX update](item-classification-ux.md) expands types, adds category-specific Other options and optional bounded custom labels without changing existing IDs. Condition is independently optional: Like New,
 Good, Fair, or For Parts / Repair. Name-only draft creation remains supported.
 
 Native items may store `categoryId`, `itemTypeId` and `condition`. The old
 `category` string is retained unchanged, including unmapped legacy values. The
 new form never sends an edit to that string and displays it on legacy records.
 Older API clients may still use the original bounded category field; this adds
-no new free-form tags. The server checks the full resulting category/type tuple
+no new free-form tags. The classification UX follow-up adds only an optional, validated public `customItemType` description for controlled Other types. The server checks the full resulting category/type tuple
 inside the existing item transaction on partial edits; changing category must
 clear or replace an incompatible type. Public/private item DTOs add a
 `classification` with ID/label pairs, never private account or pickup details.

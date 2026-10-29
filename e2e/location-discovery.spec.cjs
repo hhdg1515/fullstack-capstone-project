@@ -1,3 +1,4 @@
+const { selectItemType } = require('./item-type.cjs');
 const { randomUUID } = require('node:crypto');
 const AxeBuilder = require('@axe-core/playwright').default;
 const { test: base, expect } = require('./fixtures.cjs');
@@ -32,7 +33,7 @@ test('regional discovery, structured items, counts and ownership work without ch
     await a.getByRole('button', { name: 'Create plan', exact: true }).click(); await expect(a.getByRole('link', { name: 'Manage items', exact: true })).toBeVisible();
     const planId = a.url().split('/').pop(); await a.getByRole('link', { name: 'Manage items', exact: true }).click();
     await a.getByLabel('Item name', { exact: true }).fill('Comfortable seat');
-    await a.getByLabel('Category', { exact: true }).selectOption('living-room'); await a.getByLabel('Item type', { exact: true }).selectOption('sofa');
+    await selectItemType(a, 'sofa');
     await a.getByLabel('Description', { exact: true }).fill('A comfortable local sofa.');
     await a.getByLabel('Condition (optional)', { exact: true }).selectOption('good');
     await a.getByRole('button', { name: 'Publish', exact: true }).click();

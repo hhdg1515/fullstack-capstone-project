@@ -50,3 +50,14 @@
 .ui-page .inventory-card .inventory-form { border: 0; padding: 0; max-width: none; margin-block: var(--ui-space-3); }
 .inventory-form .item-photos { margin-block: var(--ui-space-4); }
 .inventory-card-photos { max-width: 42rem; }
+
+.item-type-selector { min-width: 0; }
+.item-type-input { display: flex; gap: var(--ui-space-2); align-items: center; }
+.item-type-input input { min-width: 0; flex: 1; }
+.item-type-category { display: block; color: var(--ui-muted); margin-top: var(--ui-space-2); }
+.item-type-options { list-style: none; padding: 0; margin: var(--ui-space-2) 0 0; max-height: 15rem; overflow-y: auto; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-control); }
+.item-type-options li { padding: var(--ui-space-3); min-height: 44px; cursor: pointer; display: flex; flex-direction: column; overflow-wrap: anywhere; }
+.item-type-options li small { color: var(--ui-muted); }
+.item-type-options li:hover, .item-type-options li.is-active { background: var(--ui-subtle); outline: 2px solid var(--ui-focus); outline-offset: -2px; }
+.item-type-options li[aria-selected="true"] > span { font-weight: 700; }
+.item-type-empty { margin-block: var(--ui-space-2); }

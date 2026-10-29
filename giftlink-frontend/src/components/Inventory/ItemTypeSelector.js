@@ -1,0 +1,49 @@
+import React, { useEffect, useId, useRef, useState } from 'react';
+
+// Editable listbox: only choosing a catalog entry assigns canonical IDs.
+export default function ItemTypeSelector({ categories = [], categoryId, itemTypeId, onChange, onSearch, disabled, fieldProps }) {
+  const listId = useId(); const input = useRef();
+  const entries = categories.flatMap(category => category.itemTypes.map(type => ({ ...type, category })));
+  const selected = entries.find(type => type.id === itemTypeId && type.category.id === categoryId);
+  const [query, setQuery] = useState(null), [open, setOpen] = useState(false), [active, setActive] = useState(-1);
+  const search = (query || '').trim().toLocaleLowerCase();
+  const matches = entries.filter(type => [type.label, type.category.label, ...(type.searchTerms || [])].some(term => term.toLocaleLowerCase().includes(search)));
+  // Keep the global fallback easy to find, even when a search has no matches.
+  const fallback = entries.find(type => type.id === 'other');
+  const options = search && fallback && !matches.includes(fallback) ? [...matches, fallback] : matches;
+  useEffect(() => { if (open && active >= 0) document.getElementById(`${listId}-${active}`)?.scrollIntoView?.({ block: 'nearest' }); }, [active, open, listId]);
+  const choose = type => {
+    if (disabled) return;
+    onChange(type.category.id, type.id); onSearch(''); input.current?.focus(); setQuery(null); setOpen(false); setActive(-1);
+  };
+  const category = categories.find(row => row.id === categoryId);
+  return <div className="ui-field item-type-selector" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) { setOpen(false); setActive(-1); } }}>
+    <label htmlFor="item-type">Item type</label>
+    <div className="item-type-input">
+      <input id="item-type" ref={input} role="combobox" aria-autocomplete="list" aria-expanded={open && !disabled}
+        aria-controls={open && !disabled ? listId : undefined} aria-activedescendant={open && active >= 0 && options[active] ? `${listId}-${active}` : undefined}
+        autoComplete="off" maxLength={100} disabled={disabled} placeholder="Search item types" value={query === null ? selected?.label || '' : query}
+        {...fieldProps} onFocus={() => { setOpen(true); setActive(-1); }}
+        onChange={event => { setQuery(event.target.value); onSearch(event.target.value); setOpen(true); setActive(-1); if (categoryId || itemTypeId) onChange('', ''); }}
+        onKeyDown={event => {
+          if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
+            event.preventDefault(); setOpen(true);
+            setActive(index => event.key === 'ArrowDown' ? Math.min(index + 1, options.length - 1) : index < 0 ? options.length - 1 : Math.max(index - 1, 0));
+          } else if (open && ['Home', 'End'].includes(event.key)) { event.preventDefault(); setActive(event.key === 'Home' ? 0 : options.length - 1); }
+          else if (event.key === 'Enter' && open) { event.preventDefault(); if (options[active]) choose(options[active]); }
+          else if (event.key === 'Escape' && open) { event.preventDefault(); event.stopPropagation(); setOpen(false); setActive(-1); }
+        }} />
+      {(selected || query || categoryId) && <button type="button" className="ui-button ui-button--secondary" disabled={disabled} aria-label="Clear item type" onClick={() => { onChange('', ''); onSearch(''); setQuery(''); setActive(-1); input.current?.focus(); setOpen(true); }}>Clear</button>}
+    </div>
+    {category && <small className="item-type-category">{category.label}</small>}
+    {open && !disabled && <>
+      {search && matches.length === 0 && <p role="status" className="item-type-empty">No matching types. Choose Other.</p>}
+      <ul id={listId} role="listbox" aria-label="Item types" className="item-type-options">
+        {options.map((type, index) => <li key={type.id} id={`${listId}-${index}`} role="option" aria-selected={type.id === itemTypeId}
+          className={active === index ? 'is-active' : ''} onMouseDown={event => event.preventDefault()} onClick={() => choose(type)}>
+          <span>{type.label}</span><small>{type.category.label}</small>
+        </li>)}
+      </ul>
+    </>}
+  </div>;
+}

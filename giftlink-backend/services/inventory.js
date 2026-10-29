@@ -30,7 +30,7 @@ function validatePublication(item) {
     if (fields.length) throw new InventoryError(400, 'PUBLICATION_DETAILS_REQUIRED', 'Complete the highlighted details before publishing. You can save a draft with just a name.', { fields });
 }
 function listingPolicy(item) {
-    const text = item.name + '\n' + item.description + '\n' + item.category;
+    const text = item.name + '\n' + item.description + '\n' + item.category + '\n' + (item.customItemType || '');
     if (/\b(firearms?|ammunition|explosives?|heroin|cocaine|fentanyl)\b/i.test(text) || /[^\s@]+@[^\s@]+\.[^\s@]+/.test(text)) {
         throw new InventoryError(400, 'LISTING_POLICY', 'Offer safe, lawful household goods and remove email/contact details before publishing. Restricted goods cannot be listed.');
     }

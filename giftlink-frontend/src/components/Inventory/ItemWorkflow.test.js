@@ -1,3 +1,4 @@
+import { selectItemType } from '../../test-support/selectItemType';
 jest.mock('../../api/photoPreparation', () => ({ ...jest.requireActual('../../api/photoPreparation'), preparePhoto: jest.fn(async file => file) }));
 jest.mock('../../context/AuthContext', () => {
   const React = require('react'); const Context = React.createContext();
@@ -176,7 +177,8 @@ test('a public item uses one explicit labeled save for the entire batch without 
 test('publication remains successful after partial upload failure; status review and continuation do not republish', async () => {
   const send = uploadPhoto.getMockImplementation(); uploadPhoto.mockImplementationOnce(send).mockImplementationOnce(async (...args) => { await send(...args); throw photoError({ status: 0 }, true); });
   mount(); await stage(3);
-  for (const [label, value] of [['Category', 'living-room'], ['Item type', 'sofa'], ['Description', 'Synthetic household chair.']]) fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  selectItemType('sofa');
+  fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Synthetic household chair.' } });
   await save(3, 'Publish'); await screen.findByText('Upload not confirmed. Check status.');
   expect(screen.getByText('Item published.')).toBeVisible(); expect(items[0].status).toBe('available'); expect(screen.getByAltText('Uploaded photo 1')).toBeVisible();
   expect(screen.getAllByAltText(/Local preview/)).toHaveLength(2); expect(uploadPhoto).toHaveBeenCalledTimes(2);
