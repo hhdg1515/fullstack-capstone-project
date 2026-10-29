@@ -36,3 +36,5 @@
 .item-photo-delete-dialog::backdrop { background: rgb(0 0 0 / 45%); }
 .item-photo-delete-dialog h2 { font-size: var(--ui-text-section); }
 .item-photo-delete-actions { display: flex; gap: var(--ui-space-3); flex-wrap: wrap; }
+
+.item-photo-cover--unavailable { position: static; display: inline-block; }

@@ -148,6 +148,15 @@ test('upload races, expired sessions and nonparticipant denials never cross item
 test('logical deletion leaves quota held until receipt-verified physical cleanup and history remains truthful', async ({ browser, deployment }, info) => {
   const s = await scene(browser, deployment, info, 1); const { page, panel, context } = s;
   try {
+    // Real browser network failure: a cover badge must not obscure its fallback text.
+    await page.route('**/api/item-images/' + s.photos[0] + '/thumbnail', route => route.abort());
+    await page.reload(); await s.card.getByRole('button', { name: 'Edit ' + s.item.name, exact: true }).click();
+    await panel.scrollIntoViewIfNeeded();
+    const unavailable = panel.getByText('Photo unavailable. Refresh to check again.', { exact: true });
+    await expect(unavailable).toBeVisible();
+    const textBounds = await unavailable.boundingBox(), coverBounds = await panel.getByText('Cover', { exact: true }).boundingBox();
+    expect(coverBounds.y).toBeGreaterThanOrEqual(textBounds.y + textBounds.height);
+    await evidence(page, info, 'thumbnail-unavailable'); await audit(page, 'thumbnail-failure');
     const before = (await deployment.db.collection('users').findOne({ 'itemImageQuota.operationCount': 1 })).itemImageQuota;
     await deleted(panel, 1); await expect(s.card.getByAltText('Uploaded photo 1', { exact: true })).toHaveCount(0);
     await expect(panel.getByText('Photo deleted. Cleanup pending.')).toBeVisible();

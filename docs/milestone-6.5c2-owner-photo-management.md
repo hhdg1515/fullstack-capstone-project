@@ -116,6 +116,7 @@ interaction, reflow and axe checks use normal 320px/375px/desktop viewports.
 | Ordinary photo deleted | [Deleted](verification/m65c2/desktop-ordinary-deleted.png) | [Deleted](verification/m65c2/mobile-ordinary-deleted.png) |
 | Cover delete confirmation | [Confirmation](verification/m65c2/desktop-delete-confirmation.png) | [Confirmation](verification/m65c2/mobile-delete-confirmation.png) |
 | Cover fallback after delete | [Fallback](verification/m65c2/desktop-cover-deleted.png) | [Fallback](verification/m65c2/mobile-cover-deleted.png) |
+| Thumbnail load failure | [Unavailable](verification/m65c2/desktop-thumbnail-unavailable.png) | [Unavailable](verification/m65c2/mobile-thumbnail-unavailable.png) |
 | Uncertain response with drafts | [Recovery](verification/m65c2/desktop-uncertain.png) | [Recovery](verification/m65c2/mobile-uncertain.png) |
 
 ## Verification and limits

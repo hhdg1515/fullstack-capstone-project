@@ -37,7 +37,7 @@ export function ReadyPhoto({ image, position, cover = false, managing = false, c
       <img src={photoUrl(image.id)} crossOrigin="use-credentials" alt={(managing ? 'Saved photo ' : 'Uploaded photo ') + (position + 1)} width={image.thumbnail.width} height={image.thumbnail.height}
         onError={() => setFailed(true)} loading="lazy" />}
     <span className="visually-hidden">Photo {position + 1} uploaded.</span>
-    {cover && <span className="item-photo-cover">Cover</span>}
+    {cover && <span className={'item-photo-cover' + (failed ? ' item-photo-cover--unavailable' : '')}>Cover</span>}
     {children}
   </li>;
 }
