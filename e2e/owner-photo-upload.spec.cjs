@@ -1,3 +1,4 @@
+const { selectItemType } = require('./item-type.cjs');
 const { randomUUID, randomBytes, createHash } = require('node:crypto');
 const fs = require('node:fs'); const path = require('node:path');
 const AxeBuilder = require('@axe-core/playwright').default;
@@ -234,9 +235,8 @@ test('public partial success and accessible navigation preserve the single submi
       if (request.method() === 'PUT' && pathname.endsWith('/content')) contents++;
     });
     await page.goto('/app/plans/' + plan.id + '/items'); await page.getByLabel('Item name', { exact: true }).fill('Published synthetic chair');
-    for (const [label, value] of [['Category', 'office-lighting'], ['Item type', 'office-chair'], ['Description', 'Synthetic household chair for local testing.']]) {
-      const field = page.getByLabel(label, { exact: true }); if (label === 'Description') await field.fill(value); else await field.selectOption(value);
-    }
+    await selectItemType(page, 'office-chair');
+    await page.getByLabel('Description', { exact: true }).fill('Synthetic household chair for local testing.');
     const bytes = await sharp({ create: { width: 500, height: 400, channels: 3, background: '#387ab2' } }).png().toBuffer();
     const file = { name: 'synthetic.png', mimeType: 'image/png', buffer: bytes };
     const picker = page.getByLabel('Choose photos'); await picker.setInputFiles([file, file, file]);

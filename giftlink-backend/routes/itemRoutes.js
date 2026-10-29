@@ -16,7 +16,7 @@ function itemRules(editing) {
         body(['availableFrom', 'availableUntil']).optional({ nullable: true }).custom(isCalendarDate).withMessage('Use a valid YYYY-MM-DD calendar date')];
     if (editing) rules.push(body('version').isInt({ min: 1 }).custom(value => typeof value === 'number'), body('confirmCancelRequests').optional().custom(value => typeof value === 'boolean'));
     rules.push(body('publish').optional().isBoolean().custom(value => typeof value === 'boolean'));
-    return validate(['name', 'description', 'category', 'categoryId', 'itemTypeId', 'condition', 'availableFrom', 'availableUntil', 'publish'].concat(editing ? ['version', 'confirmCancelRequests'] : []), rules, editing);
+    return validate(['name', 'description', 'category', 'categoryId', 'itemTypeId', 'customItemType', 'condition', 'availableFrom', 'availableUntil', 'publish'].concat(editing ? ['version', 'confirmCancelRequests'] : []), rules, editing);
 }
 function createItemRoutes({ connectToDatabase, auth, discoveryLimit = 120, imageMetadata = null, imageControlLimit = 20, pipeline = null }) {
     const service = createInventoryService({ connectToDatabase, imageMetadata, imageRead: Boolean(imageMetadata && pipeline) });

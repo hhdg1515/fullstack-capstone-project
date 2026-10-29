@@ -70,6 +70,30 @@ describe('transactional plan inventory on verified isolated MongoDB', function (
         const catalog = await request(app).get('/api/item-taxonomy').expect(200);
         assert.equal(catalog.body.categories.length, 6);
     });
+    it('publishes and edits common and Other types with safe additive custom metadata, retaining legacy values', async function () {
+        const groups = require('../data/item-taxonomy.json').categories;
+        for (const id of ['television', 'monitor', 'rug', 'curtains', 'bicycle', 'fan', 'heater', 'vacuum-cleaner', 'bedding']) {
+            const group = groups.find(row => row.itemTypes.some(type => type.id === id));
+            const result = await create({ categoryId: group.id, itemTypeId: id, description: 'Household item.', publish: true }).expect(201);
+            assert.equal(result.body.item.classification.itemType.id, id);
+        }
+        const original = (await create({ category: 'Legacy Craft', categoryId: 'other-household', itemTypeId: 'other', customItemType: '  Sewing   machine  ', description: 'Useful equipment.', publish: true }).expect(201)).body.item;
+        assert.equal(original.classification.customItemType, 'Sewing machine');
+        assert.equal((await publicGet(original).expect(200)).body.item.classification.customItemType, 'Sewing machine');
+        const unchanged = (await edit(original, { name: 'Renamed equipment' }).expect(200)).body.item;
+        assert.equal(unchanged.classification.customItemType, 'Sewing machine'); assert.equal(unchanged.category, 'Legacy Craft');
+        const before = await db.collection('items').findOne({ _id: new ObjectId(original.id) });
+        for (const customItemType of [{ $ne: null }, '<script>', 'x'.repeat(61), 'bad\u0000text', 'private@example.test']) {
+            await edit(unchanged, { customItemType }).expect(400);
+            assert.deepEqual(await db.collection('items').findOne({ _id: before._id }), before);
+        }
+        await edit(unchanged, { customItemType: 'Changed' }, plan, other).expect(404);
+        const changed = (await edit(unchanged, { categoryId: 'living-room', itemTypeId: 'television' }).expect(200)).body.item;
+        assert.equal(changed.classification.customItemType, undefined); assert.equal(changed.category, 'Legacy Craft');
+        await create({ categoryId: 'other-household', itemTypeId: 'other', customItemType: 'Firearm', description: 'Household item.', publish: true }).expect(400);
+        const oldOther = (await create({ categoryId: 'other-household', itemTypeId: 'other', description: 'Existing fallback.', publish: true }).expect(201)).body.item;
+        assert.equal(oldOther.classification.customItemType, undefined);
+    });
     it('adds multiple free-text/grouped items as private drafts without copying plan information', async function () {
         for (const name of ['Box of kitchen supplies', 'Three identical chairs', 'Miscellaneous craft supplies']) await create({ name }).expect(201);
         const response = await list().expect(200);

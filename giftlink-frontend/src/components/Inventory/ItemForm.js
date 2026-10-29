@@ -4,6 +4,7 @@ import { useUnsavedForm } from '../../forms/UnsavedChanges';
 import useFormErrors from '../../forms/useFormErrors';
 import usePublicCatalog from '../../api/usePublicCatalog';
 import { Feedback, Surface } from '../../design-system/primitives';
+import ItemTypeSelector from './ItemTypeSelector';
 import { ownerStatus } from './inventoryStatus';
 
 export function availabilityIssues(values, plan, publishing = false, previous) {
@@ -26,8 +27,7 @@ export function availabilityError(values, plan, publishing = false) {
 }
 export function publicationIssues(values) {
   const issues = {};
-  if (!values.categoryId) issues.categoryId = 'Choose a category before publishing.';
-  if (!values.itemTypeId) issues.itemTypeId = 'Choose an item type in this category before publishing.';
+  if (!values.itemTypeId) issues.itemTypeId = 'Choose an item type before publishing.';
   if (!values.description.trim()) issues.description = 'Describe the item before publishing.';
   return issues;
 }
@@ -37,11 +37,12 @@ export default forwardRef(function ItemForm({ plan, item, onSave, onCancel, disa
   useEffect(() => { if (!textHidden && (item?.id || focusName)) nameInput.current?.focus(); }, [item?.id, focusName, textHidden]);
   const catalog = usePublicCatalog('/api/item-taxonomy');
   const initial = { name: item?.name || '', description: item?.description || '', categoryId: item?.classification?.category?.id || '',
-    itemTypeId: item?.classification?.itemType?.id || '', condition: item?.classification?.condition?.id || '',
+    itemTypeId: item?.classification?.itemType?.id || '', customItemType: item?.classification?.customItemType || '', condition: item?.classification?.condition?.id || '',
     availableFrom: item?.availableFrom || '', availableUntil: item?.availableUntil || '' };
   const [values, setValues] = useState(initial);
   const [busy, setBusy] = useState(false);
-  const guard = useUnsavedForm(values, initial);
+  const [typeSearch, setTypeSearch] = useState('');
+  const guard = useUnsavedForm({ ...values, typeSearch }, { ...initial, typeSearch: '' });
   useImperativeHandle(ref, () => ({ confirmDiscard: guard.confirmDiscard, dirty: guard.dirty }));
   const validation = useFormErrors(busy);
   const { errors, error } = validation;
@@ -51,6 +52,10 @@ export default forwardRef(function ItemForm({ plan, item, onSave, onCancel, disa
     setValues(current => ({ ...current, [name]: value, ...(name === 'categoryId' ? { itemTypeId: '' } : {}) }));
     validation.clear(name); if (name === 'categoryId') validation.clear('itemTypeId');
   };
+  const chooseType = (categoryId, itemTypeId) => {
+    setValues(current => ({ ...current, categoryId, itemTypeId, customItemType: '' }));
+    validation.clear('categoryId'); validation.clear('itemTypeId'); validation.clear('customItemType');
+  };
   const submit = async publishing => {
     if (inFlight.current || busy || disabled) return;
     const details = { ...values, name: values.name.trim(), description: values.description.trim(),
@@ -59,6 +64,10 @@ export default forwardRef(function ItemForm({ plan, item, onSave, onCancel, disa
     for (const [field, maximum] of [['name', 160], ['description', 2000]]) {
       if ((field === 'name' && !details.name) || Array.from(details[field]).length > maximum) issues[field] = field === 'name' ? 'Give this item or group a name of 1–160 characters.' : 'Use at most 2,000 characters.';
     }
+    if (typeSearch.trim() && !details.itemTypeId) issues.itemTypeId = 'Choose a listed type or Other, or clear the search to save without a type.';
+    // eslint-disable-next-line no-control-regex -- Reject controls rather than allowing hidden classification text.
+    if (details.customItemType && (Array.from(details.customItemType.trim()).length > 60 || /[<>\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(details.customItemType) || /[^\s@]+@[^\s@]+\.[^\s@]+/.test(details.customItemType))) issues.customItemType = 'Use up to 60 plain-text characters without contact details.';
+    details.customItemType = details.customItemType.trim().replace(/\s+/g, ' ') || null;
     if (publishing || (item?.status === 'available' && item.requiresPublicationDetails)) Object.assign(issues, publicationIssues(details));
     if (Object.keys(issues).length) { validation.show(issues); return; }
     if (item?.status === 'available' && !photoCount && !window.confirm('Save changes to this public listing?')) return;
@@ -66,12 +75,12 @@ export default forwardRef(function ItemForm({ plan, item, onSave, onCancel, disa
     try {
       await onSave({ ...details, availableFrom: details.availableFrom || null, availableUntil: details.availableUntil || null }, publishing, guard.markSaved);
       guard.markSaved();
-    } catch (failure) { if (alive.current && !failure.handledByInventory) validation.failure(failure, ['name', 'description', 'categoryId', 'itemTypeId', 'condition', 'availableFrom', 'availableUntil']); }
+    } catch (failure) { if (alive.current && !failure.handledByInventory) validation.failure(failure, ['name', 'description', 'categoryId', 'itemTypeId', 'customItemType', 'condition', 'availableFrom', 'availableUntil'], { categoryId: 'itemTypeId' }); }
     finally { inFlight.current = false; if (alive.current) setBusy(false); }
   };
   return <Surface as="form" ref={validation.formRef} className="inventory-form" onSubmit={event => { event.preventDefault(); submit(false); }} noValidate aria-busy={busy}>
     <div hidden={textHidden}><div className="inventory-card-heading"><h2>{item ? 'Edit ' + item.name : 'Add an item or group'}</h2>{item && <span className="ui-status">{ownerStatus(item)}</span>}</div>
-    <p className="inventory-form-help">To publish, add a name, category, item type and description. Save a draft with just a name.</p>
+    <p className="inventory-form-help">To publish, add a name, item type and description. Save a draft with just a name.</p>
     <fieldset disabled={busy || disabled}>
       <legend className="visually-hidden">Item details</legend>
       <div className="ui-field"><label htmlFor="item-name">Item name</label>
@@ -82,14 +91,16 @@ export default forwardRef(function ItemForm({ plan, item, onSave, onCancel, disa
       {catalog.error && <Feedback error>Item types are unavailable. <button type="button" className="ui-button ui-button--secondary" onClick={catalog.retry}>Retry item types</button></Feedback>}
       {item?.category && <p>Existing category: {item.category}. It will be preserved.</p>}
       <div className="inventory-classification">
-      <div className="ui-field"><label htmlFor="item-category">Category</label>
-        <select id="item-category" name="categoryId" value={values.categoryId} onChange={change} disabled={catalog.loading || Boolean(catalog.error)} {...validation.fieldProps('categoryId')}>
-          <option value="">Choose a category</option>{catalog.data?.categories?.map(entry => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
-        </select>{errors.categoryId && <p id="categoryId-error" className="ui-field-error">{errors.categoryId}</p>}</div>
-      <div className="ui-field"><label htmlFor="item-type">Item type</label>
-        <select id="item-type" name="itemTypeId" value={values.itemTypeId} onChange={change} disabled={!values.categoryId || catalog.loading || Boolean(catalog.error)} {...validation.fieldProps('itemTypeId')}>
-          <option value="">Choose an item type</option>{catalog.data?.categories?.find(entry => entry.id === values.categoryId)?.itemTypes.map(entry => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
-        </select>{errors.itemTypeId && <p id="itemTypeId-error" className="ui-field-error">{errors.itemTypeId}</p>}</div>
+      <div>
+        <ItemTypeSelector categories={catalog.data?.categories} categoryId={values.categoryId} itemTypeId={values.itemTypeId} onChange={chooseType} onSearch={setTypeSearch}
+          disabled={busy || disabled || catalog.loading || Boolean(catalog.error)} fieldProps={validation.fieldProps('itemTypeId')} />
+        {errors.itemTypeId && <p id="itemTypeId-error" className="ui-field-error">{errors.itemTypeId}</p>}
+        {catalog.data?.categories?.find(entry => entry.id === values.categoryId)?.itemTypes.find(entry => entry.id === values.itemTypeId)?.custom &&
+          <div className="ui-field"><label htmlFor="item-custom-type">Custom type (optional)</label>
+            <input id="item-custom-type" name="customItemType" maxLength={60} value={values.customItemType} onChange={change} placeholder="e.g. Sewing machine" {...validation.fieldProps('customItemType')} />
+            {errors.customItemType && <p id="customItemType-error" className="ui-field-error">{errors.customItemType}</p>}
+          </div>}
+      </div>
       <div className="ui-field"><label htmlFor="item-condition">Condition (optional)</label>
         <select id="item-condition" name="condition" value={values.condition} onChange={change} disabled={catalog.loading || Boolean(catalog.error)} {...validation.fieldProps('condition')}>
           <option value="">Not specified</option>{catalog.data?.conditions?.map(entry => <option key={entry.id} value={entry.id}>{entry.label}</option>)}

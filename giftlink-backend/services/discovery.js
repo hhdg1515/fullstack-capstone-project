@@ -68,7 +68,7 @@ function readCursor(token, query, now) {
     if (now.getTime() - value.at > cursorLifetime || todayUTC(new Date(value.at)) !== todayUTC(now)) throw staleCursor();
     return value;
 }
-const projection = { name: 1, description: 1, category: 1, categoryId: 1, itemTypeId: 1, condition: 1, status: 1, availableFrom: 1, availableUntil: 1,
+const projection = { name: 1, description: 1, category: 1, categoryId: 1, itemTypeId: 1, customItemType: 1, condition: 1, status: 1, availableFrom: 1, availableUntil: 1,
     publishedAt: 1, effectiveAvailableUntil: 1, isReserved: 1, ownerId: 1, 'plan.stateId': 1, 'plan.metroId': 1, 'plan.city': 1, 'plan.neighborhood': 1, 'plan.moveOutDeadline': 1, 'plan.pickupTimeZone': 1 };
 function publicItem(row, today, viewerId) {
     return Object.assign({ id: row._id.toString(), name: row.name, description: row.description, category: row.category, classification: classificationResponse(row),
@@ -109,7 +109,7 @@ function textMatch(q) {
     const term = normalizeLabel(q).toLowerCase();
     const matched = taxonomy.categories.flatMap(category => category.itemTypes).filter(type => type.searchTerms.includes(term) || type.label.toLowerCase() === term);
     const alternatives = Array.from(new Set([q].concat(...matched.map(type => type.searchTerms))));
-    const clauses = ['name', 'description', 'category'].map(field => ({ [field]: { $regex: '(*UCP)(?:' + alternatives.map(phrase).join('|') + ')', $options: 'i' } }));
+    const clauses = ['name', 'description', 'category', 'customItemType'].map(field => ({ [field]: { $regex: '(*UCP)(?:' + alternatives.map(phrase).join('|') + ')', $options: 'i' } }));
     if (matched.length) clauses.push({ itemTypeId: { $in: matched.map(type => type.id) } });
     const groups = taxonomy.categories.filter(category => category.label.toLowerCase() === term);
     if (groups.length) clauses.push({ categoryId: { $in: groups.map(category => category.id) } });

@@ -4,7 +4,7 @@ import { Surface } from '../../design-system/primitives';
 import { formatDeadline } from '../MoveOutPlans/dates';
 
 export default function PublicItemCard({ item, search, stateCode }) {
-  const type = item.classification?.itemType?.label;
+  const type = item.classification?.customItemType || item.classification?.itemType?.label;
   const category = item.classification?.category?.label || item.category;
   const condition = item.classification?.condition?.label;
   return <Surface as="li" className="discovery-listing">

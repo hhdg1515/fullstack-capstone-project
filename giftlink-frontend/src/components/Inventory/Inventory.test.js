@@ -1,3 +1,4 @@
+import { selectItemType } from '../../test-support/selectItemType';
 jest.mock('../../api/usePublicCatalog', () => ({ __esModule: true, default: path => ({ data: require('../../test-support/catalogs')[path === '/api/regions' ? 'regions' : 'taxonomy'] }) }));
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -50,7 +51,7 @@ test('inventory loads an empty plan with inherited location/deadline and a name-
   expect(screen.getByText(/No items yet/)).toBeInTheDocument();
   expect(screen.getByText('0 of 0 items cleared')).toBeInTheDocument();
   expect(screen.getByText(/Temescal, Oakland/)).toBeInTheDocument();
-  expect(screen.getByLabelText('Category')).not.toBeRequired();
+  expect(screen.getByLabelText('Item type')).not.toBeRequired();
   expect(screen.queryByLabelText('City')).not.toBeInTheDocument();
   expect(screen.queryByLabelText(/price|address|dimensions|brand/i)).not.toBeInTheDocument();
 });
@@ -99,8 +100,7 @@ test('publish entry sends explicit publication intent and does not confuse it wi
   };
   mount(); await formReady(); name(item.name);
   fireEvent.change(screen.getByLabelText('Available from (optional)'), { target: { value: date(5) } });
-  fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'living-room' } });
-  fireEvent.change(screen.getByLabelText('Item type'), { target: { value: 'sofa' } });
+  selectItemType('sofa');
   fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'A comfortable sofa.' } });
   await click(screen.getByRole('button', { name: 'Publish' }));
   expect(await screen.findByText('Item published.')).toBeInTheDocument();

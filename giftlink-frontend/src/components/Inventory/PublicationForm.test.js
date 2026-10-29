@@ -1,3 +1,4 @@
+import { selectItemType } from '../../test-support/selectItemType';
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ItemForm from './ItemForm';
@@ -6,14 +7,14 @@ const plan = { status: 'active', moveOutDeadline: '2099-01-01' };
 const change = (label, value) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
 beforeEach(() => { global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => taxonomy })); jest.spyOn(window, 'confirm').mockReturnValue(true); });
 afterEach(() => jest.restoreAllMocks());
-const ready = () => screen.findByRole('option', { name: 'Living Room' });
-const complete = () => { change('Item name', 'Sofa'); change('Category', 'living-room'); change('Item type', 'sofa'); change('Description', 'Comfortable sofa.'); };
+const ready = () => waitFor(() => expect(screen.getByLabelText('Item type')).not.toBeDisabled());
+const complete = () => { change('Item name', 'Sofa'); selectItemType('sofa'); change('Description', 'Comfortable sofa.'); };
 
 test('publication validates details and focuses the first field; drafts still need only a name', async () => {
   const save = jest.fn(); render(<ItemForm plan={plan} onSave={save} />); await ready();
   change('Item name', 'Sofa'); fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
-  expect(screen.getByLabelText('Category')).toHaveFocus(); expect(save).not.toHaveBeenCalled();
-  expect(screen.getByLabelText('Category')).toHaveAccessibleDescription('Choose a category before publishing.');
+  expect(screen.getByLabelText('Item type')).toHaveFocus(); expect(save).not.toHaveBeenCalled();
+  expect(screen.getByLabelText('Item type')).toHaveAccessibleDescription('Choose an item type before publishing.');
   fireEvent.submit(screen.getByRole('button', { name: 'Save Draft' }).closest('form'));
   await waitFor(() => expect(save).toHaveBeenCalledTimes(1)); expect(save.mock.calls[0][1]).toBe(false);
 });
@@ -32,7 +33,7 @@ test('editing an incomplete legacy post remains possible while validated posts r
   await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
   rerender(<ItemForm key="new" plan={plan} item={{ ...legacy, requiresPublicationDetails: true }} onSave={save} />); await ready();
   fireEvent.submit(screen.getByRole('button', { name: 'Save Changes' }).closest('form'));
-  expect(screen.getByLabelText('Category')).toHaveFocus(); expect(save).toHaveBeenCalledTimes(1);
+  expect(screen.getByLabelText('Item type')).toHaveFocus(); expect(save).toHaveBeenCalledTimes(1);
 });
 test('creation inherits its end without an end control or reset button; editing preserves the override', async () => {
   const { rerender } = render(<ItemForm plan={plan} onSave={jest.fn()} />); await ready();

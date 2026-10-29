@@ -78,6 +78,23 @@ describe('region-first discovery on verified disposable MongoDB', function () {
         assert.equal((await get({ q: '.*' }).expect(200)).body.total, 0);
         assert.equal((await get({ categoryId: 'bedroom', itemTypeId: 'mattress' }).expect(200)).body.total, 0);
     });
+    it('combines new type synonyms and custom Other text with exact category counts and stable pages', async function () {
+        const tvs = [item({ name: 'Screen one', itemTypeId: 'television' }), item({ name: 'Screen two', itemTypeId: 'television' })];
+        await db.collection('items').insertMany(tvs.concat([
+            item({ name: 'Equipment', categoryId: 'other-household', itemTypeId: 'other', customItemType: 'Sewing machine' }),
+            item({ name: 'Reserved screen', itemTypeId: 'television' }), item({ name: 'Private screen', itemTypeId: 'television', status: 'draft' })
+        ]));
+        const reserved = await db.collection('items').findOne({ name: 'Reserved screen' });
+        await db.collection('pickupRequests').insertOne({ itemId: reserved._id, status: 'accepted' });
+        const query = { q: 'tv', categoryId: 'living-room', itemTypeId: 'television', limit: '1' };
+        const first = (await get(query).expect(200)).body; assert.equal(first.total, 2);
+        const second = (await get(Object.assign({}, query, { cursor: first.page.nextCursor })).expect(200)).body;
+        assert.equal(second.total, 2); assert.notEqual(first.items[0].id, second.items[0].id); assert.equal(second.page.hasMore, false);
+        const other = (await get({ q: 'sewing machine', categoryId: 'other-household', itemTypeId: 'other' }).expect(200)).body;
+        assert.equal(other.total, 1); assert.equal(other.items[0].classification.customItemType, 'Sewing machine');
+        assert.equal((await get({ q: '.*', categoryId: 'other-household' }).expect(200)).body.total, 0);
+        await get({ categoryId: 'bedroom', itemTypeId: 'television' }).expect(400);
+    });
     it('counts the same eligible set as pages, excluding reservations and every unavailable lifecycle state', async function () {
         const available = item(), reserved = item();
         await db.collection('items').insertMany([available, reserved, item({ status: 'draft' }), item({ status: 'unlisted' }), item({ status: 'cleared' }),
