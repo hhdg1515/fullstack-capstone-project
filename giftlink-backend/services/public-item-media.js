@@ -1,15 +1,31 @@
 const { ObjectId } = require('mongodb');
 const { assertOperation, integer, validateImageConfig } = require('./item-image-policy');
 
+const variant = (image, name) => ({ url: '/api/item-images/' + image._id.toHexString() + '/' + name,
+    width: image.variants[name].width, height: image.variants[name].height });
+const photo = (image, detail) => Object.assign({ id: image._id.toHexString(), thumbnail: variant(image, 'thumbnail') },
+    detail ? { display: variant(image, 'display') } : {});
+const empty = (detail, availability) => Object.assign({ imageAvailability: availability }, detail ? { images: [] } : { coverImage: null });
+function mediaSummary(row, original, binding, detail = false) {
+    const fallback = empty(detail, 'unavailable');
+    try {
+        if (!row || !(row._id instanceof ObjectId) || !row._id.equals(original._id) ||
+            !(row.planId instanceof ObjectId) || !(row.ownerId instanceof ObjectId) ||
+            !row.ownerId.equals(original.ownerId) || !row.planId.equals(original.planId) ||
+            !integer(row.imageRevision === undefined ? 0 : row.imageRevision) || row.photos.length > 5) return fallback;
+        row.photos.forEach((image, position) => {
+            assertOperation(image);
+            if (!image.itemId.equals(row._id) || !image.planId.equals(row.planId) || !image.ownerId.equals(row.ownerId) || image.sortPosition !== position ||
+                image.storageBinding.fingerprint !== binding.fingerprint || image.storageBinding.namespace !== binding.namespace) throw Error('Invalid media binding');
+        });
+        return row.photos.length ? Object.assign({ imageAvailability: 'ready' }, detail ? { images: row.photos.map(image => photo(image, true)) } : { coverImage: photo(row.photos[0], false) }) : empty(detail, 'none');
+    } catch (error) { return fallback; }
+}
+
 // Optional media is a separate, bounded read after discovery pagination/counting.
 // It never reads storage or changes listing eligibility, totals or cursor values.
 function createPublicItemMedia({ connectToDatabase, configuration, visibilityPipeline, initialMatch }) {
     const binding = validateImageConfig(configuration).storageBinding;
-    const variant = (image, name) => ({ url: '/api/item-images/' + image._id.toHexString() + '/' + name,
-        width: image.variants[name].width, height: image.variants[name].height });
-    const photo = (image, detail) => Object.assign({ id: image._id.toHexString(), thumbnail: variant(image, 'thumbnail') },
-        detail ? { display: variant(image, 'display') } : {});
-    const empty = (detail, availability) => Object.assign({ imageAvailability: availability }, detail ? { images: [] } : { coverImage: null });
     return async function enrich(selected, detail, now) {
         if (!selected.length) return [];
         if (selected.length > 50 || selected.some(row => !(row._id instanceof ObjectId))) throw new Error('Invalid media page bound');
@@ -28,21 +44,10 @@ function createPublicItemMedia({ connectToDatabase, configuration, visibilityPip
                 { $project: { _id: 1, planId: 1, ownerId: 1, imageRevision: 1, photos: 1 } }
             ]), { readConcern: { level: 'snapshot' }, collation: { locale: 'simple' }, maxTimeMS: 5000, allowDiskUse: false }).toArray();
             const byId = new Map(rows.map(row => [row._id.toHexString(), row]));
-            return selected.map((original, index) => {
-                const row = byId.get(original._id.toHexString());
-                try {
-                    if (!row || !(row.planId instanceof ObjectId) || !(row.ownerId instanceof ObjectId) ||
-                        !row.ownerId.equals(original.ownerId) || !row.planId.equals(original.planId) ||
-                        !integer(row.imageRevision === undefined ? 0 : row.imageRevision) || row.photos.length > 5) return fallback[index];
-                    row.photos.forEach((image, position) => {
-                        assertOperation(image);
-                        if (!image.itemId.equals(row._id) || !image.planId.equals(row.planId) || !image.ownerId.equals(row.ownerId) || image.sortPosition !== position ||
-                            image.storageBinding.fingerprint !== binding.fingerprint || image.storageBinding.namespace !== binding.namespace) throw Error('Invalid media binding');
-                    });
-                    return row.photos.length ? Object.assign({ imageAvailability: 'ready' }, detail ? { images: row.photos.map(image => photo(image, true)) } : { coverImage: photo(row.photos[0], false) }) : empty(detail, 'none');
-                } catch (error) { return fallback[index]; }
+            return selected.map(original => {
+                return mediaSummary(byId.get(original._id.toHexString()), original, binding, detail);
             });
         } catch (error) { return fallback; } // Optional media failure must not invent an empty marketplace.
     };
 }
-module.exports = { createPublicItemMedia };
+module.exports = { createPublicItemMedia, mediaSummary };

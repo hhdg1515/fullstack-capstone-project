@@ -8,7 +8,8 @@ const conflict = (code, message) => new InventoryError(409, code, message);
 const isId = value => typeof value === 'string' && /^[a-fA-F0-9]{24}$/.test(value);
 const participant = (id, userId) => ({ _id: new ObjectId(id), $or: [{ giverId: userId }, { receiverId: userId }] });
 
-function createPickupService({ connectToDatabase, now = () => new Date() }) {
+function createPickupService({ connectToDatabase, now = () => new Date(), imageMetadata = null, imageRead = false }) {
+    const media = imageMetadata && imageRead ? require('./pickup-item-media').createPickupItemMedia({ connectToDatabase, configuration: imageMetadata }) : null;
     async function serialize(db, row, userId, session) {
         const giver = row.giverId.equals(userId);
         const options = session ? { session } : {};
@@ -92,7 +93,9 @@ function createPickupService({ connectToDatabase, now = () => new Date() }) {
         if (!isId(id)) throw missing();
         const db = await connectToDatabase(); const row = await db.collection('pickupRequests').findOne(participant(id, userId));
         if (!row) throw missing();
-        return { request: await serialize(db, row, userId) };
+        const result = await serialize(db, row, userId);
+        if (media && result.item) Object.assign(result.item, await media(row, userId));
+        return { request: result };
     }
     async function act(userId, id, input) {
         if (!isId(id)) throw missing();

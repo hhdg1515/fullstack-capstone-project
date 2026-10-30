@@ -279,3 +279,11 @@ public cover/detail DTOs, one selected-page metadata batch, strict client URL
 validation, ordered accessible galleries and privacy/caching/rollback limits.
 Existing delivery authorization is reused; D2 pickup integration remains deferred.
 Hosted photo activation still requires a separately approved rollout.
+
+### D2 pickup context
+
+[D2 implementation and permission matrix](milestone-6.5d2-pickup-photos.md) add a
+compact current-cover thumbnail to request creation/detail with independent
+owner/public media permission. Historical text does not restore private photos.
+Lists remain text-first with zero added media queries; no state-machine, gallery,
+conversation attachment, hosted storage activation or new index is introduced.

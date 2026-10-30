@@ -60,7 +60,7 @@ function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', sec
         app.head('/api/item-images/:imageId/:variant', auth.optionalAuth, deliver);
         app.get('/api/item-images/:imageId/:variant', auth.optionalAuth, deliver);
     }
-    app.use('/api/pickup-requests', createPickupRoutes({ connectToDatabase, auth, now: pickupNow, messageLimit }));
+    app.use('/api/pickup-requests', createPickupRoutes({ connectToDatabase, auth, now: pickupNow, messageLimit, imageMetadata, imageRead: Boolean(imageMetadata && pipeline) }));
     app.use('/api', (req, res) => res.status(404).json({ error: { code: 'NOT_FOUND', message: 'API route not found' } }));
     app.use((err, req, res, next) => {
         if (err instanceof InventoryError) return res.status(err.status).json({ error: Object.assign({ code: err.code, message: err.message }, err.details) });

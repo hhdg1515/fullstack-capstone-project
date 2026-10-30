@@ -865,3 +865,12 @@ They reuse authorized application delivery and C2's first-Ready cover order. Pho
 failures preserve item information and real listing counts. Private buckets,
 revocation checks, quotas and default-disabled production gates remain unchanged;
 no remote migration or storage activation occurs on merge.
+
+## Pickup request item thumbnails (6.5D2)
+
+[The D2 authorization matrix and implementation notes](docs/milestone-6.5d2-pickup-photos.md)
+describe compact current-cover thumbnails in request creation/detail. Request
+participation and historical chat do not grant private-photo access: requesters
+retain only current public-item access; valid owners retain existing owner access.
+Lists add no photo queries, failures preserve request information/actions, and
+existing production photo gates remain default-disabled. No remote migration.

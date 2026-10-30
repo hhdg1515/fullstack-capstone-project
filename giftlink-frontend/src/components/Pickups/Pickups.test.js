@@ -298,3 +298,49 @@ test('a failed detail refresh labels retained information as last loaded and blo
   fail = false; await click(screen.getByRole('button', { name: 'Reload request' })); await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel request' })).toBeEnabled());
   expect(screen.queryByText('Showing last loaded details. Reload to confirm current status and pickup time.')).not.toBeInTheDocument();
 });
+
+const photoId = '64b000000000000000000001';
+const photoItem = { ...item, imageAvailability: 'ready', coverImage: { id: photoId, thumbnail: { url: `/api/item-images/${photoId}/thumbnail`, width: 400, height: 300 } } };
+test('the request form keeps an optional compact thumbnail with the item and leaves submission fields unchanged', async () => {
+  fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { item: { ...item, imageAvailability: 'ready', images: [{ ...photoItem.coverImage, display: { url: `/api/item-images/${photoId}/display`, width: 1200, height: 900 } }] } }));
+  mount(); expect(await screen.findByRole('img', { name: item.name + ' (current cover)' })).toHaveAttribute('src', photoItem.coverImage.thumbnail.url);
+  expect(screen.getByLabelText('Pickup date and time')).toBeInTheDocument(); expect(screen.queryByRole('button', { name: /Next photo/ })).not.toBeInTheDocument();
+});
+test('fresh request details show the current cover and hide stale media while reloading or unavailable', async () => {
+  let value = { ...base, item: photoItem }; let next;
+  fetch.mockImplementation(async url => url.endsWith('/api/me') ? response({ user }) : next ? next.promise : response({ request: value }));
+  mount('/app/pickups/' + base.id); const alt = item.name + ' (current cover)';
+  expect(await screen.findByRole('img', { name: alt })).toHaveAttribute('src', photoItem.coverImage.thumbnail.url);
+  expect(screen.getByRole('button', { name: 'Cancel request' })).toBeEnabled();
+  next = deferred(); await click(screen.getByRole('button', { name: 'Reload request' }));
+  expect(screen.queryByRole('img')).not.toBeInTheDocument(); expect(screen.getByRole('heading', { name: item.name })).toBeInTheDocument();
+  await act(async () => next.resolve(response({ request: { ...value, item: { ...item, imageAvailability: 'unavailable', coverImage: null } } })));
+  expect(screen.getByText('Photo unavailable')).toBeVisible(); expect(screen.getByRole('button', { name: 'Cancel request' })).toBeEnabled();
+});
+test('failed refresh retains marked text and independent history but never a stale thumbnail', async () => {
+  let failure = false;
+  fetch.mockImplementation(async url => url.endsWith('/api/me') ? response({ user }) : failure ? error('Temporarily unavailable', 'BUSY', 503) : response({ request: { ...base, item: photoItem } }));
+  mount('/app/pickups/' + base.id); await screen.findByRole('img'); failure = true;
+  await click(screen.getByRole('button', { name: 'Reload request' })); await screen.findByText('Temporarily unavailable');
+  expect(screen.queryByRole('img')).not.toBeInTheDocument(); expect(screen.getByText(/Showing last loaded details/)).toBeVisible();
+  expect(screen.getByRole('heading', { name: item.name })).toBeInTheDocument(); expect(screen.getByRole('button', { name: 'Cancel request' })).toBeDisabled();
+});
+test('cover replacement resets a broken thumbnail only after an authoritative reload', async () => {
+  let replacement = false; const nextId = '64b000000000000000000002';
+  fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { request: { ...base, item: replacement ? { ...photoItem, coverImage: { id: nextId, thumbnail: { ...photoItem.coverImage.thumbnail, url: `/api/item-images/${nextId}/thumbnail` } } } : photoItem } }));
+  mount('/app/pickups/' + base.id); fireEvent.error(await screen.findByRole('img')); expect(screen.getByText('Photo unavailable')).toBeVisible();
+  replacement = true; await click(screen.getByRole('button', { name: 'Reload request' }));
+  expect(await screen.findByRole('img')).toHaveAttribute('src', `/api/item-images/${nextId}/thumbnail`);
+});
+test.each([{ id: 'wrong-request' }, { role: 'outsider' }, { status: 'unknown' }])('does not show photo metadata outside the confirmed request/role/state: %j', async changes => {
+  fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { request: { ...base, item: photoItem, ...changes } }));
+  mount('/app/pickups/' + base.id); await screen.findByRole('heading', { name: 'Pickup request' });
+  await screen.findByRole('heading', { name: item.name }); expect(screen.queryByRole('img')).not.toBeInTheDocument();
+});
+test('expired request sessions clear the thumbnail before returning to login', async () => {
+  let expired = false;
+  fetch.mockImplementation(async url => url.endsWith('/api/me') ? expired ? error('Sign in', 'UNAUTHENTICATED', 401) : response({ user }) : expired ? error('Sign in', 'UNAUTHENTICATED', 401) : response({ request: { ...base, item: photoItem } }));
+  mount('/app/pickups/' + base.id); await screen.findByRole('img'); expired = true;
+  await click(screen.getByRole('button', { name: 'Reload request' }));
+  expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument(); expect(screen.queryByRole('img')).not.toBeInTheDocument();
+});

@@ -8,6 +8,7 @@ import JourneyNav from '../Journeys/JourneyNav';
 import { useUnsavedForm } from '../../forms/UnsavedChanges';
 import useFormErrors from '../../forms/useFormErrors';
 import PickupConversation from './PickupConversation';
+import PickupItemPhoto from './PickupItemPhoto';
 import PickupScheduling, { PickupTime, SchedulingEvent } from './PickupScheduling';
 import { useAppContext } from '../../context/AuthContext';
 import { PageHeader, Surface, Feedback } from '../../design-system/primitives';
@@ -53,7 +54,7 @@ export function RequestPickup() {
     finally { setBusy(false); }
   };
   return <main className="ui-page pickup-page"><JourneyNav journey="find" discoverySearch={discoverySearch} /><Link to={`/app/items/${itemId}`} state={{ discoverySearch }}>Back to listing</Link><PageHeader title="Request pickup" /><LoadState data={data} />
-    {item && <><h2>{item.name}</h2><p>{item.neighborhood}, {item.city}</p>
+    {item && <><div className="pickup-item-context"><PickupItemPhoto key={item.images?.[0]?.id || item.id} item={item} detail /><div className="pickup-item-identity"><h2>{item.name}</h2><p>{item.neighborhood}, {item.city}</p></div></div>
       {item.isOwner === true ? <p role="status">Your listing. You cannot request your own item. Manage it from My plans.</p> : item.isReserved === true ? <div role="status"><p>This item has an accepted pickup. Check back if it becomes available.</p>
         <button className="ui-button ui-button--secondary" onClick={data.retry}>Check availability</button></div> : !item.pickupTimeZone ? <p role="alert">The giver must set a pickup timezone before requests can be submitted.</p> : <Surface as="form" ref={validation.formRef} noValidate className="pickup-request-form" onSubmit={submit} aria-busy={busy}>
         <p>A request does not reserve the item. Wait for the giver to accept. Each listing is one pickup unit, including groups of items.</p>
@@ -166,7 +167,10 @@ function RequestDetail({ requestId }) {
     {request && <>
       {(data.loading || data.error) && <Feedback>Showing last loaded details. Reload to confirm current status and pickup time.</Feedback>}
       <Surface as="article" className="pickup-summary" aria-label="Request summary">
-        <div className="pickup-card-heading"><h2>{request.item?.name || 'Former listing'}</h2><span className="ui-status">{pickupLabels[request.status] || 'Status unavailable'}</span></div>
+        <div className="pickup-item-context">
+          {request.item && participant(request) && pickupLabels[request.status] && request.id === requestId && !data.loading && !data.error && <PickupItemPhoto key={request.item.coverImage?.id || request.item.id} item={request.item} />}
+          <div className="pickup-item-identity pickup-card-heading"><h2>{request.item?.name || 'Former listing'}</h2><span className="ui-status">{pickupLabels[request.status] || 'Status unavailable'}</span></div>
+        </div>
         <p>Applicant: {request.role === 'giver' ? request.counterpart.firstName : 'You'}</p>
         {request.role === 'receiver' && <p>Giver: {request.counterpart.firstName}</p>}
         {request.item && <p>{request.item.neighborhood}, {request.item.city}</p>}
