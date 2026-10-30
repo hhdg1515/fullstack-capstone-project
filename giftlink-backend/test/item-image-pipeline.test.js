@@ -530,4 +530,143 @@ describe('native image pipeline with owned MongoDB and real private SeaweedFS', 
         assert.equal(body.items[0].coverImage, null); await view(ids[0], 'thumbnail').expect(404);
     });
 
+    async function photoPickup() {
+        return (await write(request(app).post('/api/pickup-requests')).set('Cookie', other.cookie).send({ itemId: item._id.toString(),
+            localDateTime: new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10) + 'T12:00', timeZone: plan.pickupTimeZone, note: 'Synthetic private pickup note.' }).expect(201)).body.request;
+    }
+    const pickupDetail = (pickup, actor = other, server = app) => request(server).get('/api/pickup-requests/' + pickup.id).set('Cookie', actor.cookie);
+    const pickupAction = (pickup, action, actor = owner, server = app) => write(request(server).post('/api/pickup-requests/' + pickup.id + '/actions')).set('Cookie', actor.cookie).send({ action, version: pickup.version });
+    it('adds a thumbnail-only request detail DTO without S3 reads, extra list queries or transaction-write enrichment', async function () {
+        const ids = await publicPhotos(), pickup = await photoPickup(); assert.equal(pickup.item.coverImage, undefined);
+        const { Collection } = require('mongodb'), aggregates = sinon.spy(Collection.prototype, 'aggregate'), send = sinon.spy(S3Client.prototype, 'send');
+        const body = (await pickupDetail(pickup).expect(200)).body.request;
+        assert.equal(body.item.coverImage.id, ids[0]); assert.deepEqual(Object.keys(body.item.coverImage).sort(), ['id', 'thumbnail']);
+        assert.equal(body.item.coverImage.thumbnail.url, '/api/item-images/' + ids[0] + '/thumbnail');
+        assert.equal(aggregates.getCalls().filter(call => call.thisValue.collectionName === 'pickupRequests').length, 1); assert.equal(send.callCount, 0);
+        const original = await db.collection('pickupRequests').findOne({ _id: new ObjectId(pickup.id) });
+        await db.collection('pickupRequests').insertMany(Array.from({ length: 25 }, () => Object.assign({}, original, { _id: new ObjectId(), status: 'declined', active: false })));
+        aggregates.resetHistory();
+        const page = (await request(app).get('/api/pickup-requests/sent').set('Cookie', other.cookie).expect(200)).body;
+        assert.equal(page.requests.length, 25); assert.ok(page.nextCursor); assert.ok(page.requests.every(row => row.item.coverImage === undefined));
+        assert.equal(aggregates.getCalls().filter(call => call.thisValue.collectionName === 'pickupRequests').length, 0); assert.equal(send.callCount, 0);
+        const media = JSON.stringify(body.item.coverImage);
+        for (const value of ['display', 'sha256', 'ownerId', 'planId', 'storageBinding', 'clientUploadId', 'imageRevision', fixture.receipt.bucket, fixture.receipt.namespace]) assert.ok(!media.includes(value));
+    });
+    it('separates all canonical request states and closed text history from current public image permission', async function () {
+        const ids = await publicPhotos(), pickup = await photoPickup();
+        await write(request(app).post('/api/pickup-requests/' + pickup.id + '/conversation/messages')).set('Cookie', other.cookie).send({ text: 'Synthetic historical message.' }).expect(201);
+        const originalItem = await db.collection('items').findOne({ _id: item._id });
+        for (const status of ['pending', 'accepted', 'declined', 'cancelled', 'completed', 'no_show']) {
+            const open = ['pending', 'accepted'].includes(status);
+            await db.collection('pickupRequests').updateOne({ _id: new ObjectId(pickup.id) }, { $set: { status, active: open } });
+            for (const actor of [other, owner]) assert.equal((await pickupDetail(pickup, actor).expect(200)).body.request.item.coverImage.id, ids[0]);
+            if (!open) {
+                const messages = await request(app).get('/api/pickup-requests/' + pickup.id + '/conversation/messages').set('Cookie', other.cookie).expect(200);
+                assert.equal(messages.body.messages[0].text, 'Synthetic historical message.');
+                await write(request(app).post('/api/pickup-requests/' + pickup.id + '/conversation/messages')).set('Cookie', other.cookie).send({ text: 'Not permitted.' }).expect(404);
+            }
+            await db.collection('items').updateOne({ _id: item._id }, { $set: { status: 'unlisted' } });
+            assert.equal((await pickupDetail(pickup).expect(200)).body.request.item.coverImage, null);
+            assert.equal((await pickupDetail(pickup, owner).expect(200)).body.request.item.coverImage.id, ids[0]);
+            await view(ids[0], 'thumbnail', other).expect(404); await view(ids[0], 'thumbnail', owner).expect(200);
+            await db.collection('items').replaceOne({ _id: item._id }, originalItem);
+        }
+    });
+    it('preserves actual accepted reservation, cancellation and completed handoff semantics with owner-only cleared photos', async function () {
+        const ids = await publicPhotos(); let pickup = await photoPickup();
+        pickup = (await pickupAction(pickup, 'accept').expect(200)).body.request;
+        assert.equal((await discover().expect(200)).body.total, 0); assert.equal((await pickupDetail(pickup).expect(200)).body.request.item.coverImage.id, ids[0]);
+        pickup = (await pickupAction(pickup, 'cancel', other).expect(200)).body.request;
+        assert.equal((await pickupDetail(pickup).expect(200)).body.request.item.coverImage.id, ids[0]);
+        pickup = await photoPickup(); pickup = (await pickupAction(pickup, 'accept').expect(200)).body.request;
+        const after = createApp({ connectToDatabase: async () => db, imageMetadata: config, imagePipeline: pipeline,
+            pickupNow: () => new Date(Date.parse(pickup.proposedAt) + 1000), logger: pino({ level: 'silent' }) });
+        pickup = (await pickupAction(pickup, 'complete', owner, after).expect(200)).body.request;
+        assert.equal(pickup.status, 'completed'); assert.equal(pickup.item.status, 'cleared');
+        assert.equal((await pickupDetail(pickup, other, after).expect(200)).body.request.item.coverImage, null);
+        assert.equal((await pickupDetail(pickup, owner, after).expect(200)).body.request.item.coverImage.id, ids[0]);
+        await view(ids[0], 'thumbnail', other).expect(404); await view(ids[0], 'thumbnail', owner).expect(200);
+        await request(after).get('/api/pickup-requests/' + pickup.id + '/conversation/messages').set('Cookie', other.cookie).expect(200);
+    });
+    it('withholds requester photos for private, expired, inactive and removed parents without discarding permitted request text', async function () {
+        const ids = await publicPhotos(); let pickup = await photoPickup(); pickup = (await pickupAction(pickup, 'decline').expect(200)).body.request;
+        const originalItem = await db.collection('items').findOne({ _id: item._id });
+        for (const change of [{ status: 'draft' }, { status: 'unlisted' }, { status: 'expired' }, { status: 'cleared' }, { publishedAt: null }, { availableUntil: '2000-01-01' }]) {
+            await db.collection('items').updateOne({ _id: item._id }, { $set: change });
+            const text = (await pickupDetail(pickup).expect(200)).body.request; assert.equal(text.note, 'Synthetic private pickup note.');
+            assert.equal(text.item.imageAvailability, 'unavailable'); assert.equal(text.item.coverImage, null);
+            assert.equal((await pickupDetail(pickup, owner).expect(200)).body.request.item.coverImage.id, ids[0]);
+            await view(ids[0], 'thumbnail', other).expect(404); await db.collection('items').replaceOne({ _id: item._id }, originalItem);
+        }
+        await db.collection('moveOutPlans').updateOne({ _id: plan._id }, { $set: { status: 'completed' } });
+        assert.equal((await pickupDetail(pickup).expect(200)).body.request.item.coverImage, null);
+        assert.equal((await pickupDetail(pickup, owner).expect(200)).body.request.item.coverImage.id, ids[0]);
+        await request(app).get('/api/pickup-requests/' + pickup.id + '/conversation/messages').set('Cookie', other.cookie).expect(200);
+        await db.collection('items').deleteOne({ _id: item._id }); assert.equal((await pickupDetail(pickup).expect(200)).body.request.item, null); await view(ids[0], 'thumbnail', owner).expect(404);
+    });
+    it('denies outsiders, expired sessions and deleted requests before exposing optional media', async function () {
+        await publicPhotos(); const pickup = await photoPickup();
+        await request(app).get('/api/pickup-requests/' + pickup.id).expect(401);
+        const outsider = await write(request(app).post('/api/auth/register')).send({ firstName: 'Outsider', lastName: 'Synthetic', email: 'd2-outsider@example.test', password: 'd2-isolated-password' }).expect(201);
+        await request(app).get('/api/pickup-requests/' + pickup.id).set('Cookie', outsider.headers['set-cookie'][0].split(';')[0]).expect(404);
+        await db.collection('sessions').updateMany({}, { $set: { expiresAt: new Date(0) } }); await pickupDetail(pickup).expect(401);
+        await db.collection('sessions').deleteMany({}); await db.collection('sessions').insertMany(sessionRecords.map(record => Object.assign({}, record)));
+        await db.collection('pickupRequests').deleteOne({ _id: new ObjectId(pickup.id) }); await pickupDetail(pickup).expect(404);
+    });
+    it('refuses corrupt participants, ownership, states and storage references without disclosing another item cover', async function () {
+        const ids = await publicPhotos(), pickup = await photoPickup();
+        const originalRequest = await db.collection('pickupRequests').findOne({ _id: new ObjectId(pickup.id) });
+        for (const change of [{ 'history.0.actorId': owner.id }, { status: 'closed' }, { active: false }, { planId: new ObjectId() }, { giverId: other.id }]) {
+            await db.collection('pickupRequests').updateOne({ _id: originalRequest._id }, { $set: change });
+            const result = (await pickupDetail(pickup).expect(200)).body.request;
+            assert.ok(!result.item || result.item.coverImage === null); assert.ok(!JSON.stringify(result.item && result.item.coverImage).includes(ids[0]));
+            await db.collection('pickupRequests').replaceOne({ _id: originalRequest._id }, originalRequest);
+        }
+        const imageRow = await row(ids[0]); await db.collection('itemImages').updateOne({ _id: imageRow._id }, { $set: { ownerId: other.id } });
+        for (const actor of [owner, other]) assert.equal((await pickupDetail(pickup, actor).expect(200)).body.request.item.coverImage, null);
+        await db.collection('itemImages').replaceOne({ _id: imageRow._id }, imageRow); await db.collection('users').deleteOne({ _id: owner.id });
+        assert.equal((await pickupDetail(pickup).expect(200)).body.request.item.coverImage, null);
+    });
+    it('refreshes authoritative cover reorder/deletion without changing request versions, appointments or quota', async function () {
+        const ids = await publicPhotos(3), pickup = await photoPickup(), originalQuota = await quota();
+        const before = await db.collection('pickupRequests').findOne({ _id: new ObjectId(pickup.id) });
+        await write(request(app).post(root() + '/order')).set('Cookie', owner.cookie).send({ imageRevision: 3, imageIds: ids.slice().reverse() }).expect(200);
+        assert.equal((await pickupDetail(pickup).expect(200)).body.request.item.coverImage.id, ids[2]);
+        await write(request(app).post(root() + '/' + ids[2] + '/actions')).set('Cookie', owner.cookie).send({ imageRevision: 4, action: 'delete' }).expect(202);
+        assert.equal((await pickupDetail(pickup).expect(200)).body.request.item.coverImage.id, ids[1]); await view(ids[2], 'thumbnail', other).expect(404);
+        assert.deepEqual(await db.collection('pickupRequests').findOne({ _id: before._id }), before); assert.deepEqual(await quota(), originalQuota);
+    });
+    it('does not probe or repair missing/corrupt thumbnail bytes while preserving detail/actions and history', async function () {
+        const ids = await publicPhotos(), pickup = await photoPickup(), stored = await row(ids[0]), commands = require('@aws-sdk/client-s3'); await fixture.verify();
+        await fixture.client().send(new commands.DeleteObjectCommand({ Bucket: fixture.receipt.bucket, Key: stored.variants.thumbnail.key }));
+        assert.equal((await pickupDetail(pickup).expect(200)).body.request.item.coverImage.id, ids[0]); await view(ids[0], 'thumbnail', other).expect(503);
+        await fixture.client().send(new commands.PutObjectCommand({ Bucket: fixture.receipt.bucket, Key: stored.variants.thumbnail.key, Body: Buffer.from('corrupt'), ContentType: 'image/webp', Metadata: { sha256: '0'.repeat(64) } }));
+        await view(ids[0], 'thumbnail', other).expect(503); assert.equal((await pickupDetail(pickup).expect(200)).body.request.status, 'pending');
+        assert.deepEqual(await row(ids[0]), stored); await pickupAction(pickup, 'decline').expect(200);
+    });
+    it('keeps no-photo legacy data, disabled gates and optional query failures usable without storage access', async function () {
+        await publicPhotos(0); const pickup = await photoPickup(); assert.equal((await pickupDetail(pickup).expect(200)).body.request.item.imageAvailability, 'none');
+        const { Collection } = require('mongodb'), original = Collection.prototype.aggregate, send = sinon.spy(S3Client.prototype, 'send');
+        sinon.stub(Collection.prototype, 'aggregate').callsFake(function (stages, options) {
+            if (this.collectionName === 'pickupRequests') throw Error('Private database diagnostic');
+            return original.call(this, stages, options);
+        });
+        assert.equal((await pickupDetail(pickup).expect(200)).body.request.item.imageAvailability, 'unavailable');
+        const disabled = createApp({ connectToDatabase: async () => db, imageMetadata: config, logger: pino({ level: 'silent' }) });
+        assert.equal((await pickupDetail(pickup, other, disabled).expect(200)).body.request.item.imageAvailability, undefined); assert.equal(send.callCount, 0);
+    });
+    it('withholds stale cover IDs when a request reference changes between text serialization and media inspection', async function () {
+        await publicPhotos(); const pickup = await photoPickup(), { Collection } = require('mongodb'), original = Collection.prototype.aggregate;
+        sinon.stub(Collection.prototype, 'aggregate').callsFake(function (stages, options) {
+            const collection = this;
+            if (this.collectionName === 'pickupRequests') return { toArray: async () => {
+                await db.collection('pickupRequests').updateOne({ _id: new ObjectId(pickup.id) }, { $set: { itemId: new ObjectId() } });
+                return original.call(collection, stages, options).toArray();
+            } };
+            return original.call(this, stages, options);
+        });
+        const result = (await pickupDetail(pickup).expect(200)).body.request;
+        assert.equal(result.item.id, item._id.toString()); assert.equal(result.item.coverImage, null);
+    });
+
 });

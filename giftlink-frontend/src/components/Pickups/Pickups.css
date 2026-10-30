@@ -36,3 +36,9 @@
 .pickup-secondary ul { padding-inline-start: var(--ui-space-6); }
 .pickup-secondary li { margin-block: var(--ui-space-3); }
 #pickup-arrangement-heading { scroll-margin-top: var(--ui-space-6); }
+
+.pickup-item-context { display: flex; align-items: flex-start; gap: var(--ui-space-3); margin-bottom: var(--ui-space-4); }
+.pickup-item-identity { flex: 1; min-width: 0; }
+.pickup-item-thumbnail { position: relative; flex: 0 0 96px; aspect-ratio: 4 / 3; overflow: hidden; display: grid; place-items: center; background: var(--ui-subtle); color: var(--ui-muted); border-radius: var(--ui-radius-control); font-size: var(--ui-text-small); }
+.pickup-item-thumbnail img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.pickup-item-thumbnail span { padding: var(--ui-space-1); text-align: center; }
