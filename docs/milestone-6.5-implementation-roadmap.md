@@ -1,15 +1,14 @@
 # Milestone 6.5 — Implementation and acceptance roadmap
 
-**Implementation status:** B1 is merged in PR #60. B2 now implements the
-[disabled owner metadata/reservation/quota foundation](milestone-6.5b2-photo-metadata.md).
-PR #61 is merged. PR #62 merged B3's [isolated local binary pipeline and verification](milestone-6.5b3-image-pipeline.md).
-B4 adds [local physical deletion and durable recovery](milestone-6.5b4-photo-recovery.md),
-with guarded manifests, conservative unknown-write holds and exact-once settlement.
-Deployed uploads/delivery remain disabled, including after B4 tests pass.
-C1 adds the [owner selection/preview/upload UI](milestone-6.5c1-owner-photo-upload.md)
-and isolated browser integration; C2 management, public galleries, R2/remote
-preparation and hosted compatibility/rollout remain deferred;
-the architecture's future API descriptions are not claims of user-facing uploads.
+**Current implementation status:** B1–B4, C1 workflow corrections (#65), C2
+(#67), D1 (#68), D2 (#69), and classification (#66) are merged. E1 adds
+[integrated local acceptance, security/operational findings and evidence](milestone-6.5e1-photo-acceptance.md).
+The complete photo path is implemented for verified disposable local SeaweedFS;
+**hosted binary processing/delivery and the real R2 adapter remain disabled and
+unimplemented**. Future production use must satisfy the separately approved
+[production-readiness checklist](photo-production-readiness-checklist.md).
+The historical architecture and proposed PR table below are design context,
+not permission to activate a provider or migrate a database.
 
 **6.5A delivers architecture only.** Base is main
 `f9ac7cd4a13f889a5ab3e75b9e625e160f6d8300` (#58 merged).

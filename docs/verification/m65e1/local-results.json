@@ -1,0 +1,66 @@
+{
+  "baseline": "5f79faf9c2a7b0e35138f3b36371f2856ccf4a15",
+  "observedDateUtc": "2026-10-30",
+  "scope": "Linux isolated local fixtures only; no hosted E2E or provider changes",
+  "node": "22.23.4",
+  "docker": "28.4.0",
+  "chromium": "154.0.8037.57",
+  "applicationSourceChanges": false,
+  "results": {
+    "backendLint": {
+      "exitCode": 0
+    },
+    "backend": {
+      "exitCode": 0,
+      "passed": 564
+    },
+    "frontend": {
+      "exitCode": 0,
+      "suitesPassed": 23,
+      "testsPassed": 444
+    },
+    "strictBuild": {
+      "exitCode": 0,
+      "existingNotice": "Browserslist data age"
+    },
+    "policy": {
+      "exitCode": 0,
+      "passed": 56
+    },
+    "focusedE1": {
+      "exitCode": 0,
+      "passed": 2,
+      "axeCheckpoints": 17,
+      "axeViolations": 0
+    },
+    "completeBrowser": {
+      "exitCode": 0,
+      "passed": 68,
+      "axeCheckpoints": 214,
+      "axeViolations": 0,
+      "retries": 0
+    },
+    "actionlint": {
+      "exitCode": 0
+    },
+    "whitespace": {
+      "exitCode": 0
+    },
+    "originalGifts": {
+      "records": 16,
+      "unchanged": true,
+      "sha256": "23f3868a6c90695b112c453f7d642354970f632a337d3b432f16ed5cef78cc04"
+    }
+  },
+  "teardown": {
+    "ownedTestResourcesRemaining": 0,
+    "preExistingContainersAndVolumesUnchanged": true,
+    "networksReturnedToBaseline": true
+  },
+  "caveats": [
+    "Dependency audits are separate: backend full and frontend full exited 1, see dependency-audit-summary.json.",
+    "No completed formal Codex Security plugin scan; required references/executor unavailable.",
+    "CI at final PR head is recorded in the PR, not implied by these local results.",
+    "No Windows Docker Desktop, physical Safari/iOS, hosted photo, real R2, remote Atlas or cross-store restore certification."
+  ]
+}

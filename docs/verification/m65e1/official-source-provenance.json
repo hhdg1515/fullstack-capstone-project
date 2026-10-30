@@ -1,0 +1,30 @@
+{
+  "note": "Read-only public documentation. R2 docs site was unavailable; official publisher repository used at the pinned commit. No provider account/resource was queried.",
+  "sources": [
+    {
+      "label": "pricing",
+      "url": "https://github.com/cloudflare/cloudflare-docs/blob/ad31342ce27ff6d2627903e9e176958ba262cbb8/src/content/docs/r2/pricing.mdx",
+      "gitBlob": "da6a9e5cc6f00d703f1df61582121fb591025f88",
+      "sha256": "f2ae176fd2a010d607d15da855e27bafc8a083c9b48ca359e154e2c593da87c3"
+    },
+    {
+      "label": "s3",
+      "url": "https://github.com/cloudflare/cloudflare-docs/blob/ad31342ce27ff6d2627903e9e176958ba262cbb8/src/content/docs/r2/api/s3/api.mdx",
+      "gitBlob": "271ab75ebf9a44b3510dab8dd078a968341e689a",
+      "sha256": "cfa565d89837b4f3ee3ff874dcc71daf86da1f62adeffd4b5fe82e3837df36e7"
+    },
+    {
+      "label": "vercel-functions",
+      "url": "https://vercel.com/docs/functions/limitations",
+      "status": 200,
+      "sha256": "d89cadd0973b9c76a6ef7c1d7e61bc47987f08db3e9e8d1231f52fac73b91c7d"
+    },
+    {
+      "label": "vercel-hobby",
+      "url": "https://vercel.com/docs/plans/hobby",
+      "status": 200,
+      "sha256": "b4bc6aac082da6300b9ebd3ce432e9c2b7df526aea9035d528dd72fecdad40d5"
+    }
+  ],
+  "observedDateUtc": "2026-10-30"
+}

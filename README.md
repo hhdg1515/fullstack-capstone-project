@@ -874,3 +874,13 @@ participation and historical chat do not grant private-photo access: requesters
 retain only current public-item access; valid owners retain existing owner access.
 Lists add no photo queries, failures preserve request information/actions, and
 existing production photo gates remain default-disabled. No remote migration.
+
+## Integrated photo acceptance (6.5E1)
+
+[The E1 acceptance report](docs/milestone-6.5e1-photo-acceptance.md) records the
+B1–B4/C1/C2/D1/D2 lifecycle, actual desktop/mobile evidence, full regression
+gates, dependency/native resource measurements and P0/P1/P2 follow-ups. Local
+acceptance does **not** authorize production uploads: the runtime/adapter remains
+local-only. [The separate production-readiness checklist](docs/photo-production-readiness-checklist.md)
+requires explicit resource, index, provider, recovery, hosted/device and rollout
+approvals. No production configuration, Atlas/R2 resource or live E2E is changed.
