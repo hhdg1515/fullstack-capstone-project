@@ -61,9 +61,9 @@ async function createRestoreExercise(mongo, fixture) {
             const worker = await processes.launch('photo-restore-worker.js', { local: localTarget, mode: 'restore', snapshot: file(snapshot), plan: file(plan),
                 inventories: inventories.map(file), confirmTarget: confirmation.target, confirmPlan: confirmation.plan,
                 quarantine: 'all-managed-processes-stopped', crashAfterCommit });
-            restoredAt = Date.now(); worker.child.send({ type: 'execute' });
+            restoredAt = Date.now(); await worker.send({ type: 'execute' });
             if (crashAfterCommit) { await worker.take('after_commit'); await worker.kill(); return { status: 'response_lost_inspect_required' }; }
-            try { return (await worker.take('restored')).result; } finally { await worker.stop(); }
+            try { return (await worker.take('restored')).result; } finally { await worker.finish(); }
         },
         text: async checkpoint => {
             if (phase !== 'quarantine') throw Error('Quarantine profile only');

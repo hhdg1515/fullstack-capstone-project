@@ -13,7 +13,7 @@ feature gate, index registry, quota, retention or workflow is changed by F5.
 
 F5 adds a bounded **test-only** local disaster harness, independent restore and
 application OS processes, 14 disaster drills, three dependency-evidence regressions,
-and an [operator restore runbook](photo-disaster-recovery-runbook.md). The harness
+three real subprocess lifecycle regressions, and an [operator restore runbook](photo-disaster-recovery-runbook.md). The harness
 uses the original live Docker/MongoDB/SeaweedFS ownership receipts. It cannot take
 an arbitrary URI, provider, bucket or Docker context. All data and cryptographic
 identities are synthetic. No R2/Atlas/Vercel API, hosted E2E, deployment, paid
@@ -144,6 +144,14 @@ verified private SeaweedFS, with independent Node processes and no retries:
     and reads the synthetic old image. The approved coordinator refuses startup.
     This counterexample is asserted, then that worker is stopped. No permanent
     revocation guarantee is invented.
+
+An initial CI run exposed a test-fixture IPC shutdown race: the one-shot restore
+executor could close its channel after returning a result while the parent sent
+an unnecessary close message. That uncaught EPIPE caused secondary test teardown
+errors. The parent now joins one-shot executors, uses callback-based IPC sends and
+bounded shutdown, and refuses nonzero exits. Three additional real-process tests
+cover repeated completion/join, sends on a closed channel and nonzero exit after
+acknowledgment. No application, storage or authorization rule was weakened.
 
 Existing F4 stale-snapshot code112 races, admitted drain, full role revocation and
 all prior application/storage/cleanup/browser suites remain unchanged. This is not

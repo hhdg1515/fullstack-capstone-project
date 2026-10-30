@@ -11,7 +11,8 @@
     "policyTests": 56,
     "backendLint": "passed",
     "strictBuild": "passed",
-    "actionlint": "passed"
+    "actionlint": "passed",
+    "subprocessLifecycleRegressions": 3
   },
   "backendAudit": {
     "allAffectedPackageEntries": 0,
@@ -60,5 +61,6 @@
     "Complete provider/orphan inventory, backup custody, root/IAM revocation, cloud/failover/partition and physical Windows/Safari remain unverified.",
     "Tiny synthetic apply timings exclude human approval and provider restore; production RPO/RTO unestablished.",
     "Existing Git-linked provider preview hooks are not manually invoked or used as hosted acceptance evidence."
-  ]
+  ],
+  "verificationNote": "Initial CI exposed an EPIPE fixture teardown race. One-shot executor join and explicit IPC error handling fix it; final exact-head full results and failed-run context are recorded on the PR."
 }

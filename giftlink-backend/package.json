@@ -33,7 +33,7 @@
     "images:control": "node util/local-photo-control.js",
     "images:control:approve": "node util/approve-photo-control.js",
     "test:images:distributed": "mocha --timeout 180000 test/photo-control.test.js --fail-zero",
-    "test:images:restore": "mocha --timeout 180000 test/photo-restore.test.js --fail-zero"
+    "test:images:restore": "mocha --timeout 180000 test/restore-process-lifecycle.test.js test/photo-restore.test.js --fail-zero"
   },
   "keywords": [],
   "author": "",

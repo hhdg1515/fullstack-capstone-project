@@ -2,7 +2,13 @@
 const { readPrivateJson } = require('../../util/local-maintenance-receipt');
 const { openLocalMaintenance } = require('../../util/local-image-maintenance');
 async function main() {
-    const input = readPrivateJson(process.argv[2]), context = await openLocalMaintenance(input.local);
+    const input = readPrivateJson(process.argv[2]);
+    if (input.mode === 'ipc-completion-probe') {
+        process.send({ event: 'ready', pid: process.pid });
+        process.on('message', m => { if (m.type === 'finish') process.send({ event: 'completed' }, () => { process.disconnect(); setTimeout(() => process.exit(input.fail ? 1 : 0), 50); }); });
+        return; // No DB/storage access in this process-lifecycle probe.
+    }
+    const context = await openLocalMaintenance(input.local);
     if (input.mode === 'restore') {
         process.send({ event: 'ready', pid: process.pid });
         process.on('message', async m => {
