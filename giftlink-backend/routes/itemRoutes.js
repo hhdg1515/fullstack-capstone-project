@@ -30,9 +30,12 @@ function createItemRoutes({ connectToDatabase, auth, discoveryLimit = 120, image
     if (imageMetadata) privateRouter.use('/:itemId/images', require('./itemImageRoutes')({ connectToDatabase,
         configuration: imageMetadata, controlLimit: imageControlLimit, pipeline }));
     privateRouter.get('/', async (req, res, next) => {
-        try { res.json(Object.assign(await service.list(req.user._id, req.params.planId), {
-                photoCapabilities: { metadata: Boolean(imageMetadata), binaryUpload: Boolean(imageMetadata && pipeline && pipeline.uploadsEnabled()), imageRead: Boolean(imageMetadata && pipeline) }
-            })); } catch (error) { next(error); }
+        try {
+            const result = await service.list(req.user._id, req.params.planId);
+            const caps = imageMetadata && pipeline ? await pipeline.capabilities() : { binaryUpload: false, imageRead: false };
+            if (imageMetadata && pipeline && !caps.imageRead) for (const item of result.items) item.photoPreview = { availability: 'unavailable', images: [] };
+            res.json(Object.assign(result, { photoCapabilities: Object.assign({ metadata: Boolean(imageMetadata) }, caps) }));
+        } catch (error) { next(error); }
     });
     privateRouter.post('/', itemRules(false), async (req, res, next) => {
         try { res.status(201).json(await service.create(req.user._id, req.params.planId, req.body)); } catch (error) { next(error); }

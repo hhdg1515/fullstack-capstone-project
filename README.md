@@ -927,10 +927,30 @@ local configuration/receipt facts; it never authorizes or contacts a provider.
 reports a bounded read-only local maintenance page, never global totals or
 settlement proof. There is no remote/apply mode in either new diagnostic.
 
-Existing signed authority and upload pauses remain worker-local: no fleet switch
+As audited in F3, signed authority and upload pauses were worker-local: no fleet switch
 or permanent distributed revocation is claimed. Renewal needs fresh contexts and
 manifests; old unexpired trust can survive on an unchanged worker. Hosted wiring,
 real-provider/restore evidence and an approved stop/revocation procedure remain
 blocked prerequisites. Production photo gates, quotas, tombstones, index registry
 and all storage/recovery invariants are unchanged. No hosted E2E or deployment
 command is part of F3.
+
+
+## Distributed photo controls (6.5F4)
+
+[F4's design, concurrency evidence and remaining risks](docs/milestone-6.5f4-distributed-photo-control.md)
+and [guarded local operator procedure](docs/photo-distributed-control-runbook.md)
+add an opt-in signed `photoControls` record, exact target/role receipt binding and
+transactional fences. A committed shared pause blocks subsequent durable claims
+across participating processes; admitted work, reads and separately authorized
+recovery have distinct rules. Two independent OS-process tests exercise actual
+MongoDB write conflicts, local SeaweedFS, crashes, rotation and stale authority.
+
+Run `npm --prefix giftlink-backend run test:images:distributed`. The new
+`images:control` administration command supports only receipt-owned local fixtures;
+`images:control:approve` signs changes offline. Explicit initialization starts
+paused and creates only the collection/native `_id_` index; startup does no DDL.
+All production flags stay false. Adoption requires stopping all uncontrolled old
+workers first. Permanent revocation across restored databases, hosted wiring,
+remote administration and real-provider compatibility remain unverified/blocked;
+no production activation, migration, remote E2E or deployment is authorized.

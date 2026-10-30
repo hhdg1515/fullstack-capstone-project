@@ -48,8 +48,10 @@ frontend UI is added by F3; the full existing desktop/mobile journeys remain.
   private key, R2 token or database URI is requested in chat/PRs.
 - [ ] Approve signing custody, receipt distribution/renewal, key trust/revocation
   policy, clock management, instance inventory and a stop/continue mechanism.
-  Current per-process pause and local file replacement are insufficient evidence
-  of fleet-wide revocation; no distributed guarantee is assumed.
+  F4 adds a locally tested participating-worker protocol, not hosted or permanent
+  revocation evidence. Review its independent owner key, exact role grants,
+  quiesced adoption, replica-set topology and local-only administration boundary.
+  Permanent revocation across restored DBs still lacks an independent trust anchor.
 - [ ] Review current provider documentation/account limits and Hobby eligibility
   without authorizing a purchase. Values in E1 are a dated baseline, not current
   account evidence. No paid fallback or provider switch is implied.
@@ -69,8 +71,11 @@ Only after explicit remote-inspection approval:
 npm --prefix giftlink-backend run db:prepare -- --dry-run --allow-remote
 ```
 
-Verify exact database, configured endpoints and observed replica-set/sharded
-topology, full DB fingerprint, all legacy/photo indexes and conflict counts.
+Verify exact database, configured endpoints and observed topology, full DB
+fingerprint, all legacy/photo indexes and conflict counts. F4 controlled contexts
+require a replica set; sharded topology is refused. A future separately approved
+control preparation must inspect/sign/apply its exact collection/native index
+and initially paused policy, never initialize it through ordinary startup.
 This path performs reads, not account normalization, seeding or index creation.
 Require an independently approved target inventory; an endpoint/topology hash is
 not evidence of Atlas project ownership. Any conflict stops the trial. If new
@@ -82,6 +87,10 @@ apply and its full dry-run fingerprint. Never create indexes on startup.
 - [ ] Review a dedicated implementation that injects the existing sealed runtime
   context into the pinned application connection and enforces approved admission.
   Do not remove startup refusal by editing an endpoint/boolean as a shortcut.
+- [ ] Review a remote control administration boundary; F4 currently permits only
+  local receipt-owned simulation. Inventory/quiesce all uncontrolled workers,
+  distribute independent owner trust/control ID/minimum revision, and retain
+  an F4-compatible rollback binary. Never bypass the gate on failure.
 - [ ] Record the actual Vercel Node **22.x patch**, OS/architecture, Express framework
   packaging and traced Sharp **0.35.5** native/libvips dependencies. Local Node
   22.23.4/Sharp loading does not prove the final serverless artifact/cold start.
@@ -152,7 +161,8 @@ No automatic apply/cron, force refund or broad namespace cleanup is permitted.
 - [ ] Approve rollback binary and operations: preserve B4/F1/F2 ledger compatibility,
   exact target/namespace, tombstones, charges and safe recovery; keep photo gates
   disabled on rollback. No B2/B3 processing downgrade, counter reset, unknown PUT
-  replay or record/object sweep. Validate text/auth/inventory/pickup independently.
+  replay or record/object sweep. After F4 adoption, no F3/uncontrolled active-photo
+  rollback. Preserve the signed control/revisions and validate text/auth/inventory/pickup independently.
 - [ ] Close or explicitly accept every P0/P1 item with named owner, evidence and
   exact resources/commit. A trial approval is not production-photo activation,
   public launch, broad firewall change, unlimited maintenance or a merge approval.

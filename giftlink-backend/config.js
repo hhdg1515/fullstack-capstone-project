@@ -10,6 +10,9 @@ function readDatabaseConfig(env = process.env) {
 }
 
 function readServerConfig(env = process.env) {
+    if (env.ITEM_IMAGE_DISTRIBUTED_CONTROL_ENABLED !== undefined && env.ITEM_IMAGE_DISTRIBUTED_CONTROL_ENABLED !== 'false') {
+        throw new Error('Distributed photo control requires a separately approved explicit context; ordinary startup remains disabled');
+    }
     if (env.ITEM_IMAGE_R2_ENABLED !== undefined && env.ITEM_IMAGE_R2_ENABLED !== 'false') {
         throw new Error('Hosted R2 photos require separate real-provider approval and runtime integration; ordinary startup remains disabled');
     }

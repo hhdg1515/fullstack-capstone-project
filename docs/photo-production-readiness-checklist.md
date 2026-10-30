@@ -62,8 +62,10 @@ belong in chat, PR comments or screenshots.
   availability, disabled startup and required-index compatibility on the real host.
 - [x] F2 records [dependency triage and scoped fixes](milestone-6.5f2-security-capacity.md)
   with before/after locks/audits, consumer tests and production source-map evidence.
-  Backend runtime/full audits report zero; frontend still has 67 affected package
-  entries (0 critical/27 high/18 moderate/22 low), not 67 proven exploits.
+  F2/F3 recorded backend zero and frontend 67 affected package entries. The
+  unchanged-lock F4 audit now reports backend zero/frontend 352 (0 critical,
+  71 high, 165 moderate, 116 low); these are package entries, not confirmed exploits.
+  See [current audit evidence](verification/m65f4/dependency-summary.json).
 - [ ] Review remaining browser Router v6 advisories and older build/dev/test chains
   before public launch; plan a separate maintained-toolchain/router evaluation.
   No forced framework migration is implied. Reassess the pinned local image before
@@ -85,9 +87,35 @@ belong in chat, PR comments or screenshots.
 - [ ] Approve and verify a fleet stop/revocation/restore operating model. Existing
   per-process pause/file replacement is not permanent distributed revocation; an
   old still-valid receipt can reauthorize a worker retaining old trust. The shared
-  epoch/CAS design is a proposal only, with no collection/index/control deployed.
+  epoch/CAS design was a proposal in F3; see F4 below for local implementation.
+  No control has been deployed or initialized remotely.
 - [ ] Satisfy every separate real R2/Atlas/Vercel/device/restore approval gate in
   the trial packet. No new startup integration or activation is granted by F3.
+
+## F4 live coordination evidence and remaining gates
+
+- [x] [F4 shared policy and transaction protocol](milestone-6.5f4-distributed-photo-control.md)
+  and [local operator runbook](photo-distributed-control-runbook.md): independent
+  owner signature, exact target/full role-approval binding, monotonic policy and
+  grant revisions, primary linearizable authority reads and transactional fences.
+- [x] Independent Node OS-process tests cover actual stale-snapshot write conflicts,
+  committed pause ordering, admitted drain, late writes after revoke, SIGKILL,
+  concurrent cleanup, signer renewal/rotation and honest signed-row rollback limits.
+- [x] Only explicitly signed local initialization creates the collection/native
+  unique `_id_` index; no registry/startup migration or retention/index job added.
+  All existing application/photo index checks and preparation guards remain.
+- [ ] Quiesce and inventory every uncontrolled/old photo worker before adopting
+  F4; pin the owner public key, control ID and minimum revision everywhere.
+  Never disable the shared gate or downgrade to uncontrolled photo code to fix
+  a refusal. Controlled topology is replica-set only, not sharded.
+- [ ] Approve a future remote operator boundary and hosted injection. The current
+  admin tool cannot operate on Atlas/R2; local fixtures use synthetic R2 identities.
+- [ ] Resolve/explicitly bound the **P0 permanent-revocation-after-restore gap**:
+  no independent high-water authority exists. Restore keeps gates off/workers stopped
+  until an out-of-band trust/checkpoint and ledger/object reconciliation is approved.
+- [ ] Approve independent control-owner key custody/rotation/compromise response,
+  provider token revocation, clock policy, single-row contention budget and actual
+  host failover/partition/load behavior. Late authorized I/O cannot be recalled.
 
 ## 3. Explicit database preparation (not startup migration)
 
@@ -174,7 +202,8 @@ photos and bounded namespaces:
   generation, binding and compatible read/delete/maintenance where safe. If a full
   photo outage is necessary, communicate it without claiming cleanup success.
 - [ ] Roll back only to a B4-compatible binary after B4 records exist. Never roll back
-  to B2/B3 photo code, drop metadata/indexes, change namespace/provider binding,
+  to B2/B3 photo code (or F3/uncontrolled photo workers after F4 adoption), drop
+  metadata/indexes/control, change namespace/provider binding,
   recreate deleted rows as Ready or replay an unknown PUT.
 - [ ] Verify text-only browsing/auth/inventory/pickup remains usable, private photos
   remain private, tombstones survive and no prior-account drafts/media reappear.

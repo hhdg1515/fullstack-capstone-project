@@ -35,7 +35,7 @@ function createR2ImageRecovery(context) {
     if (!require('../util/r2-photo-context').isR2PhotoContext(context) || context.storageConfig.role !== 'recovery') throw failure('target_mismatch');
     return createRecovery(context, context.createStorage());
 }
-function createRecovery({ db, verifyDatabase, identity, receipts }, storage) {
+function createRecovery({ db, verifyDatabase, identity, receipts, control = null }, storage) {
     const started = performance.now(); let inspections = 0;
     function budget() { if (performance.now() - started >= bounds.deadlineMs) throw failure('budget'); }
     async function now(session) {
@@ -98,11 +98,12 @@ function createRecovery({ db, verifyDatabase, identity, receipts }, storage) {
             item && (!(item.ownerId instanceof ObjectId) || !item.ownerId.equals(row.ownerId) || !(item.planId instanceof ObjectId) || !item.planId.equals(row.planId))) throw failure('integrity');
         return policy.quotaFor(q, time);
     }
-    async function transaction(callback) {
+    async function transaction(callback, mutate = false) {
         budget(); await verifyDatabase(); const session = db.client.startSession(); let attempts = 0;
         try {
             return await session.withTransaction(async () => {
                 budget(); if (++attempts > 3) throw failure('budget');
+                if (control) { if (mutate) await control.fence(session); else await control.check(session); }
                 return callback(session, await now(session));
             }, { readConcern: { level: 'snapshot' }, writeConcern: { w: 'majority', wtimeoutMS: 2000 }, readPreference: 'primary', maxCommitTimeMS: 2000 });
         } finally { await session.endSession(); }
@@ -175,7 +176,7 @@ function createRecovery({ db, verifyDatabase, identity, receipts }, storage) {
             const updated = await db.collection('itemImages').replaceOne({ _id: row._id, version: op.version }, row, { session });
             if (updated.matchedCount !== 1) throw failure('changed');
             return row;
-        });
+        }, true);
     }
     async function transition(ticket, callback) {
         return transaction(async (session, time) => {
@@ -189,7 +190,7 @@ function createRecovery({ db, verifyDatabase, identity, receipts }, storage) {
             const saved = await db.collection('itemImages').replaceOne({ _id: row._id, version: oldVersion,
                 'cleanup.recovery.fenceToken': r.fenceToken, $expr: { $gt: ['$cleanup.recovery.expiresAt', '$$NOW'] } }, row, { session });
             if (saved.matchedCount !== 1) throw failure('changed'); return row;
-        });
+        }, true);
     }
     async function settle(ticket) {
         return transition(ticket, async (row, session, time) => {

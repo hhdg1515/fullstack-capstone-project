@@ -297,3 +297,16 @@ lifecycle/multi-instance drills and explicit runbook/trial/rollback decisions.
 No hosted wiring, remote provider access, fleet-control implementation, retention
 change or production photo activation is included. A separately approved real
 trial still needs exact targets, operating authority and provider evidence.
+
+
+### F4 distributed admission and authorization
+
+[F4](milestone-6.5f4-distributed-photo-control.md) implements an opt-in signed
+exact-target control record and transaction fence shared by runtime/recovery
+workers, with local-only explicit preview/sign/apply. Actual independent OS
+processes exercise stale snapshots, code112 conflicts, pause/resume, role rotation,
+SIGKILL and exact-once cleanup. There is no startup migration or hosted activation.
+Controlled contexts require replica sets. Older uncontrolled workers must be
+quiesced before adoption. Permanent revocation across DB restore still lacks an
+independent high-water authority; real-provider/host/remote-admin/root-key custody
+and restore decisions remain separately approved follow-ups.
