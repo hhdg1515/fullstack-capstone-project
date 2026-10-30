@@ -1,0 +1,13 @@
+{
+  "scope": "Benign isolated package behavior, not confirmed HTTP exploitability. Original tarballs matched committed lockfile SRI; old serializer resolves its unchanged randombytes helper from the installed frontend tree.",
+  "lodash": {
+    "advisory": "GHSA-f23m-r3pf-42rh",
+    "beforePreserved": true,
+    "afterPreserved": true
+  },
+  "serializer": {
+    "advisory": "GHSA-5c6j-r48x-rmvq",
+    "beforeExecutedSyntheticMarker": true,
+    "afterExecutedSyntheticMarker": false
+  }
+}

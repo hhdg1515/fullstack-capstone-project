@@ -6,7 +6,8 @@
 The complete photo path is verified for disposable local SeaweedFS. F1 adds
 [a separate signed-target R2 transport/runtime factory and recovery path](milestone-6.5f1-r2-architecture.md),
 tested only through isolated fixtures. **Hosted wiring, real-provider contracts
-and production activation remain disabled/unverified**. Future production use must satisfy the separately approved
+and production activation remain disabled/unverified**. F2 adds [dependency triage and ticket-scoped client capacity hardening](milestone-6.5f2-security-capacity.md),
+without changing quotas or operation retention. Future production use must satisfy the separately approved
 [production-readiness checklist](photo-production-readiness-checklist.md).
 The historical architecture and proposed PR table below are design context,
 not permission to activate a provider or migrate a database.

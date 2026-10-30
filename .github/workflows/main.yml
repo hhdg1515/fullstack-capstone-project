@@ -63,6 +63,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Verify scoped dependency security compatibility
+        run: npm run test:dependencies
+
       - name: Test frontend identity, account, plan, inventory, discovery, and pickup flows
         run: npm test -- --watchAll=false --runInBand
         env:

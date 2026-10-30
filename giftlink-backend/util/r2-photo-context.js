@@ -52,7 +52,7 @@ async function openR2PhotoContext({ env, allowRemote = false, storageOptions = (
             receipts: Object.freeze({ approval: binding.approval }),
             createStorage: () => {
                 if (closed) fail(); const client = createR2ImageStorage(storageConfig, storageOptions()); clients.add(client);
-                const guarded = { close: () => { client.close(); clients.delete(client); } };
+                const guarded = { close: () => { try { client.close(); } finally { clients.delete(client); } } };
                 for (const operation of ['putVariant', 'getVariant', 'headVariant', 'deleteVariant']) guarded[operation] = async value => {
                     await verifyDatabase(); return client[operation](value);
                 };

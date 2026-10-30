@@ -1,0 +1,81 @@
+{
+  "baseline": "a72915ea8536b34054302687277c1f8de36af1ab",
+  "observedDateUtc": "2026-10-30",
+  "node": "v22.23.4",
+  "npm": "10.9.9",
+  "counts": {
+    "backend": {
+      "before": {
+        "info": 0,
+        "low": 0,
+        "moderate": 1,
+        "high": 4,
+        "critical": 0,
+        "total": 5
+      },
+      "after": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0,
+        "total": 0
+      }
+    },
+    "frontend": {
+      "before": {
+        "info": 0,
+        "low": 114,
+        "moderate": 170,
+        "high": 92,
+        "critical": 11,
+        "total": 387
+      },
+      "after": {
+        "info": 0,
+        "low": 22,
+        "moderate": 18,
+        "high": 27,
+        "critical": 0,
+        "total": 67
+      }
+    }
+  },
+  "backendRuntime": {
+    "before": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "after": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    }
+  },
+  "lockHashes": {
+    "backend": {
+      "before": "c3c53665399946a10e44e074fefef353a74f93750e0e599b5f8fbcc8f2f05128",
+      "after": "4761d90c6a741699a25cf874427a72ec9a49417401ce2e1e930c9036fb82f735"
+    },
+    "frontend": {
+      "before": "00f4a6b78166500e1509e56d672472d4a404ad1ca90ccc3dd86caaf231f12d49",
+      "after": "c6da1246b209cc15f841d62ba0def57369929e8ed4a0224a00ea122cbe2a53a6"
+    }
+  },
+  "packageCountCaveat": "Affected package entries include inherited findings; they are not distinct confirmed application vulnerabilities.",
+  "auditExitCodes": {
+    "beforeBackend": 1,
+    "afterBackend": 0,
+    "beforeBackendRuntime": 0,
+    "afterBackendRuntime": 0,
+    "beforeFrontend": 1,
+    "afterFrontend": 1
+  }
+}

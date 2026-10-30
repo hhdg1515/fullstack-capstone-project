@@ -17,26 +17,38 @@ function createLocalItemImagePipeline({ connectToDatabase, configuration, storag
     const config = validateImageConfig(configuration), target = storageBinding(storageConfig);
     if (!target || config.storageBinding.fingerprint !== storageConfig.targetFingerprint ||
         config.storageBinding.namespace !== target.receipt.namespace || storageConfig.driver !== 'seaweedfs-local') throw new Error('Local photo pipeline target mismatch');
-    return createPipeline({ connectToDatabase, configuration: config, storage: createItemImageStorage(storageConfig), uploadsEnabled });
+    return createPipeline({ connectToDatabase, configuration: config, storage: createItemImageStorage(storageConfig),
+        createUploadStorage: () => createItemImageStorage(storageConfig), uploadsEnabled });
 }
 function createR2ItemImagePipeline(context) {
     if (!require('../util/r2-photo-context').isR2PhotoContext(context) || context.storageConfig.role !== 'runtime') throw new Error('R2 runtime context required');
     return createPipeline({ connectToDatabase: context.connectToDatabase, configuration: context.metadata,
-        storage: context.createStorage(), uploadsEnabled: context.storageConfig.uploadsEnabled, applicationConnection: context.applicationConnectToDatabase });
+        storage: context.createStorage(), createUploadStorage: context.createStorage, uploadsEnabled: context.storageConfig.uploadsEnabled, applicationConnection: context.applicationConnectToDatabase });
 }
-function createPipeline({ connectToDatabase, configuration: config, storage, uploadsEnabled, applicationConnection = null }) {
+function createPipeline({ connectToDatabase, configuration: config, storage, createUploadStorage, uploadsEnabled, applicationConnection = null }) {
     if (typeof uploadsEnabled !== 'boolean') { storage.close(); throw new Error('Explicit upload admission required'); }
     const permitted = uploadsEnabled; let admitting = uploadsEnabled;
     const metadata = createItemImagesService({ connectToDatabase, configuration: config });
     const authorize = createImageAuthorization({ connectToDatabase, configuration: config });
-    let closed = false;
+    let closed = false, storageActive = 0;
+    const uploadClients = new Set();
+    function closeStorage(client) {
+        try { client.close(); } catch (ignored) { /* Transport teardown never proves storage absence or releases charges. */ }
+    }
+    // Preserve the eight-operation pipeline budget across read and ticket-scoped
+    // clients. Rotation never evicts a key or retries an operation.
+    async function storageCall(client, method, value) {
+        if (closed || storageActive >= 8) throw require('./item-image-storage-error').storageError(closed ? 'closed' : 'busy', method, 'not_attempted');
+        storageActive++;
+        try { return await client[method](value); } finally { storageActive--; }
+    }
     function checkAvailable() { if (closed) throw new InventoryError(503, 'IMAGE_PIPELINE_UNAVAILABLE', 'Photo service unavailable.'); }
     function duplicate(res, current) {
         res.set('Connection', 'close');
         return res.status(current.upload.state === 'ready' ? 200 : current.upload.state === 'processing' ? 202 : 409).json(current);
     }
     async function upload(req, res, next) {
-        let ticket, inputBytes, admitted = false, disconnected = false;
+        let ticket, inputBytes, uploadStorage, admitted = false, disconnected = false;
         const onClose = () => { if (!res.writableEnded) disconnected = true; };
         res.once('close', onClose);
         const started = performance.now();
@@ -67,10 +79,13 @@ function createPipeline({ connectToDatabase, configuration: config, storage, upl
             }
             const output = await processRaster(file.body, check, file.contentType); inputBytes.fill(0);
             await metadata.prepareVariants(ticket, output.variants);
+            // A fresh client is issued only for this newly claimed durable ticket.
+            // Duplicate/failed/uncertain tickets return above, without a new client.
+            uploadStorage = createUploadStorage(); uploadClients.add(uploadStorage);
             for (const name of ['thumbnail', 'display']) {
                 check(); const intent = await metadata.beginPut(ticket, name); check();
-                await storage.putVariant({ key: intent.key, body: output.variants[name].body }); check();
-                const verified = await storage.getVariant({ key: intent.key, byteLength: intent.byteLength, sha256: intent.sha256 });
+                await storageCall(uploadStorage, 'putVariant', { key: intent.key, body: output.variants[name].body }); check();
+                const verified = await storageCall(uploadStorage, 'getVariant', { key: intent.key, byteLength: intent.byteLength, sha256: intent.sha256 });
                 if (!verified.body.equals(output.variants[name].body)) throw new Error('Variant verification failed');
                 check(); await metadata.stored(ticket, name);
             }
@@ -81,7 +96,9 @@ function createPipeline({ connectToDatabase, configuration: config, storage, upl
             req.pause(); res.set('Connection', 'close');
             if (error instanceof InventoryError) return next(error);
             return next(new InventoryError(503, 'IMAGE_UPLOAD_UNCERTAIN', 'Photo processing could not finish. Check its operation status; cleanup may be pending.'));
-        } finally { if (inputBytes) inputBytes.fill(0); if (admitted) nativeActive = false; res.removeListener('close', onClose); }
+        } finally {
+            if (uploadStorage) { closeStorage(uploadStorage); uploadClients.delete(uploadStorage); }
+            if (inputBytes) inputBytes.fill(0); if (admitted) nativeActive = false; res.removeListener('close', onClose); }
     }
     async function deliver(req, res, next, currentViewer) {
         let admitted = false;
@@ -93,9 +110,9 @@ function createPipeline({ connectToDatabase, configuration: config, storage, upl
             const initial = await authorize(req.params.imageId, req.params.variant, req.user && req.user._id), v = initial.variant;
             let body;
             if (req.method === 'HEAD') {
-                const head = await storage.headVariant({ key: v.key });
+                const head = await storageCall(storage, 'headVariant', { key: v.key });
                 if (head.byteLength !== v.byteLength || head.sha256 !== v.sha256) throw new Error('Photo metadata mismatch');
-            } else body = (await storage.getVariant({ key: v.key, byteLength: v.byteLength, sha256: v.sha256 })).body;
+            } else body = (await storageCall(storage, 'getVariant', { key: v.key, byteLength: v.byteLength, sha256: v.sha256 })).body;
             const latest = await authorize(req.params.imageId, req.params.variant, await currentViewer());
             if (latest.row.generation !== initial.row.generation || JSON.stringify(latest.variant) !== JSON.stringify(v)) throw unavailable();
             checkAvailable();
@@ -110,7 +127,7 @@ function createPipeline({ connectToDatabase, configuration: config, storage, upl
     const facade = Object.freeze({ enabled: true, setUploadAdmission: value => {
         if (typeof value !== 'boolean' || value && !permitted || closed) throw new Error('Upload admission refused');
         admitting = value;
-    }, close: () => { closed = true; storage.close(); } });
+    }, close: () => { closed = true; closeStorage(storage); for (const client of uploadClients) closeStorage(client); } });
     pipelines.set(facade, { config, upload, deliver, connectToDatabase, applicationConnection, uploadsEnabled: () => !closed && admitting }); return facade;
 }
 function pipelineBinding(value, metadata, applicationConnection) {
