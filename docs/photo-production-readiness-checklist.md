@@ -43,7 +43,9 @@ belong in chat, PR comments or screenshots.
   on R2 rather than copying local us-east-1 settings. F1 supports only the standard
   account HTTPS endpoint with auto-region path-style requests; jurisdiction aliases
   require a separate review. The test bridge re-signs/maps to local storage and is
-  not evidence of Cloudflare TLS, IAM, prefix or signing acceptance.
+  not evidence of Cloudflare TLS, IAM, prefix or signing acceptance. Establish the
+  native token granularity; do not assume provider IAM enforces the exact method/
+  prefix split. Any broader credential permissions need owner risk approval.
 - [x] F1 provides `images:r2:reconcile`, using signed recovery approval, exact DB/
   storage fencing and B4 bounded manifests/leases/journals. It has only local
   fixture evidence. Existing `images:reconcile` remains local-receipt-only.
@@ -121,6 +123,12 @@ photos and bounded namespaces:
 - [ ] Rehearse coordinated database/object/ledger restore without public reappearance
   of deleted media, session resurrection, ownership drift or phantom quota release.
   Define and measure RPO/RTO; database export alone is not cross-store recovery.
+- [ ] Approve warm-client capacity/lifecycle: the preserved 256-distinct-PUT-key
+  cap allows at most 128 normal two-variant photos per client, possibly fewer after
+  failures. No eviction/automatic client rotation exists. Drain in-flight work and
+  preserve durable permits/unknown holds when replacing a client/process; never
+  reset ledger rows or retry uncertain writes to recover capacity. Measure the
+  ten-socket DB pool, per-process native/read limits and fleet multiplication.
 - [ ] Model R2 storage/operations, Vercel CPU/memory/function/transfer work, Atlas
   authorization/query load and backup cost with current allowances/rounding. Review
   the actual account's billing eligibility and alerts; do not promise a free service

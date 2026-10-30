@@ -64,7 +64,9 @@ for quota release; tombstones and lifetime/daily counters survive deletion.
   receipt independently binds their fingerprint and the role. Runtime credentials
   should permit only scoped object reads/writes; recovery uses a different scoped
   read/delete credential. Application role restrictions supplement provider IAM,
-  whose real policy must still be independently verified.
+  whose real policy must still be independently verified. Do not assume R2 can
+  natively restrict methods/prefixes to exactly the application role; any broader
+  token permissions need explicit risk review and compensating controls.
 
 The template is [`.env.r2.sample`](../giftlink-backend/.env.r2.sample), **not an
 activation recipe**. Metadata's existing storage fingerprint/namespace must exactly
@@ -222,6 +224,7 @@ remain the visual baseline, with the full isolated browser suite rerun in F1.
 | **P0** | Guarded remote index preview/apply approval, durable Atlas access/least privilege and coordinated DB/object/ledger restore drill with measured RPO/RTO. No automatic DDL or DB-only restore assumption. |
 | **P1** | Offline Ed25519 custody/renewal/revocation and secure receipt delivery across instances; per-process admission is not fleet control. Production command/credential custody and time synchronization need an owner runbook. |
 | **P1** | No automatic cleanup scheduler/monitoring. Unknown holds, retry exhaustion, 1,000 lifetime operation records, 100 MiB account limit, retention/erasure/support policy and incident ownership remain from E1. |
+| **P1** | Each warm storage client retains at most 256 distinct attempted PUT keys (at most 128 normal two-variant photos; failures can consume the budget sooner). There is no eviction or automatic client rotation. Approve a bounded client/process lifecycle that drains in-flight work and preserves durable permits before activation; never clear ledger/unknown records to recover capacity. |
 | **P1** | Extra receipt checks/topology reads add overhead; no-store delivery remains expensive. Representative query plans, throughput, Hobby eligibility/limits and total R2/Vercel/Atlas/backup costs remain unverified. |
 | **P1** | E1 dependency advisories and Windows Docker Desktop/ACLs, physical Safari/iOS and low-memory mobile acceptance remain unresolved. F1 makes no dependency upgrade or device certification. |
 
