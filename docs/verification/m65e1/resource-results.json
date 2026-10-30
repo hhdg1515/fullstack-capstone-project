@@ -1,0 +1,86 @@
+{
+  "scope": "isolated local synthetic measurements; not Vercel benchmarks",
+  "results": [
+    {
+      "sample": "png-rgba-16mp",
+      "pixels": 16000000,
+      "wallMs": 599,
+      "outcome": "accepted",
+      "node": "v22.23.4",
+      "platform": "linux",
+      "arch": "x64",
+      "sharp": "0.35.5",
+      "vips": "8.18.7",
+      "inputBytes": 318648,
+      "requireMs": 32,
+      "firstProcessingMs": 454,
+      "maxRssMiB": 268,
+      "variants": {
+        "thumbnail": {
+          "byteLength": 414,
+          "width": 400,
+          "height": 400
+        },
+        "display": {
+          "byteLength": 3106,
+          "width": 1280,
+          "height": 1280
+        }
+      }
+    },
+    {
+      "sample": "jpeg-noise-16mp",
+      "pixels": 16000000,
+      "wallMs": 514,
+      "outcome": "accepted",
+      "node": "v22.23.4",
+      "platform": "linux",
+      "arch": "x64",
+      "sharp": "0.35.5",
+      "vips": "8.18.7",
+      "inputBytes": 2070331,
+      "requireMs": 36,
+      "firstProcessingMs": 354,
+      "maxRssMiB": 115,
+      "variants": {
+        "thumbnail": {
+          "byteLength": 17084,
+          "width": 400,
+          "height": 400
+        },
+        "display": {
+          "byteLength": 598070,
+          "width": 1280,
+          "height": 1280
+        }
+      }
+    },
+    {
+      "sample": "jpeg-wide-16mp",
+      "pixels": 16000000,
+      "wallMs": 264,
+      "outcome": "accepted",
+      "node": "v22.23.4",
+      "platform": "linux",
+      "arch": "x64",
+      "sharp": "0.35.5",
+      "vips": "8.18.7",
+      "inputBytes": 2069478,
+      "requireMs": 31,
+      "firstProcessingMs": 120,
+      "maxRssMiB": 162,
+      "variants": {
+        "thumbnail": {
+          "byteLength": 244,
+          "width": 400,
+          "height": 64
+        },
+        "display": {
+          "byteLength": 44448,
+          "width": 1280,
+          "height": 205
+        }
+      }
+    }
+  ]
+}

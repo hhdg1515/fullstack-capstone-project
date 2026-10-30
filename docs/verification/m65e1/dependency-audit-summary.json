@@ -1,0 +1,162 @@
+{
+  "baseline": "5f79faf9c2a7b0e35138f3b36371f2856ccf4a15",
+  "dependencyChanges": false,
+  "audits": [
+    {
+      "scope": "backend-full",
+      "command": "npm --prefix giftlink-backend audit --json",
+      "exitCode": 1,
+      "counts": {
+        "info": 0,
+        "low": 0,
+        "moderate": 1,
+        "high": 4,
+        "critical": 0,
+        "total": 5
+      },
+      "interpretation": "Affected package entries, not distinct CVEs or proof of reachable exploits; frontend includes build/test tools.",
+      "examplesNotReachabilityFindings": [
+        {
+          "package": "jshint",
+          "reportedSeverity": "high",
+          "isDirect": true,
+          "advisories": [],
+          "dependencyVia": [
+            "lodash",
+            "minimatch"
+          ]
+        },
+        {
+          "package": "lodash",
+          "reportedSeverity": "high",
+          "isDirect": false,
+          "advisories": [
+            "https://github.com/advisories/GHSA-r5fr-rjxr-66jc",
+            "https://github.com/advisories/GHSA-f23m-r3pf-42rh"
+          ],
+          "dependencyVia": []
+        },
+        {
+          "package": "minimatch",
+          "reportedSeverity": "high",
+          "isDirect": false,
+          "advisories": [
+            "https://github.com/advisories/GHSA-3ppc-4f35-3m26",
+            "https://github.com/advisories/GHSA-7r86-cg39-jmmj",
+            "https://github.com/advisories/GHSA-23c5-xmqv-rm74"
+          ],
+          "dependencyVia": []
+        },
+        {
+          "package": "mocha",
+          "reportedSeverity": "moderate",
+          "isDirect": true,
+          "advisories": [],
+          "dependencyVia": [
+            "serialize-javascript"
+          ]
+        },
+        {
+          "package": "serialize-javascript",
+          "reportedSeverity": "high",
+          "isDirect": false,
+          "advisories": [
+            "https://github.com/advisories/GHSA-5c6j-r48x-rmvq",
+            "https://github.com/advisories/GHSA-qj8w-gfj5-8c6v",
+            "https://github.com/advisories/GHSA-m5mm-p8h7-m29v"
+          ],
+          "dependencyVia": []
+        }
+      ]
+    },
+    {
+      "scope": "backend-runtime",
+      "command": "npm --prefix giftlink-backend audit --omit=dev --json",
+      "exitCode": 0,
+      "counts": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0,
+        "total": 0
+      },
+      "interpretation": "Affected package entries, not distinct CVEs or proof of reachable exploits; frontend includes build/test tools."
+    },
+    {
+      "scope": "frontend-full",
+      "command": "npm --prefix giftlink-frontend audit --json",
+      "exitCode": 1,
+      "counts": {
+        "info": 0,
+        "low": 114,
+        "moderate": 170,
+        "high": 92,
+        "critical": 11,
+        "total": 387
+      },
+      "interpretation": "Affected package entries, not distinct CVEs or proof of reachable exploits; frontend includes build/test tools.",
+      "examplesNotReachabilityFindings": [
+        {
+          "package": "form-data",
+          "reportedSeverity": "critical",
+          "isDirect": false,
+          "advisories": [
+            "https://github.com/advisories/GHSA-fjxv-7rqg-78g4",
+            "https://github.com/advisories/GHSA-hmw2-7cc7-3qxx"
+          ],
+          "dependencyVia": []
+        },
+        {
+          "package": "launch-editor",
+          "reportedSeverity": "critical",
+          "isDirect": false,
+          "advisories": [
+            "https://github.com/advisories/GHSA-c27g-q93r-2cwf",
+            "https://github.com/advisories/GHSA-v6wh-96g9-6wx3",
+            "https://github.com/advisories/GHSA-698v-4r3x-3vcv",
+            "https://github.com/advisories/GHSA-r825-w8mm-5pxw",
+            "https://github.com/advisories/GHSA-587h-7wmj-h5pm"
+          ],
+          "dependencyVia": [
+            "shell-quote"
+          ]
+        },
+        {
+          "package": "proxy-addr",
+          "reportedSeverity": "critical",
+          "isDirect": false,
+          "advisories": [
+            "https://github.com/advisories/GHSA-jqcg-44mw-7w3h"
+          ],
+          "dependencyVia": []
+        },
+        {
+          "package": "shell-quote",
+          "reportedSeverity": "critical",
+          "isDirect": false,
+          "advisories": [
+            "https://github.com/advisories/GHSA-w7jw-789q-3m8p",
+            "https://github.com/advisories/GHSA-395f-4hp3-45gv"
+          ],
+          "dependencyVia": []
+        },
+        {
+          "package": "jsdom",
+          "reportedSeverity": "critical",
+          "isDirect": false,
+          "advisories": [],
+          "dependencyVia": [
+            "data-urls",
+            "form-data",
+            "http-proxy-agent",
+            "whatwg-url",
+            "ws"
+          ]
+        }
+      ]
+    }
+  ],
+  "observedDateUtc": "2026-10-30",
+  "scopeNote": "Point-in-time npm registry advisories, no dependency changes or reachability certification."
+}
