@@ -9,7 +9,7 @@ const { ceiling } = require('../services/item-image-policy');
 const revision = () => body('imageRevision').custom(value => Number.isSafeInteger(value) && value >= 0).withMessage('Use the current photo revision.');
 function createItemImageRoutes({ connectToDatabase, configuration, controlLimit = 20, pipeline = null }) {
     const router = express.Router({ mergeParams: true });
-    const service = createItemImagesService({ connectToDatabase, configuration });
+    const service = createItemImagesService({ connectToDatabase: pipeline ? pipeline.connectToDatabase : connectToDatabase, configuration });
     router.use((req, res, next) => {
         if (Object.keys(req.query).length) return errorResponse(res, 400, 'VALIDATION_FAILED', 'This metadata endpoint has no query parameters.');
         next();
@@ -21,7 +21,7 @@ function createItemImageRoutes({ connectToDatabase, configuration, controlLimit 
     if (pipeline) router.put('/:imageId/content', pipeline.upload);
     router.get('/', async (req, res, next) => {
         try { res.json(Object.assign(await service.list(...actor(req)), {
-            capabilities: { metadata: true, binaryUpload: Boolean(pipeline), imageRead: Boolean(pipeline) }
+            capabilities: { metadata: true, binaryUpload: Boolean(pipeline && pipeline.uploadsEnabled()), imageRead: Boolean(pipeline) }
         })); } catch (error) { next(error); }
     });
     router.get('/uploads/:clientUploadId', async (req, res, next) => {
@@ -33,7 +33,12 @@ function createItemImageRoutes({ connectToDatabase, configuration, controlLimit 
         body('sha256').isString().bail().matches(/^[a-fA-F0-9]{64}$/).withMessage('Use the selected file SHA-256.').toLowerCase(),
         body('byteLength').custom(value => Number.isSafeInteger(value) && value >= 1 && value <= ceiling.inputBytes).withMessage('Declare 1 byte to 3 MiB.')
     ]), async (req, res, next) => {
-        try { const result = await service.reserve(...actor(req), req.body); res.status(result.created ? 201 : 200).json(result.body); } catch (error) { next(error); }
+        try {
+            if (pipeline && !pipeline.uploadsEnabled()) {
+                await service.list(...actor(req)); // Verify ownership before reporting admission state.
+                return errorResponse(res, 503, 'IMAGE_UPLOADS_PAUSED', 'Photo uploads are paused. Check status before continuing.');
+            }
+            const result = await service.reserve(...actor(req), req.body); res.status(result.created ? 201 : 200).json(result.body); } catch (error) { next(error); }
     });
     router.post('/order', validate(['imageRevision', 'imageIds'], [revision(),
         body('imageIds').isArray({ max: ceiling.photos }).withMessage('List all ready photo IDs, at most five.')

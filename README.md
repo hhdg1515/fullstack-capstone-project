@@ -880,7 +880,23 @@ existing production photo gates remain default-disabled. No remote migration.
 [The E1 acceptance report](docs/milestone-6.5e1-photo-acceptance.md) records the
 B1–B4/C1/C2/D1/D2 lifecycle, actual desktop/mobile evidence, full regression
 gates, dependency/native resource measurements and P0/P1/P2 follow-ups. Local
-acceptance does **not** authorize production uploads: the runtime/adapter remains
-local-only. [The separate production-readiness checklist](docs/photo-production-readiness-checklist.md)
+acceptance does **not** authorize production uploads: E1 evidence uses local
+fixtures, and hosted photos remain gated. [The separate production-readiness checklist](docs/photo-production-readiness-checklist.md)
 requires explicit resource, index, provider, recovery, hosted/device and rollout
 approvals. No production configuration, Atlas/R2 resource or live E2E is changed.
+
+## Private R2 architecture (6.5F1)
+
+[F1 transport/recovery architecture](docs/milestone-6.5f1-r2-architecture.md) adds
+separate signed R2 target configuration, role-limited object transport, a sealed
+runtime pipeline with independent upload admission and an explicitly approved
+operator recovery CLI. The local SeaweedFS receipt verifier remains mandatory.
+Ordinary server startup still refuses R2/pipeline activation; all production photo
+gates remain disabled. See [the separate rollout checklist](docs/photo-production-readiness-checklist.md)
+and [configuration-only template](giftlink-backend/.env.r2.sample). No real-provider
+compatibility, hosted photo E2E or production readiness is inferred from local tests.
+
+Run `npm --prefix giftlink-backend run test:storage:r2` for the synthetic protocol /
+verified local MongoDB, SeaweedFS and Sharp regressions. `images:r2:approve` is an
+offline signing operation; `images:r2:reconcile` has separate dry-run/apply and exact
+confirmations. These commands are not permission to access remote resources.

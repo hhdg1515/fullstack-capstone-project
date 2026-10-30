@@ -10,8 +10,11 @@ function readDatabaseConfig(env = process.env) {
 }
 
 function readServerConfig(env = process.env) {
+    if (env.ITEM_IMAGE_R2_ENABLED !== undefined && env.ITEM_IMAGE_R2_ENABLED !== 'false') {
+        throw new Error('Hosted R2 photos require separate real-provider approval and runtime integration; ordinary startup remains disabled');
+    }
     if (env.ITEM_IMAGE_PIPELINE_ENABLED !== undefined && env.ITEM_IMAGE_PIPELINE_ENABLED !== 'false') {
-        throw new Error('Deployed photo processing remains disabled until B4 acceptance; only isolated local fixture injection is supported');
+        throw new Error('Deployed photo processing remains disabled pending real-provider approval; use reviewed B4-compatible explicit context injection only');
     }
     const database = readDatabaseConfig(env);
     const secureCookies = env.NODE_ENV === 'production';

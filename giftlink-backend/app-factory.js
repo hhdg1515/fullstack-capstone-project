@@ -18,7 +18,7 @@ function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', sec
     sessionTtlSeconds = 28800, authLimit = 30, discoveryLimit = 120, pickupNow, messageLimit,
     imageMetadata = null, imageControlLimit = 20, imagePipeline = null, logger = require('./logger') }) {
     const app = express();
-    const pipeline = imagePipeline ? require('./services/item-image-pipeline').pipelineBinding(imagePipeline, imageMetadata) : null;
+    const pipeline = imagePipeline ? require('./services/item-image-pipeline').pipelineBinding(imagePipeline, imageMetadata, connectToDatabase) : null;
     const identity = createIdentityService({ connectToDatabase, sessionTtlSeconds });
     const auth = createIdentityMiddleware({ identity, appOrigin, secureCookies, sessionTtlSeconds,
         binaryRequest: pipeline ? require('./services/item-image-pipeline').isContentRequest : () => false });

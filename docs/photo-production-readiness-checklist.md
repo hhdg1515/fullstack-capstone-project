@@ -29,25 +29,41 @@ belong in chat, PR comments or screenshots.
 
 ## 2. Focused implementation PRs before any activation
 
-- [ ] Review a production R2 transport/runtime implementation: current code accepts
-  only an opaque verified local SeaweedFS receipt; changing an endpoint or removing
-  that verification is not a production adapter.
+- [x] F1 implements a separate signed-target R2 transport/runtime factory and
+  operator recovery entry, tested only against synthetic/verified local fixtures.
+  See [the F1 architecture and evidence boundary](milestone-6.5f1-r2-architecture.md).
+  Local SeaweedFS still requires its original opaque/live Docker receipt.
+- [ ] Review and approve actual hosted wiring/activation. Ordinary startup still
+  refuses pipeline/R2 enablement, even with otherwise valid target configuration.
+  An endpoint replacement or a flag flip is not an approved deployment.
 - [ ] Preserve exact target/prefix/key binding, explicit credentials, bounded
   requests, conditional immutable writes, no credential/endpoint fallback, one PUT
   permit, no SDK retry of uncertain mutations, integrity verification and private
   application-mediated delivery. Review HTTPS/account/region/checksum/error behavior
-  on R2 rather than copying local path-style/us-east-1 settings.
-- [ ] Review a production-compatible cleanup/recovery implementation and operator
-  execution identity. Existing `images:reconcile` is local-receipt-only; never forge
-  receipts, point it at Atlas/R2 or remove the target guards.
+  on R2 rather than copying local us-east-1 settings. F1 supports only the standard
+  account HTTPS endpoint with auto-region path-style requests; jurisdiction aliases
+  require a separate review. The test bridge re-signs/maps to local storage and is
+  not evidence of Cloudflare TLS, IAM, prefix or signing acceptance. Establish the
+  native token granularity; do not assume provider IAM enforces the exact method/
+  prefix split. Any broader credential permissions need owner risk approval.
+- [x] F1 provides `images:r2:reconcile`, using signed recovery approval, exact DB/
+  storage fencing and B4 bounded manifests/leases/journals. It has only local
+  fixture evidence. Existing `images:reconcile` remains local-receipt-only.
+- [ ] Approve the real operator identity, scoped R2 read/delete credential, DB role,
+  secure Ed25519 signing-key custody and public-key/receipt distribution. Runtime
+  must never receive the private signing key. Rehearse expiry (default one hour,
+  maximum 24 hours), renewal, revocation and fresh preview after renewal. No scheduler
+  or automatic renewal is installed; do not forge local receipts or remove guards.
 - [ ] Provide a reviewed way to stop new upload admission independently from safe
   status/read/delete/maintenance behavior, or a documented total-photo shutdown.
-  Such hosted operational gates do not exist merely because this checklist names
-  them. Test disabled startup and required-index compatibility.
+  F1 supplies a per-process admission ceiling/stop and read-only transport; it
+  deliberately does not supply a fleet-wide switch or hosted activation. Validate
+  multi-instance propagation, bounded in-flight drain, receipt expiry, text-service
+  availability, disabled startup and required-index compatibility on the real host.
 - [ ] Triage dependency advisories by actual runtime/browser/build reachability;
   remediate in focused PRs with complete regression CI. No force upgrade or framework
   migration is implied. Reassess the pinned local image before any artifact upgrade.
-- [ ] Clarify stale runtime gate text without changing its fail-closed behavior.
+- [x] F1 clarifies stale runtime gate text; deployed enablement remains refused.
 
 ## 3. Explicit database preparation (not startup migration)
 
@@ -107,6 +123,12 @@ photos and bounded namespaces:
 - [ ] Rehearse coordinated database/object/ledger restore without public reappearance
   of deleted media, session resurrection, ownership drift or phantom quota release.
   Define and measure RPO/RTO; database export alone is not cross-store recovery.
+- [ ] Approve warm-client capacity/lifecycle: the preserved 256-distinct-PUT-key
+  cap allows at most 128 normal two-variant photos per client, possibly fewer after
+  failures. No eviction/automatic client rotation exists. Drain in-flight work and
+  preserve durable permits/unknown holds when replacing a client/process; never
+  reset ledger rows or retry uncertain writes to recover capacity. Measure the
+  ten-socket DB pool, per-process native/read limits and fleet multiplication.
 - [ ] Model R2 storage/operations, Vercel CPU/memory/function/transfer work, Atlas
   authorization/query load and backup cost with current allowances/rounding. Review
   the actual account's billing eligibility and alerts; do not promise a free service

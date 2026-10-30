@@ -29,7 +29,13 @@ function createLocalImageRecovery(context) {
     const binding = storageBinding(storageConfig);
     if (!binding || storageConfig.driver !== 'seaweedfs-local' || identity.environment !== 'development' ||
         identity.namespace !== binding.receipt.namespace || identity.storageFingerprint !== storageConfig.targetFingerprint) throw failure('target_mismatch');
-    const storage = createItemImageStorage(storageConfig);
+    return createRecovery(context, createItemImageStorage(storageConfig));
+}
+function createR2ImageRecovery(context) {
+    if (!require('../util/r2-photo-context').isR2PhotoContext(context) || context.storageConfig.role !== 'recovery') throw failure('target_mismatch');
+    return createRecovery(context, context.createStorage());
+}
+function createRecovery({ db, verifyDatabase, identity, receipts }, storage) {
     const started = performance.now(); let inspections = 0;
     function budget() { if (performance.now() - started >= bounds.deadlineMs) throw failure('budget'); }
     async function now(session) {
@@ -252,4 +258,4 @@ function createLocalImageRecovery(context) {
     }
     return { preview, apply, close: () => storage.close() };
 }
-module.exports = { createLocalImageRecovery, digest, bounds };
+module.exports = { createLocalImageRecovery, createR2ImageRecovery, digest, bounds };
