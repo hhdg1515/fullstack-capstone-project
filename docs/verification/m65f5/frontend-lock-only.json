@@ -1,0 +1,15 @@
+{
+  "command": "npm --prefix giftlink-frontend audit --package-lock-only --registry=https://registry.npmjs.org --json",
+  "cacheCondition": "same inherited cache as frontend-default-cache.json",
+  "rawReportSHA256": "82332d80c2687516025a6d17defc51bddbfbbc500d01619d159a37610ff4a832",
+  "rawReportByteIdenticalToDefault": true,
+  "affectedPackageEntries": {
+    "info": 0,
+    "low": 116,
+    "moderate": 165,
+    "high": 71,
+    "critical": 0,
+    "total": 352
+  },
+  "rawDuplicateOmitted": "Identical raw report is retained once in frontend-default-cache.json."
+}

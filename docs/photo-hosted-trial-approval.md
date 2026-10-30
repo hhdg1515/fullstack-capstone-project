@@ -149,6 +149,20 @@ No automatic apply/cron, force refund or broad namespace cleanup is permitted.
   restore must not resurrect deleted media or capacity. Name RPO/RTO, encryption,
   custody, retention, restore reconciliation and responsible operator.
 
+## F5 restore checkpoint — required before trial recovery claims
+
+Review [the F5 local evidence](milestone-6.5f5-coordinated-recovery.md) and
+[operator procedure](photo-disaster-recovery-runbook.md). Their receipt-owned
+logical fixtures do not provide a real-provider backup/restore tool or high-water
+trust service. Approve a complete current backup/safety inventory, externally
+enforced all-worker photo outage, account/session/ownership/history reconciliation
+and fresh paused grants before any separately authorized read-only trial restart.
+Do not restore sessions, reopen tombstones or infer unknown-write refunds. The
+old-trust rollback counterexample remains a P0 limit; RPO/RTO are unestablished.
+
+Also record both cache conditions for the [dependency audit checkpoint](milestone-6.5f5-dependency-checkpoint.md);
+a lower fresh-cache count is not a dependency patch or launch waiver.
+
 ## F. Cost, device, rollback and final go/no-go
 
 - [ ] Bound trial accounts/items/photos/bytes and request count before execution.

@@ -310,3 +310,19 @@ Controlled contexts require replica sets. Older uncontrolled workers must be
 quiesced before adoption. Permanent revocation across DB restore still lacks an
 independent high-water authority; real-provider/host/remote-admin/root-key custody
 and restore decisions remain separately approved follow-ups.
+
+
+### F5 coordinated recovery acceptance
+
+[F5](milestone-6.5f5-coordinated-recovery.md) adds bounded synthetic logical
+DB/object snapshots and independent restore/app/recovery processes. Its safe
+operating model is full photo outage, independent latest-checkpoint reconciliation,
+session invalidation and explicit fresh-grant read-only reauthorization. The F4
+old-trust rollback counterexample remains demonstrable, with no permanent
+revocation claim. See the [operator runbook](photo-disaster-recovery-runbook.md).
+
+The [dependency checkpoint](milestone-6.5f5-dependency-checkpoint.md) reproduces the
+67/352 reporting difference without lock/advisory/source changes. No dependency
+upgrade, production restore tooling, retention policy, deployment or activation is
+added. Next work is concentrated human acceptance and separately approved real
+provider/host/device validation; passing offline tests is not that approval.

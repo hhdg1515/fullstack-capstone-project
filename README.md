@@ -954,3 +954,19 @@ All production flags stay false. Adoption requires stopping all uncontrolled old
 workers first. Permanent revocation across restored databases, hosted wiring,
 remote administration and real-provider compatibility remain unverified/blocked;
 no production activation, migration, remote E2E or deployment is authorized.
+
+
+## Coordinated photo recovery acceptance (6.5F5)
+
+[F5 recovery evidence and P0/P1/P2 limits](docs/milestone-6.5f5-coordinated-recovery.md)
+and the [restore decision matrix/runbook](docs/photo-disaster-recovery-runbook.md)
+exercise independent DB/object snapshots, tombstones, unknown holds, session
+invalidation, ownership and F4 rollback using private local fixtures and independent
+OS workers. Run `npm --prefix giftlink-backend run test:images:restore`.
+
+Unsafe recovery keeps a full photo outage; fresh reviewed grants restore only
+reads, never automatic uploads. The harness is not a production restore service
+or independent rollback-resistant trust authority. Production gates remain off.
+The [dependency checkpoint](docs/milestone-6.5f5-dependency-checkpoint.md) reproduces
+352 cached versus 67 fresh-cache package entries with identical direct advisories,
+locks and frontend source. No packages, infrastructure or provider settings change.
