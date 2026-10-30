@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "description": "",
   "main": "app.js",
-  "engines": { "node": "22.x" },
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "test": "mocha --timeout 30000 --recursive test --fail-zero",
     "test:integration": "mocha --timeout 30000 test/integration.test.js test/identity.test.js test/plans.test.js test/items.test.js test/discovery.test.js test/regional-discovery.test.js test/pickups.test.js test/pickup-communication.test.js test/rescheduling.test.js test/item-images.test.js --fail-zero",
@@ -23,7 +25,8 @@
     "images:r2:approve": "node util/approve-r2-photo-target.js",
     "images:r2:reconcile": "node util/reconcile-r2-item-images.js",
     "test:storage:unit": "mocha --timeout 10000 test/item-image-storage.test.js --fail-zero",
-    "test:storage:seaweedfs": "mocha --timeout 180000 test/item-image-storage-contract.test.js --fail-zero"
+    "test:storage:seaweedfs": "mocha --timeout 180000 test/item-image-storage-contract.test.js --fail-zero",
+    "test:capacity": "mocha --timeout 180000 test/photo-capacity.test.js --fail-zero"
   },
   "keywords": [],
   "author": "",
@@ -54,5 +57,14 @@
     "nodemon": "^3.0.2",
     "sinon": "^17.0.1",
     "supertest": "^6.3.3"
+  },
+  "overrides": {
+    "jshint": {
+      "lodash": "4.18.1",
+      "minimatch": "3.1.5"
+    },
+    "mocha": {
+      "serialize-javascript": "7.1.3"
+    }
   }
 }

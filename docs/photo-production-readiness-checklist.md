@@ -60,9 +60,14 @@ belong in chat, PR comments or screenshots.
   deliberately does not supply a fleet-wide switch or hosted activation. Validate
   multi-instance propagation, bounded in-flight drain, receipt expiry, text-service
   availability, disabled startup and required-index compatibility on the real host.
-- [ ] Triage dependency advisories by actual runtime/browser/build reachability;
-  remediate in focused PRs with complete regression CI. No force upgrade or framework
-  migration is implied. Reassess the pinned local image before any artifact upgrade.
+- [x] F2 records [dependency triage and scoped fixes](milestone-6.5f2-security-capacity.md)
+  with before/after locks/audits, consumer tests and production source-map evidence.
+  Backend runtime/full audits report zero; frontend still has 67 affected package
+  entries (0 critical/27 high/18 moderate/22 low), not 67 proven exploits.
+- [ ] Review remaining browser Router v6 advisories and older build/dev/test chains
+  before public launch; plan a separate maintained-toolchain/router evaluation.
+  No forced framework migration is implied. Reassess the pinned local image before
+  any artifact upgrade.
 - [x] F1 clarifies stale runtime gate text; deployed enablement remains refused.
 
 ## 3. Explicit database preparation (not startup migration)
@@ -123,12 +128,17 @@ photos and bounded namespaces:
 - [ ] Rehearse coordinated database/object/ledger restore without public reappearance
   of deleted media, session resurrection, ownership drift or phantom quota release.
   Define and measure RPO/RTO; database export alone is not cross-store recovery.
-- [ ] Approve warm-client capacity/lifecycle: the preserved 256-distinct-PUT-key
-  cap allows at most 128 normal two-variant photos per client, possibly fewer after
-  failures. No eviction/automatic client rotation exists. Drain in-flight work and
-  preserve durable permits/unknown holds when replacing a client/process; never
-  reset ledger rows or retry uncertain writes to recover capacity. Measure the
-  ten-socket DB pool, per-process native/read limits and fleet multiplication.
+- [x] F2 implements ticket-scoped upload clients; the preserved 256-key adapter
+  guard no longer imposes a warm-pipeline ceiling. New clients cannot replay old
+  durable permits. Real MongoDB/Sharp protocol stress crosses 260 keys with no
+  quota increase; actual SeaweedFS/cleanup/race suites remain intact.
+- [ ] Measure per-photo connection/TLS churn on approved R2, the ten-socket DB pool,
+  aggregate storage/native/read limits and fleet multiplication. No live-provider
+  throughput or cost guarantee is inferred from synthetic stress. Keep unknown
+  holds and rows intact; no client close or rotation proves write absence.
+- [ ] Approve the [retention/archival/erasure decision packet](photo-operation-retention-proposal.md)
+  before changing the lifetime record constraint or schema. No TTL/pruning/archive
+  job/counter reset is installed by F2.
 - [ ] Model R2 storage/operations, Vercel CPU/memory/function/transfer work, Atlas
   authorization/query load and backup cost with current allowances/rounding. Review
   the actual account's billing eligibility and alerts; do not promise a free service

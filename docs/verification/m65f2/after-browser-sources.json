@@ -1,0 +1,21 @@
+[
+  "../node_modules/@remix-run/router/history.ts",
+  "../node_modules/@remix-run/router/router.ts",
+  "../node_modules/@remix-run/router/utils.ts",
+  "../node_modules/react-dom/cjs/react-dom.production.min.js",
+  "../node_modules/react-dom/client.js",
+  "../node_modules/react-dom/index.js",
+  "../node_modules/react-router-dom/dom.ts",
+  "../node_modules/react-router-dom/index.tsx",
+  "../node_modules/react-router/index.ts",
+  "../node_modules/react-router/lib/components.tsx",
+  "../node_modules/react-router/lib/context.ts",
+  "../node_modules/react-router/lib/deprecations.ts",
+  "../node_modules/react-router/lib/hooks.tsx",
+  "../node_modules/react/cjs/react-jsx-runtime.production.min.js",
+  "../node_modules/react/cjs/react.production.min.js",
+  "../node_modules/react/index.js",
+  "../node_modules/react/jsx-runtime.js",
+  "../node_modules/scheduler/cjs/scheduler.production.min.js",
+  "../node_modules/scheduler/index.js"
+]

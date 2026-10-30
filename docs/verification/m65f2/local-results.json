@@ -1,0 +1,33 @@
+{
+  "baseline": "a72915ea8536b34054302687277c1f8de36af1ab",
+  "dateUtc": "2026-10-30",
+  "scope": "Linux Node22 isolated fixtures only; no hosted/R2/Atlas validation",
+  "backendPassed": 626,
+  "capacityFocusedPassed": 5,
+  "backendDependencySmokePassed": 3,
+  "frontendJestPassed": 444,
+  "frontendJestSuites": 23,
+  "frontendDependencySmokePassed": 6,
+  "policyPassed": 56,
+  "browserPassed": 68,
+  "axeCheckpoints": 214,
+  "axeViolations": 0,
+  "browserRetries": 0,
+  "lint": "passed",
+  "strictBuild": "passed",
+  "actionlint": "passed",
+  "whitespace": "passed",
+  "originalGifts": {
+    "count": 16,
+    "unchanged": true,
+    "sha256": "23f3868a6c90695b112c453f7d642354970f632a337d3b432f16ed5cef78cc04"
+  },
+  "cleanup": "All owned fixtures removed; original stopped MongoDB container/two volumes and baseline networks preserved",
+  "limitations": [
+    "Frontend audit intentionally remains nonzero, 67 affected package entries.",
+    "High-volume capacity stress uses synthetic S3 wire transport, not real R2 or 130 SeaweedFS uploads.",
+    "Existing actual SeaweedFS contracts and recovery tests are in the complete backend suite.",
+    "No Windows Docker/physical iOS/hosted provider certification.",
+    "Final CI evidence is recorded on the PR."
+  ]
+}

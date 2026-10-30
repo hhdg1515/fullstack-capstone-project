@@ -900,3 +900,17 @@ Run `npm --prefix giftlink-backend run test:storage:r2` for the synthetic protoc
 verified local MongoDB, SeaweedFS and Sharp regressions. `images:r2:approve` is an
 offline signing operation; `images:r2:reconcile` has separate dry-run/apply and exact
 confirmations. These commands are not permission to access remote resources.
+
+## Dependency and photo-capacity hardening (6.5F2)
+
+[The F2 audit/capacity report](docs/milestone-6.5f2-security-capacity.md) records
+before/after advisory inventories, browser/build/test reachability assumptions,
+scoped compatible dependency fixes and remaining risks. Frontend audit still exits
+nonzero; affected package counts are not confirmed application vulnerabilities.
+
+Photo uploads now use ticket-scoped clients, preserving the per-client key guard
+and durable replay protection without a warm-pipeline lifetime ceiling. User
+quotas, unknown holds and the 1,000-record cap are unchanged. [Retention/archival/erasure](docs/photo-operation-retention-proposal.md)
+is a decision proposal only; no pruning, migration or production activation occurs.
+Run `npm --prefix giftlink-backend run test:capacity` and
+`npm --prefix giftlink-frontend run test:dependencies` alongside the complete suites.
