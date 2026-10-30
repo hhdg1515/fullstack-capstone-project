@@ -37,9 +37,21 @@ function reservationRow(ownerId, plan, item, input, identity, now, binding) {
     return assertOperation(row);
 }
 
-function createItemImagesService({ connectToDatabase, configuration }) {
+function createItemImagesService({ connectToDatabase, configuration, control = null }) {
     const config = policy.validateImageConfig(configuration);
     const limits = Object.freeze(Object.assign({ photos: ceiling.photos, inputBytes: ceiling.inputBytes, reservedBytes: ceiling.reservedBytes }, config.limits));
+    async function connect() {
+        const db = await connectToDatabase();
+        // An accidentally metadata-only/new-binary fallback must not bypass an
+        // adopted target's transaction guard. Explicit F4 contexts additionally
+        // refuse missing/corrupt control state, even when this lookup cannot match.
+        if (!control && await db.collection('photoControls').findOne({ 'target.database': db.databaseName,
+            'target.storageFingerprint': config.storageBinding.fingerprint, 'target.namespace': config.storageBinding.namespace },
+            { projection: { _id: 1 }, maxTimeMS: 2000, readConcern: { level: 'majority' }, readPreference: 'primary' })) {
+            throw new InventoryError(503, 'IMAGE_CONTROL_REQUIRED', 'Photo operations require approved shared authority.');
+        }
+        return db;
+    }
     function inputIds(ownerId, planId, itemId, imageId) {
         if (!(ownerId instanceof ObjectId) || !isId(planId) || !isId(itemId) || imageId !== undefined && !isId(imageId)) throw unavailable();
     }
@@ -71,19 +83,22 @@ function createItemImagesService({ connectToDatabase, configuration }) {
         if (!policy.integer(revision) || !(account.serverNow instanceof Date)) throw damaged();
         return { account, item, revision, now: account.serverNow };
     }
-    async function write(ownerId, planId, itemId, operation) {
+    async function write(ownerId, planId, itemId, operation, admission = false) {
         inputIds(ownerId, planId, itemId);
-        const db = await connectToDatabase();
+        const db = await connect();
         try {
-            return await planTransaction(db, ownerId, planId, async (plan, session) =>
-                operation(db, plan, await context(db, ownerId, plan, itemId, session), session));
+            return await planTransaction(db, ownerId, planId, async (plan, session) => {
+                if (control) await control.fence(session, admission);
+                return operation(db, plan, await context(db, ownerId, plan, itemId, session), session);
+            });
         } catch (error) { if (error.code === 'ITEM_NOT_FOUND') throw unavailable(); throw error; }
     }
     async function read(ownerId, planId, itemId, operation) {
         inputIds(ownerId, planId, itemId);
-        const db = await connectToDatabase(); const session = db.client.startSession();
+        const db = await connect(); const session = db.client.startSession();
         try {
             return await session.withTransaction(async () => {
+                if (control) await control.check(session);
                 const plan = await db.collection('moveOutPlans').findOne({ _id: new ObjectId(planId), ownerId }, options(session));
                 if (!plan) throw unavailable();
                 return operation(db, plan, await context(db, ownerId, plan, itemId, session), session);
@@ -230,7 +245,7 @@ function createItemImagesService({ connectToDatabase, configuration }) {
             await saveQuota(db, ownerId, quota, session);
             await db.collection('itemImages').insertOne(row, { session });
             return { created: true, body: { imageRevision: ctx.revision, upload: operationResponse(row, ctx.now), limits, binaryUploadsEnabled: false } };
-        });
+        }, true);
     }
     async function reorder(ownerId, planId, itemId, input) {
         if (!input || !Array.isArray(input.imageIds) || input.imageIds.length > ceiling.photos ||
@@ -321,7 +336,7 @@ function createItemImagesService({ connectToDatabase, configuration }) {
                 $expr: { $gt: ['$lease.expiresAt', '$$NOW'] } }, row, { session });
             if (claimed.matchedCount !== 1) throw changed();
             return { claimed: true, row, body: contentResult(row, ctx) };
-        });
+        }, true);
     }
     async function processingWrite(ticket, operation, eligible = true) {
         return write(ticket.ownerId, ticket.planId.toHexString(), ticket.itemId.toHexString(), async (db, plan, ctx, session) => {

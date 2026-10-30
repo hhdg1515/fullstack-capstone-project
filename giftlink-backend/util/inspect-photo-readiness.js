@@ -2,7 +2,7 @@
 const { targetIdentity, fingerprint, approvalIdentity, readR2ImageStorageConfig } = require('../services/r2-image-storage-config');
 const { verifyApproval, publicKey } = require('../services/r2-photo-approval');
 const { readPrivateJson } = require('./local-maintenance-receipt');
-const { readImageMetadataConfig } = require('../services/item-image-policy');
+const { readImageMetadataConfig, uuid } = require('../services/item-image-policy');
 
 function receiptCheck(env, expected, time = Date.now()) {
     let receipt;
@@ -32,8 +32,8 @@ function inspect(env = process.env) {
     let native;
     try { const versions = require('sharp').versions; native = { sharp: versions.sharp, vips: versions.vips }; check('sharp_load', 'passed', 'native_module_loaded'); }
     catch (error) { check('sharp_load', 'failed', 'native_module_unavailable'); }
-    if (env.PHOTO_APPROVAL_PRIVATE_KEY !== undefined) check('signing_key_custody', 'failed', 'offline_signing_key_must_not_be_in_runtime_configuration');
-    for (const name of ['ITEM_IMAGE_METADATA_ENABLED', 'ITEM_IMAGE_PIPELINE_ENABLED', 'ITEM_IMAGES_ENABLED', 'ITEM_IMAGE_R2_ENABLED', 'ITEM_IMAGE_R2_UPLOADS_ENABLED']) {
+    if (env.PHOTO_APPROVAL_PRIVATE_KEY !== undefined || env.PHOTO_CONTROL_OWNER_PRIVATE_KEY !== undefined) check('signing_key_custody', 'failed', 'offline_signing_key_must_not_be_in_runtime_configuration');
+    for (const name of ['ITEM_IMAGE_METADATA_ENABLED', 'ITEM_IMAGE_PIPELINE_ENABLED', 'ITEM_IMAGES_ENABLED', 'ITEM_IMAGE_R2_ENABLED', 'ITEM_IMAGE_R2_UPLOADS_ENABLED', 'ITEM_IMAGE_DISTRIBUTED_CONTROL_ENABLED']) {
         if (![undefined, 'false', 'true'].includes(env[name])) check(name.toLowerCase(), 'failed', 'invalid_boolean');
     }
     let metadata;
@@ -56,15 +56,24 @@ function inspect(env = process.env) {
         } else check('metadata_target_binding', 'passed', 'offline_binding_matches');
         if (env.ITEM_IMAGES_ENABLED === 'true') check('local_remote_separation', 'failed', 'local_and_r2_configuration_mixed');
     } else check('r2_candidate', 'not_configured', 'disabled');
+    if (env.ITEM_IMAGE_DISTRIBUTED_CONTROL_ENABLED === 'true') {
+        try {
+            publicKey(env.ITEM_IMAGE_CONTROL_OWNER_PUBLIC_KEY);
+            if (env.ITEM_IMAGE_R2_ENABLED !== 'true' || env.ITEM_IMAGE_CONTROL_OWNER_PUBLIC_KEY === env.ITEM_IMAGE_R2_APPROVAL_PUBLIC_KEY ||
+                !uuid(env.ITEM_IMAGE_CONTROL_ID) || !/^[1-9][0-9]*$/.test(env.ITEM_IMAGE_CONTROL_MIN_REVISION || '') ||
+                !Number.isSafeInteger(Number(env.ITEM_IMAGE_CONTROL_MIN_REVISION))) throw Error();
+            check('distributed_control_configuration', 'passed', 'offline_shape_only');
+        } catch (error) { check('distributed_control_configuration', 'failed', 'control_owner_id_or_checkpoint_invalid'); }
+    }
     // A copy/paste mistake must not turn an expected fingerprint into a printed
     // credential. Even otherwise correctly signed candidate settings are inputs.
-    const secrets = [env.ITEM_IMAGE_R2_ACCESS_KEY_ID, env.ITEM_IMAGE_R2_SECRET_ACCESS_KEY, env.PHOTO_APPROVAL_PRIVATE_KEY];
+    const secrets = [env.ITEM_IMAGE_R2_ACCESS_KEY_ID, env.ITEM_IMAGE_R2_SECRET_ACCESS_KEY, env.PHOTO_APPROVAL_PRIVATE_KEY, env.PHOTO_CONTROL_OWNER_PRIVATE_KEY];
     for (const name of Object.keys(fingerprints)) if (secrets.includes(fingerprints[name])) {
         delete fingerprints[name]; check('fingerprint_output', 'failed', 'fingerprint_collides_with_sensitive_input');
     }
     return { mode: 'offline', configurationValid: !checks.some(c => c.status === 'failed'), hostedTrialReady: false,
         productionActivation: 'blocked_by_ordinary_startup_policy', fingerprints, runtime: { node: process.versions.node, native }, checks,
-        unverified: ['database_connectivity_topology_indexes_and_fingerprint', 'r2_iam_bucket_and_contracts', 'hosted_packaging_body_memory_and_cost',
+        unverified: ['database_connectivity_topology_indexes_and_fingerprint', 'live_control_state_revision_and_role_proofs', 'r2_iam_bucket_and_contracts', 'hosted_packaging_body_memory_and_cost',
             'fleet_admission_revocation_and_restore', 'physical_windows_and_ios'],
         next: 'Owner approval and a separately reviewed hosted trial are required; this command authorizes no network access or mutations.' };
 }

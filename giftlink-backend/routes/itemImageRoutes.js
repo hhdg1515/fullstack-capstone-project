@@ -9,7 +9,7 @@ const { ceiling } = require('../services/item-image-policy');
 const revision = () => body('imageRevision').custom(value => Number.isSafeInteger(value) && value >= 0).withMessage('Use the current photo revision.');
 function createItemImageRoutes({ connectToDatabase, configuration, controlLimit = 20, pipeline = null }) {
     const router = express.Router({ mergeParams: true });
-    const service = createItemImagesService({ connectToDatabase: pipeline ? pipeline.connectToDatabase : connectToDatabase, configuration });
+    const service = createItemImagesService({ connectToDatabase: pipeline ? pipeline.connectToDatabase : connectToDatabase, configuration, control: pipeline && pipeline.control });
     router.use((req, res, next) => {
         if (Object.keys(req.query).length) return errorResponse(res, 400, 'VALIDATION_FAILED', 'This metadata endpoint has no query parameters.');
         next();
@@ -21,7 +21,7 @@ function createItemImageRoutes({ connectToDatabase, configuration, controlLimit 
     if (pipeline) router.put('/:imageId/content', pipeline.upload);
     router.get('/', async (req, res, next) => {
         try { res.json(Object.assign(await service.list(...actor(req)), {
-            capabilities: { metadata: true, binaryUpload: Boolean(pipeline && pipeline.uploadsEnabled()), imageRead: Boolean(pipeline) }
+            capabilities: Object.assign({ metadata: true }, pipeline ? await pipeline.capabilities() : { binaryUpload: false, imageRead: false })
         })); } catch (error) { next(error); }
     });
     router.get('/uploads/:clientUploadId', async (req, res, next) => {

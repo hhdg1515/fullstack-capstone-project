@@ -23,12 +23,13 @@ function createLocalItemImagePipeline({ connectToDatabase, configuration, storag
 function createR2ItemImagePipeline(context) {
     if (!require('../util/r2-photo-context').isR2PhotoContext(context) || context.storageConfig.role !== 'runtime') throw new Error('R2 runtime context required');
     return createPipeline({ connectToDatabase: context.connectToDatabase, configuration: context.metadata,
-        storage: context.createStorage(), createUploadStorage: context.createStorage, uploadsEnabled: context.storageConfig.uploadsEnabled, applicationConnection: context.applicationConnectToDatabase });
+        storage: context.createStorage(), createUploadStorage: context.createStorage, uploadsEnabled: context.storageConfig.uploadsEnabled,
+        applicationConnection: context.applicationConnectToDatabase, control: context.control });
 }
-function createPipeline({ connectToDatabase, configuration: config, storage, createUploadStorage, uploadsEnabled, applicationConnection = null }) {
+function createPipeline({ connectToDatabase, configuration: config, storage, createUploadStorage, uploadsEnabled, applicationConnection = null, control = null }) {
     if (typeof uploadsEnabled !== 'boolean') { storage.close(); throw new Error('Explicit upload admission required'); }
     const permitted = uploadsEnabled; let admitting = uploadsEnabled;
-    const metadata = createItemImagesService({ connectToDatabase, configuration: config });
+    const metadata = createItemImagesService({ connectToDatabase, configuration: config, control });
     const authorize = createImageAuthorization({ connectToDatabase, configuration: config });
     let closed = false, storageActive = 0;
     const uploadClients = new Set();
@@ -128,7 +129,13 @@ function createPipeline({ connectToDatabase, configuration: config, storage, cre
         if (typeof value !== 'boolean' || value && !permitted || closed) throw new Error('Upload admission refused');
         admitting = value;
     }, close: () => { closed = true; closeStorage(storage); for (const client of uploadClients) closeStorage(client); } });
-    pipelines.set(facade, { config, upload, deliver, connectToDatabase, applicationConnection, uploadsEnabled: () => !closed && admitting }); return facade;
+    async function capabilities() {
+        if (closed) return { binaryUpload: false, imageRead: false };
+        if (!control) return { binaryUpload: admitting, imageRead: true };
+        try { const row = await control.check(); return { binaryUpload: admitting && row.uploadAdmission, imageRead: true }; }
+        catch (error) { return { binaryUpload: false, imageRead: false }; }
+    }
+    pipelines.set(facade, { config, upload, deliver, connectToDatabase, applicationConnection, control, capabilities, uploadsEnabled: () => !closed && admitting }); return facade;
 }
 function pipelineBinding(value, metadata, applicationConnection) {
     if (value === null || value === undefined) return null;
