@@ -15,7 +15,7 @@
     "test:images:resources": "node util/benchmark-item-images.js",
     "test:images:recovery": "mocha --timeout 180000 test/item-image-recovery.test.js --fail-zero",
     "images:reconcile": "node util/reconcile-item-images.js",
-    "lint": "jshint --config ../.jshintrc app.js app-factory.js index.js runtime.js server.js config.js logger.js models routes services middleware serializers util/import-mongo/index.js util/prepare-database.js util/database-target.js util/verify-region-source.js util/benchmark-item-images.js util/local-maintenance-receipt.js util/local-image-maintenance.js util/reconcile-item-images.js util/r2-photo-context.js util/approve-r2-photo-target.js util/reconcile-r2-item-images.js ../deployment/validate-staging-preparation.js test",
+    "lint": "jshint --config ../.jshintrc app.js app-factory.js index.js runtime.js server.js config.js logger.js models routes services middleware serializers util/import-mongo/index.js util/prepare-database.js util/database-target.js util/verify-region-source.js util/benchmark-item-images.js util/local-maintenance-receipt.js util/local-image-maintenance.js util/reconcile-item-images.js util/r2-photo-context.js util/approve-r2-photo-target.js util/reconcile-r2-item-images.js util/inspect-photo-readiness.js util/summarize-local-photo-operations.js ../deployment/validate-staging-preparation.js test",
     "seed": "node util/import-mongo/index.js",
     "start": "node server.js",
     "dev": "nodemon server.js",
@@ -26,7 +26,10 @@
     "images:r2:reconcile": "node util/reconcile-r2-item-images.js",
     "test:storage:unit": "mocha --timeout 10000 test/item-image-storage.test.js --fail-zero",
     "test:storage:seaweedfs": "mocha --timeout 180000 test/item-image-storage-contract.test.js --fail-zero",
-    "test:capacity": "mocha --timeout 180000 test/photo-capacity.test.js --fail-zero"
+    "test:capacity": "mocha --timeout 180000 test/photo-capacity.test.js --fail-zero",
+    "images:preflight": "node util/inspect-photo-readiness.js",
+    "images:operations": "node util/summarize-local-photo-operations.js",
+    "test:images:operations": "mocha --timeout 180000 test/photo-operations.test.js test/r2-image-storage.test.js test/r2-photo-integration.test.js --fail-zero"
   },
   "keywords": [],
   "author": "",

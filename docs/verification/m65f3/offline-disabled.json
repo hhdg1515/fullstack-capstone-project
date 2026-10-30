@@ -1,0 +1,44 @@
+{
+  "mode": "offline",
+  "configurationValid": true,
+  "hostedTrialReady": false,
+  "productionActivation": "blocked_by_ordinary_startup_policy",
+  "fingerprints": {},
+  "runtime": {
+    "node": "22.23.4",
+    "native": {
+      "sharp": "0.35.5",
+      "vips": "8.18.7"
+    }
+  },
+  "checks": [
+    {
+      "name": "node_runtime",
+      "status": "passed",
+      "category": "node_22_required"
+    },
+    {
+      "name": "sharp_load",
+      "status": "passed",
+      "category": "native_module_loaded"
+    },
+    {
+      "name": "metadata_configuration",
+      "status": "passed",
+      "category": "disabled"
+    },
+    {
+      "name": "r2_candidate",
+      "status": "not_configured",
+      "category": "disabled"
+    }
+  ],
+  "unverified": [
+    "database_connectivity_topology_indexes_and_fingerprint",
+    "r2_iam_bucket_and_contracts",
+    "hosted_packaging_body_memory_and_cost",
+    "fleet_admission_revocation_and_restore",
+    "physical_windows_and_ios"
+  ],
+  "next": "Owner approval and a separately reviewed hosted trial are required; this command authorizes no network access or mutations."
+}

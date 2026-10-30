@@ -1,10 +1,10 @@
 /* jshint loopfunc: true */
 const assert = require('node:assert/strict');
-const { randomUUID, randomBytes } = require('node:crypto');
+const { randomUUID, randomBytes, generateKeyPairSync } = require('node:crypto');
 const fs = require('node:fs'), path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { r2Environment, blockProviderNetwork } = require('./helpers/r2-fixture');
-const { readR2ImageStorageConfig, targetIdentity, fingerprint, approvalIdentity } = require('../services/r2-image-storage-config');
+const { readR2ImageStorageConfig, targetIdentity, fingerprint, approvalIdentity, r2StorageBinding } = require('../services/r2-image-storage-config');
 const { createR2ImageStorage } = require('../services/r2-image-storage');
 const { readItemImageStorageConfig } = require('../services/item-image-storage-config');
 const { createItemImageStorage } = require('../services/item-image-storage');
@@ -104,5 +104,39 @@ describe('R2 explicit configuration and offline approval, no provider access', f
         cleanupCli.parse(args);
         for (const bad of [args.filter(x => x !== '--allow-remote'), args.concat('--apply'), args.concat('--limit', '26'), args.concat('--provider', 'r2-private'), ['--apply'].concat(args.slice(1))]) assert.throws(() => cleanupCli.parse(bad));
         assert.notEqual(fingerprint(targetIdentity(f.env)), f.env.ITEM_IMAGE_R2_DATABASE_TARGET);
+    });
+    it('pins receipt renewal to a fresh worker configuration and never silently refreshes an existing approval', async function () {
+        const before = r2StorageBinding(readR2ImageStorageConfig(f.env)), old = f.approval;
+        assert.equal(await before.verify(), true); const renewed = f.approve(); assert.notEqual(renewed.signature, old.signature);
+        assert.equal(await before.verify(), false);
+        const after = r2StorageBinding(readR2ImageStorageConfig(f.env)); assert.equal(await after.verify(), true);
+        verifyApproval(renewed, approvalIdentity(f.env), f.env.ITEM_IMAGE_R2_APPROVAL_PUBLIC_KEY);
+        assert.throws(() => verifyApproval(renewed, approvalIdentity(f.env), f.env.ITEM_IMAGE_R2_APPROVAL_PUBLIC_KEY, Date.parse(renewed.expiresAt)), refused);
+    });
+    it('refuses an old signer after explicit key rotation but documents that old independent trust has no global revocation authority', async function () {
+        const old = r2StorageBinding(readR2ImageStorageConfig(f.env)), oldReceipt = f.approval;
+        const keys = generateKeyPairSync('ed25519'), publicKey = keys.publicKey.export({ format: 'der', type: 'spki' }).toString('hex');
+        const privateKey = keys.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('hex'), expected = approvalIdentity(f.env);
+        const renewed = signApproval(expected, privateKey), rotated = Object.assign({}, f.env, { ITEM_IMAGE_R2_APPROVAL_PUBLIC_KEY: publicKey });
+        fs.writeFileSync(f.env.ITEM_IMAGE_R2_APPROVAL_FILE, JSON.stringify(renewed));
+        await assert.rejects(old.verify()); const current = r2StorageBinding(readR2ImageStorageConfig(rotated)); assert.equal(await current.verify(), true);
+        assert.throws(() => verifyApproval(oldReceipt, expected, publicKey), refused);
+        fs.writeFileSync(f.env.ITEM_IMAGE_R2_APPROVAL_FILE, JSON.stringify(oldReceipt));
+        await assert.rejects(current.verify()); assert.throws(() => readR2ImageStorageConfig(rotated), refused);
+        // Honest boundary: a worker still trusting the old key/file can accept an
+        // unexpired old receipt again. Production stays blocked; this is not a
+        // distributed, permanent revocation mechanism or a new authorization.
+        assert.equal(await old.verify(), true);
+    });
+    it('allows a valid target-bound receipt to be reused after restart only within its lifetime, not as a one-time PUT permit', function () {
+        const expected = approvalIdentity(f.env), key = f.env.ITEM_IMAGE_R2_APPROVAL_PUBLIC_KEY;
+        verifyApproval(f.approval, expected, key); verifyApproval(f.approval, expected, key);
+        readR2ImageStorageConfig(f.env); readR2ImageStorageConfig(f.env);
+        for (const changes of [{ role: 'recovery' }, { environment: 'production' }, { databaseFingerprint: '0'.repeat(64) }, { storageFingerprint: '0'.repeat(64) }]) {
+            assert.throws(() => verifyApproval(f.approval, Object.assign({}, expected, changes), key), refused);
+        }
+        assert.throws(() => verifyApproval(f.approval, expected, key, Date.parse(f.approval.expiresAt)), refused);
+        // Actual duplicate PUT denial is ledger-backed and covered across fresh
+        // pipelines by photo-capacity.test.js; signatures are not consumable tokens.
     });
 });

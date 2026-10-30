@@ -70,6 +70,25 @@ belong in chat, PR comments or screenshots.
   any artifact upgrade.
 - [x] F1 clarifies stale runtime gate text; deployed enablement remains refused.
 
+## F3 operations evidence and remaining activation gates
+
+- [x] [F3 operational audit](milestone-6.5f3-photo-operations.md),
+  [local operator runbook/failure matrix](photo-operations-runbook.md) and
+  [first hosted-trial approval packet](photo-hosted-trial-approval.md) separate
+  existing guarantees, actual local drills and unverified provider behavior.
+- [x] Offline sanitized Node/Sharp/config/receipt diagnostics and independently
+  receipt-verified local bounded maintenance summaries. Neither tool has remote
+  or apply mode; a valid offline configuration never means hosted-ready.
+- [x] Local lifecycle tests cover renewal, rotation, old trust/receipt rollback,
+  stale worker/manifest replay, mid-PUT approval expiry and two-instance pause
+  boundaries. The existing actual storage/crash/race/recovery suites are retained.
+- [ ] Approve and verify a fleet stop/revocation/restore operating model. Existing
+  per-process pause/file replacement is not permanent distributed revocation; an
+  old still-valid receipt can reauthorize a worker retaining old trust. The shared
+  epoch/CAS design is a proposal only, with no collection/index/control deployed.
+- [ ] Satisfy every separate real R2/Atlas/Vercel/device/restore approval gate in
+  the trial packet. No new startup integration or activation is granted by F3.
+
 ## 3. Explicit database preparation (not startup migration)
 
 - [ ] Inspect authorized target/topology and run the existing guarded `db:prepare`

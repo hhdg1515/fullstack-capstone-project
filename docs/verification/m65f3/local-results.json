@@ -1,0 +1,46 @@
+{
+  "baseCommit": "5806f5c1863bc2dd3f1469bc1eeb979670248057",
+  "scope": "Linux Node22 local/CI-isolated only; no R2/Atlas/hosted validation",
+  "backendPassed": 643,
+  "newRegressionCases": 17,
+  "frontendPassed": 444,
+  "frontendSuites": 23,
+  "frontendDependencyCompatibilityPassed": 6,
+  "backendDependencyCompatibilityPassedIncludedAbove": 3,
+  "policyPassed": 56,
+  "browserPassed": 68,
+  "axeCheckpoints": 214,
+  "axeViolations": 0,
+  "browserRetries": 0,
+  "backendLint": "passed",
+  "strictBuild": "passed",
+  "actionlint": "passed",
+  "whitespace": "passed",
+  "documentLinks": "passed",
+  "gifts": {
+    "count": 16,
+    "sha256": "23f3868a6c90695b112c453f7d642354970f632a337d3b432f16ed5cef78cc04",
+    "unchanged": true
+  },
+  "cleanup": {
+    "ownedFixtureDockerLeaks": 0,
+    "originalStoppedContainerPreserved": true,
+    "originalVolumesPreserved": 2,
+    "baselineNetworksPreserved": true
+  },
+  "storageFixture": "chrislusf/seaweedfs@sha256:f7a49e3f3972ebed5be2ed4befa4a0c68eb7bdddba6e692d42729ceb545134b8",
+  "lockHashes": {
+    "giftlink-backend/package-lock.json": "4761d90c6a741699a25cf874427a72ec9a49417401ce2e1e930c9036fb82f735",
+    "giftlink-frontend/package-lock.json": "c6da1246b209cc15f841d62ba0def57369929e8ed4a0224a00ea122cbe2a53a6",
+    "e2e/package-lock.json": "48aa41f83f616271f116259beffebba7defec8f04e661964a773013789223f2b"
+  },
+  "productionActivation": "disabled; startup/config/index/storage/recovery/pipeline sources unchanged",
+  "limitations": [
+    "Two pipeline/app instances in one test process, not real deployed fleet.",
+    "Receipt expiration drill simulates worker clock boundary with actual local PUT.",
+    "Summary unknown-permit drill is ledger-only; actual lost-write/death cases remain in B4/F1 suites.",
+    "No Windows ACL/physical Safari/R2/Atlas/Vercel contract or coordinated restore evidence.",
+    "Final immutable CI head/job links are recorded on the PR."
+  ],
+  "resolvedTestSetupIssue": "Initial targeted run: 67 passed/3 rejected new fixtures using string owner ID; corrected tests to ObjectId without weakening authorization, then 70 targeted passed. Final full suite after one extra diagnostic case: 643 passed."
+}
