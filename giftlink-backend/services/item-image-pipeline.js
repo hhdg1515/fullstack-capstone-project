@@ -12,13 +12,22 @@ let nativeActive = false, readsActive = 0;
 const busy = () => new InventoryError(429, 'IMAGE_PROCESSOR_BUSY', 'Photo processing is busy. Check the operation status and try again shortly.', { retryAfterSeconds: 5 });
 const isContentRequest = req => req.method === 'PUT' && /^\/api\/move-out-plans\/[a-f0-9]{24}\/items\/[a-f0-9]{24}\/images\/[a-f0-9]{24}\/content$/i.test((req.baseUrl || '') + req.path);
 
-// B3 activation is local fixture injection only. No environment flag can enable a
-// deployed pipeline before B4. B1's opaque live-verified configuration is mandatory.
-function createLocalItemImagePipeline({ connectToDatabase, configuration, storageConfig }) {
+// Local factory retains the opaque live-Docker binding; no environment URL swap.
+function createLocalItemImagePipeline({ connectToDatabase, configuration, storageConfig, uploadsEnabled = true }) {
     const config = validateImageConfig(configuration), target = storageBinding(storageConfig);
     if (!target || config.storageBinding.fingerprint !== storageConfig.targetFingerprint ||
         config.storageBinding.namespace !== target.receipt.namespace || storageConfig.driver !== 'seaweedfs-local') throw new Error('Local photo pipeline target mismatch');
-    const storage = createItemImageStorage(storageConfig), metadata = createItemImagesService({ connectToDatabase, configuration: config });
+    return createPipeline({ connectToDatabase, configuration: config, storage: createItemImageStorage(storageConfig), uploadsEnabled });
+}
+function createR2ItemImagePipeline(context) {
+    if (!require('../util/r2-photo-context').isR2PhotoContext(context) || context.storageConfig.role !== 'runtime') throw new Error('R2 runtime context required');
+    return createPipeline({ connectToDatabase: context.connectToDatabase, configuration: context.metadata,
+        storage: context.createStorage(), uploadsEnabled: context.storageConfig.uploadsEnabled, applicationConnection: context.applicationConnectToDatabase });
+}
+function createPipeline({ connectToDatabase, configuration: config, storage, uploadsEnabled, applicationConnection = null }) {
+    if (typeof uploadsEnabled !== 'boolean') { storage.close(); throw new Error('Explicit upload admission required'); }
+    const permitted = uploadsEnabled; let admitting = uploadsEnabled;
+    const metadata = createItemImagesService({ connectToDatabase, configuration: config });
     const authorize = createImageAuthorization({ connectToDatabase, configuration: config });
     let closed = false;
     function checkAvailable() { if (closed) throw new InventoryError(503, 'IMAGE_PIPELINE_UNAVAILABLE', 'Photo service unavailable.'); }
@@ -40,12 +49,14 @@ function createLocalItemImagePipeline({ connectToDatabase, configuration, storag
             const ids = [req.user._id, req.params.planId, req.params.itemId, req.params.imageId];
             const inspected = await metadata.inspectUpload(...ids);
             if (inspected.row.state !== 'reserved') return duplicate(res, inspected.body);
+            if (!admitting) throw new InventoryError(503, 'IMAGE_UPLOADS_PAUSED', 'Photo uploads are paused. Your saved photos remain available.');
             const boundary = intake.boundary(req);
             if (nativeActive) {
                 const latest = await metadata.inspectUpload(...ids);
                 if (latest.row.state !== 'reserved') return duplicate(res, latest.body);
                 throw busy();
             }
+            if (!admitting) throw new InventoryError(503, 'IMAGE_UPLOADS_PAUSED', 'Photo uploads are paused. Check status before continuing.');
             nativeActive = true; admitted = true;
             const claimed = await metadata.claim(...ids);
             if (!claimed.claimed) return duplicate(res, claimed.body);
@@ -96,16 +107,20 @@ function createLocalItemImagePipeline({ connectToDatabase, configuration, storag
             return next(error instanceof InventoryError ? error : new InventoryError(503, 'IMAGE_READ_UNAVAILABLE', 'Photo temporarily unavailable. Try again later.'));
         } finally { if (admitted) readsActive--; }
     }
-    const facade = Object.freeze({ enabled: true, close: () => { closed = true; storage.close(); } });
-    pipelines.set(facade, { config, upload, deliver }); return facade;
+    const facade = Object.freeze({ enabled: true, setUploadAdmission: value => {
+        if (typeof value !== 'boolean' || value && !permitted || closed) throw new Error('Upload admission refused');
+        admitting = value;
+    }, close: () => { closed = true; storage.close(); } });
+    pipelines.set(facade, { config, upload, deliver, connectToDatabase, applicationConnection, uploadsEnabled: () => !closed && admitting }); return facade;
 }
-function pipelineBinding(value, metadata) {
+function pipelineBinding(value, metadata, applicationConnection) {
     if (value === null || value === undefined) return null;
     const pipeline = pipelines.get(value);
-    if (!pipeline || !metadata) throw new Error('Invalid local photo pipeline configuration');
+    if (!pipeline || !metadata) throw new Error('Invalid local or R2 photo pipeline configuration');
+    if (pipeline.applicationConnection && pipeline.applicationConnection !== applicationConnection) throw new Error('R2 application database connection mismatch');
     const expected = validateImageConfig(metadata);
     if (pipeline.config.storageBinding.fingerprint !== expected.storageBinding.fingerprint || pipeline.config.storageBinding.namespace !== expected.storageBinding.namespace ||
-        Object.keys(expected.limits).some(key => pipeline.config.limits[key] !== expected.limits[key])) throw new Error('Invalid local photo pipeline configuration');
+        Object.keys(expected.limits).some(key => pipeline.config.limits[key] !== expected.limits[key])) throw new Error('Invalid local or R2 photo pipeline configuration');
     return pipeline;
 }
-module.exports = { createLocalItemImagePipeline, pipelineBinding, isContentRequest };
+module.exports = { createLocalItemImagePipeline, createR2ItemImagePipeline, pipelineBinding, isContentRequest };

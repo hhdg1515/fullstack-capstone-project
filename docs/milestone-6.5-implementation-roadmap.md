@@ -3,9 +3,10 @@
 **Current implementation status:** B1–B4, C1 workflow corrections (#65), C2
 (#67), D1 (#68), D2 (#69), and classification (#66) are merged. E1 adds
 [integrated local acceptance, security/operational findings and evidence](milestone-6.5e1-photo-acceptance.md).
-The complete photo path is implemented for verified disposable local SeaweedFS;
-**hosted binary processing/delivery and the real R2 adapter remain disabled and
-unimplemented**. Future production use must satisfy the separately approved
+The complete photo path is verified for disposable local SeaweedFS. F1 adds
+[a separate signed-target R2 transport/runtime factory and recovery path](milestone-6.5f1-r2-architecture.md),
+tested only through isolated fixtures. **Hosted wiring, real-provider contracts
+and production activation remain disabled/unverified**. Future production use must satisfy the separately approved
 [production-readiness checklist](photo-production-readiness-checklist.md).
 The historical architecture and proposed PR table below are design context,
 not permission to activate a provider or migrate a database.

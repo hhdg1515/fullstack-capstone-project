@@ -1,0 +1,65 @@
+const { createDatabase } = require('../models/db');
+const { readPreparationTarget, inspectTarget } = require('./database-target');
+const { assertDatabaseIndexes } = require('../services/database-indexes');
+const { readImageMetadataConfig } = require('../services/item-image-policy');
+const { readR2ImageStorageConfig, r2StorageBinding } = require('../services/r2-image-storage-config');
+const { createR2ImageStorage } = require('../services/r2-image-storage');
+const { InventoryError } = require('../services/inventory-error');
+const contexts = new WeakSet();
+const fail = () => { throw new Error('R2 photo target verification refused.'); };
+
+// Explicit operator/runtime entry, never called by ordinary server startup.
+// storageOptions is a trusted code-only test seam, not an env/CLI endpoint override.
+async function openR2PhotoContext({ env, allowRemote = false, storageOptions = () => ({}) }) {
+    const storageConfig = readR2ImageStorageConfig(env), binding = r2StorageBinding(storageConfig);
+    if (!binding) fail();
+    const metadata = readImageMetadataConfig(env);
+    if (!metadata || metadata.storageBinding.fingerprint !== storageConfig.targetFingerprint ||
+        metadata.storageBinding.namespace !== binding.receipt.namespace) fail();
+    const target = await readPreparationTarget(env, allowRemote);
+    const database = createDatabase({ mongoUrl: target.mongoUrl, dbName: target.dbName,
+        clientOptions: Object.assign({}, target.clientOptions, { serverSelectionTimeoutMS: 5000, connectTimeoutMS: 5000, socketTimeoutMS: 5000,
+            maxPoolSize: 10, maxConnecting: 2, waitQueueTimeoutMS: 2000, maxIdleTimeMS: 30000 }) });
+    let closed = false;
+    try {
+        const db = await database.connect();
+        const verifyDatabase = async () => {
+            try {
+                if (closed || await binding.verify() !== true) fail();
+                const inspected = await inspectTarget(db, target);
+                if (!['replica-set', 'sharded'].includes(inspected.deployment) || inspected.fingerprint !== binding.approval.databaseFingerprint ||
+                    inspected.database !== binding.approval.database || inspected.environment !== binding.approval.environment) fail();
+                return true;
+            } catch (error) {
+                const refusal = new InventoryError(503, 'IMAGE_TARGET_UNAVAILABLE', 'Photo service unavailable. Check status before continuing.');
+                refusal.recoveryCategory = 'target_mismatch'; throw refusal;
+            }
+        };
+        await verifyDatabase();
+        // Read-only index verification, no preparation or DDL on this path.
+        await assertDatabaseIndexes(db, { imageMetadataEnabled: true });
+        const clients = new Set();
+        const context = Object.freeze({ db, metadata, storageConfig, verifyDatabase,
+            // Text/auth can stay available when photo authority expires. The sealed
+            // pipeline pins the app to this exact connection function, while photo
+            // mutations/status/bytes always use the separately guarded connection.
+            applicationConnectToDatabase: async () => { if (closed) fail(); return db; },
+            connectToDatabase: async () => { await verifyDatabase(); return db; },
+            identity: Object.freeze({ database: target.dbName, environment: target.environment,
+                databaseFingerprint: binding.approval.databaseFingerprint, provider: 'r2-private',
+                storageFingerprint: storageConfig.targetFingerprint, bucket: binding.receipt.bucket, namespace: binding.receipt.namespace }),
+            // Signature/identity only; no credentials, keys or provider response bodies.
+            receipts: Object.freeze({ approval: binding.approval }),
+            createStorage: () => {
+                if (closed) fail(); const client = createR2ImageStorage(storageConfig, storageOptions()); clients.add(client);
+                const guarded = { close: () => { client.close(); clients.delete(client); } };
+                for (const operation of ['putVariant', 'getVariant', 'headVariant', 'deleteVariant']) guarded[operation] = async value => {
+                    await verifyDatabase(); return client[operation](value);
+                };
+                return Object.freeze(guarded);
+            },
+            close: async () => { closed = true; for (const client of clients) client.close(); await database.close(); } });
+        contexts.add(context); return context;
+    } catch (error) { await database.close(); return fail(); }
+}
+module.exports = { openR2PhotoContext, isR2PhotoContext: value => contexts.has(value) };

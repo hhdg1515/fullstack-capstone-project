@@ -144,6 +144,6 @@ describe('strict raster validation, native Sharp privacy and bounded multipart g
     it('keeps deployment activation disabled even when metadata is configured', function () {
         const base = { MONGO_URL: 'mongodb://127.0.0.1:1' };
         readServerConfig(Object.assign({}, base, { ITEM_IMAGE_PIPELINE_ENABLED: 'false' }));
-        for (const value of ['true', '1', '', 'TRUE']) assert.throws(() => readServerConfig(Object.assign({}, base, { ITEM_IMAGE_PIPELINE_ENABLED: value })), /B4/);
+        for (const value of ['true', '1', '', 'TRUE']) assert.throws(() => readServerConfig(Object.assign({}, base, { ITEM_IMAGE_PIPELINE_ENABLED: value })), /real-provider approval/);
     });
 });
