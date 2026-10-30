@@ -914,3 +914,23 @@ quotas, unknown holds and the 1,000-record cap are unchanged. [Retention/archiva
 is a decision proposal only; no pruning, migration or production activation occurs.
 Run `npm --prefix giftlink-backend run test:capacity` and
 `npm --prefix giftlink-frontend run test:dependencies` alongside the complete suites.
+
+## Photo operations and readiness (6.5F3)
+
+[F3's operational audit](docs/milestone-6.5f3-photo-operations.md),
+[operator commands and recovery decision matrix](docs/photo-operations-runbook.md),
+and [separate hosted-trial approval checklist](docs/photo-hosted-trial-approval.md)
+distinguish verified local behavior from untested provider assumptions.
+`npm --prefix giftlink-backend run images:preflight -- --offline` validates only
+local configuration/receipt facts; it never authorizes or contacts a provider.
+`images:operations -- --local ...` uses both existing ownership receipts and
+reports a bounded read-only local maintenance page, never global totals or
+settlement proof. There is no remote/apply mode in either new diagnostic.
+
+Existing signed authority and upload pauses remain worker-local: no fleet switch
+or permanent distributed revocation is claimed. Renewal needs fresh contexts and
+manifests; old unexpired trust can survive on an unchanged worker. Hosted wiring,
+real-provider/restore evidence and an approved stop/revocation procedure remain
+blocked prerequisites. Production photo gates, quotas, tombstones, index registry
+and all storage/recovery invariants are unchanged. No hosted E2E or deployment
+command is part of F3.

@@ -288,3 +288,12 @@ compact current-cover thumbnail to request creation/detail with independent
 owner/public media permission. Historical text does not restore private photos.
 Lists remain text-first with zero added media queries; no state-machine, gallery,
 conversation attachment, hosted storage activation or new index is introduced.
+
+### F3 operational preparation
+
+[F3's operational readiness report](milestone-6.5f3-photo-operations.md) adds
+offline diagnostics, strictly local read-only backlog summaries, signed-receipt
+lifecycle/multi-instance drills and explicit runbook/trial/rollback decisions.
+No hosted wiring, remote provider access, fleet-control implementation, retention
+change or production photo activation is included. A separately approved real
+trial still needs exact targets, operating authority and provider evidence.

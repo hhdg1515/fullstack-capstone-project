@@ -20,6 +20,7 @@ const reconcile = require('../util/reconcile-r2-item-images');
 const { initializeApplication } = require('../runtime');
 const { readServerConfig } = require('../config');
 const createApp = require('../app');
+const sinon = require('sinon');
 const hash = value => createHash('sha256').update(value).digest('hex');
 const write = call => call.set('Origin', 'http://localhost:3000').set('X-CSRF-Protection', '1');
 describe('R2 architecture with real isolated MongoDB, Sharp and receipt-verified SeaweedFS bridge', function () {
@@ -69,7 +70,7 @@ describe('R2 architecture with real isolated MongoDB, Sharp and receipt-verified
         item = { _id: new ObjectId(), planId: plan._id, ownerId: owner.id, name: 'Synthetic fixture item', status: 'draft', version: 1, createdAt: now, updatedAt: now };
         await db.collection('moveOutPlans').insertOne(plan); await db.collection('items').insertOne(item);
     });
-    afterEach(async function () { if (pipeline) pipeline.close(); for (const c of contexts) await c.close(); for (const e of environments) e.close(); });
+    afterEach(async function () { sinon.restore(); if (pipeline) pipeline.close(); for (const c of contexts) await c.close(); for (const e of environments) e.close(); });
     after(async function () { try { if (fixture) await fixture.close(); } finally { if (mongo) await mongo.close(); } });
     it('runs authoritative Sharp intake, conditional PUT, verification GET and private owner delivery through the R2 protocol path', async function () {
         assert.equal(context.db.client.options.maxPoolSize, 10); assert.equal(context.db.client.options.waitQueueTimeoutMS, 2000);
@@ -124,6 +125,53 @@ describe('R2 architecture with real isolated MongoDB, Sharp and receipt-verified
         finally { release(); }
         assert.equal((await pending).status, 201); assert.equal((await row(first)).state, 'ready'); assert.equal((await row(second)).state, 'reserved');
         assert.equal(puts, 2); assert.equal((await quota()).successful, 1);
+    });
+    it('demonstrates two-instance pause boundaries while preserving authorized reads/status and requiring each instance to stop', async function () {
+        const r = await ready(), pending = await reserve(), second = createR2ItemImagePipeline(context), secondApp = makeApp(second);
+        try {
+            pipeline.setUploadAdmission(false); await upload(pending).expect(503);
+            await upload(pending, owner, secondApp).expect(201); // Local pause is deliberately not a fleet guarantee.
+            second.setUploadAdmission(false);
+            const requestBody = { imageRevision: await revision(), clientUploadId: randomUUID(), byteLength: image.length, sha256: hash(image) };
+            for (const server of [app, secondApp]) {
+                await write(request(server).post(root() + '/uploads')).set('Cookie', owner.cookie).send(requestBody).expect(503);
+                await request(server).get(root() + '/' + pending).set('Cookie', owner.cookie).expect(200);
+                await request(server).get('/api/item-images/' + r._id + '/thumbnail').set('Cookie', owner.cookie).expect(200);
+            }
+            pipeline.setUploadAdmission(true); assert.equal((await request(app).get(root()).set('Cookie', owner.cookie)).body.capabilities.binaryUpload, true);
+            assert.equal((await request(secondApp).get(root()).set('Cookie', owner.cookie)).body.capabilities.binaryUpload, false);
+        } finally { second.close(); }
+    });
+    it('stops an approval expiring after a committed PUT without retry/refund; fresh guarded recovery preserves the durable outcome', async function () {
+        let puts = 0;
+        fault = async (req, ctx, send) => {
+            const result = await send();
+            if (req.method === 'PUT' && ++puts === 1) sinon.stub(Date, 'now').returns(Date.parse(f.approval.expiresAt) + 1);
+            return result;
+        };
+        const id = await reserve();
+        try { await upload(id).expect(503); assert.equal(puts, 1); }
+        finally { sinon.restore(); fault = null; }
+        const held = await quota(); assert.ok(held.reservedBytes > 0); assert.equal(held.activeUploads, 1);
+        assert.equal((await row(id)).variants.thumbnail.outcome, 'unknown');
+        await upload(id).expect(202); assert.equal(puts, 1);
+        await expire(id); const { c } = await recoveryContext(), manifest = await recover(c, 'preview');
+        assert.equal(manifest.operations[0].action, 'cleanup');
+        assert.equal((await recover(c, 'apply', manifest)).results[0].status, 'deleted');
+        assert.equal((await quota()).reservedBytes, 0); assert.equal((await quota()).operationCount, 1);
+    });
+    it('requires restart and a fresh manifest after receipt renewal, refusing stale worker and manifest replay before DELETE', async function () {
+        const r = await ready(); await remove(r._id);
+        const { c, r: maintenance } = await recoveryContext(), manifest = await recover(c, 'preview'), before = await quota(); maintenance.approve();
+        await assert.rejects(recover(c, 'apply', manifest)); assert.deepEqual(await quota(), before);
+        const renewed = await openR2PhotoContext({ env: maintenance.env, storageOptions: () => {
+            const bridge = seaweedR2Bridge(fixture, maintenance.env); bridges.push(bridge); return { requestHandler: bridge };
+        } }); contexts.push(renewed);
+        await assert.rejects(recover(renewed, 'apply', manifest));
+        assert.equal(bridges.flatMap(b => b.requests).filter(r => r.method === 'DELETE').length, 0);
+        const fresh = await recover(renewed, 'preview'); assert.equal((await recover(renewed, 'apply', fresh)).results[0].status, 'deleted');
+        const settled = await quota(); await assert.rejects(recover(renewed, 'apply', fresh)); assert.deepEqual(await quota(), settled);
+        assert.equal(settled.operationCount, 1);
     });
     it('keeps stale image revisions independent of item text and never issues storage mutations for a rejected edit', async function () {
         const r = await ready(), before = await quota(), requests = bridges.flatMap(b => b.requests).length;

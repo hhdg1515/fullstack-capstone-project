@@ -1,0 +1,82 @@
+{
+  "scope": "offline synthetic credentials/keypair only; no provider connection",
+  "configured": {
+    "mode": "offline",
+    "configurationValid": true,
+    "hostedTrialReady": false,
+    "productionActivation": "blocked_by_ordinary_startup_policy",
+    "fingerprints": {
+      "storage": "038967d9d6a2705b91d9a926f5f879867a8d9cc5b339bcb169af1e9cc523346c",
+      "database": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "runtime": {
+      "node": "22.23.4",
+      "native": {
+        "sharp": "0.35.5",
+        "vips": "8.18.7"
+      }
+    },
+    "checks": [
+      {
+        "name": "node_runtime",
+        "status": "passed",
+        "category": "node_22_required"
+      },
+      {
+        "name": "sharp_load",
+        "status": "passed",
+        "category": "native_module_loaded"
+      },
+      {
+        "name": "metadata_configuration",
+        "status": "passed",
+        "category": "configured"
+      },
+      {
+        "name": "storage_target",
+        "status": "passed",
+        "category": "offline_fingerprint_matches"
+      },
+      {
+        "name": "credential_target_binding",
+        "status": "passed",
+        "category": "offline_shape_valid"
+      },
+      {
+        "name": "approval_receipt",
+        "status": "passed",
+        "category": "receipt_valid",
+        "role": "runtime",
+        "environment": "staging",
+        "expiresAt": "2026-10-30T09:44:29.988Z",
+        "remainingSeconds": 3599
+      },
+      {
+        "name": "authoritative_r2_configuration",
+        "status": "passed",
+        "category": "existing_validator_accepts"
+      },
+      {
+        "name": "metadata_target_binding",
+        "status": "passed",
+        "category": "offline_binding_matches"
+      }
+    ],
+    "unverified": [
+      "database_connectivity_topology_indexes_and_fingerprint",
+      "r2_iam_bucket_and_contracts",
+      "hosted_packaging_body_memory_and_cost",
+      "fleet_admission_revocation_and_restore",
+      "physical_windows_and_ios"
+    ],
+    "next": "Owner approval and a separately reviewed hosted trial are required; this command authorizes no network access or mutations."
+  },
+  "expirationBoundary": {
+    "status": "failed",
+    "category": "receipt_expired"
+  },
+  "beforeIssueBoundary": {
+    "status": "failed",
+    "category": "receipt_not_yet_valid"
+  }
+}
