@@ -46,6 +46,11 @@ before/after images are linked below; generated designs are not evidence.
   Microwave (`microwave`) and Mirror (`mirror`) are additive canonical types.
   Every previous ID, label and category membership remains unchanged. Six category
   groups, global Other, custom validation and legacy text remain supported.
+* **Pointer and keyboard reliability:** the in-flow type list dismisses after an
+  outside pointer gesture completes, so it cannot move Save Draft between press
+  and release. Keyboard blur still dismisses immediately; no extra user click is
+  required. The existing real mobile publication/draft browser case exposed and
+  verifies this regression.
 * **Discovery:** all existing filters remain visible and responsive. Only the
   disclosure state/control disappears; region preferences, URL precedence,
   server-side matching, exact counts and cursors are unchanged.
@@ -105,7 +110,7 @@ Focused editor: [desktop](assets/milestone-6.6-ux1/after/1440-focused-edit.png),
 ## Verification and limitations
 
 The PR verification record supplies the final immutable head, complete-suite totals
-and CI job URLs. Local frontend checks pass **456 tests in 25 suites** with
+and CI job URLs. Local frontend checks pass **457 tests in 25 suites** with
 `CI=true TZ=America/Los_Angeles npm test -- --watchAll=false --runInBand`.
 Dependency compatibility passes **6 tests**, deployment/security policy passes
 **56 tests**, and backend lint, strict production build (`CI=true`), actionlint

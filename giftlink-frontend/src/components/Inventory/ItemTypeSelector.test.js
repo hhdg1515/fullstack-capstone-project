@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import ItemTypeSelector, { rankedItemTypes } from './ItemTypeSelector';
 const taxonomy = require('../../../../giftlink-backend/data/item-taxonomy.json');
 function Scene() {
@@ -28,4 +28,15 @@ test('no match keeps an explicit Other fallback and Escape closes the list witho
   expect(screen.getByText('No matching types. Choose Other.')).toBeVisible(); expect(screen.getAllByRole('option')).toHaveLength(1);
   fireEvent.keyDown(input, { key: 'End' }); fireEvent.keyDown(input, { key: 'Enter' }); expect(input).toHaveValue('Other');
   fireEvent.focus(input); fireEvent.keyDown(input, { key: 'Escape' }); expect(input).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('a pointer click outside the in-flow list activates its target before dismissal, while keyboard blur closes immediately', () => {
+  const save = jest.fn(); render(<><Scene /><button onClick={save}>Save draft</button></>);
+  const input = screen.getByRole('combobox'), button = screen.getByRole('button', { name: 'Save draft' });
+  act(() => input.focus()); expect(input).toHaveAttribute('aria-expanded', 'true');
+  fireEvent.pointerDown(button); act(() => button.focus());
+  expect(input).toHaveAttribute('aria-expanded', 'true'); // No layout shift before pointerup/click.
+  fireEvent.pointerUp(button); fireEvent.click(button);
+  expect(save).toHaveBeenCalledTimes(1); expect(input).toHaveAttribute('aria-expanded', 'false');
+  act(() => input.focus()); act(() => button.focus()); expect(input).toHaveAttribute('aria-expanded', 'false');
 });

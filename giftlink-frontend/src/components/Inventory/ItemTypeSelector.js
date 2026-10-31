@@ -19,10 +19,35 @@ export function rankedItemTypes(entries, query) {
 
 // Editable listbox: only choosing a catalog entry assigns canonical IDs.
 export default function ItemTypeSelector({ categories = [], categoryId, itemTypeId, onChange, onSearch, disabled, fieldProps }) {
-  const listId = useId(); const input = useRef();
+  const listId = useId(); const input = useRef(), root = useRef(), pointerActive = useRef(false);
   const entries = categories.flatMap(category => category.itemTypes.map(type => ({ ...type, category })));
   const selected = entries.find(type => type.id === itemTypeId && type.category.id === categoryId);
   const [query, setQuery] = useState(null), [open, setOpen] = useState(false), [active, setActive] = useState(-1);
+  // Closing this in-flow list on pointer-induced blur moves a Save button
+  // between pointerdown and click. Defer dismissal until that gesture completes;
+  // keyboard focus changes still dismiss immediately.
+  useEffect(() => {
+    let closeTimer;
+    const dismiss = () => {
+      pointerActive.current = false;
+      if (root.current && !root.current.contains(document.activeElement)) { setOpen(false); setActive(-1); }
+    };
+    const start = () => { clearTimeout(closeTimer); pointerActive.current = true; };
+    const finish = () => { closeTimer = setTimeout(dismiss, 0); };
+    document.addEventListener('pointerdown', start, true);
+    document.addEventListener('pointerup', finish, true);
+    document.addEventListener('click', dismiss);
+    document.addEventListener('pointercancel', dismiss, true);
+    window.addEventListener('blur', dismiss);
+    return () => {
+      clearTimeout(closeTimer);
+      document.removeEventListener('pointerdown', start, true);
+      document.removeEventListener('pointerup', finish, true);
+      document.removeEventListener('click', dismiss);
+      document.removeEventListener('pointercancel', dismiss, true);
+      window.removeEventListener('blur', dismiss);
+    };
+  }, []);
   const search = normalize(query || '');
   const matches = rankedItemTypes(entries, search);
   // Keep the global fallback easy to find, even when a search has no matches.
@@ -34,7 +59,7 @@ export default function ItemTypeSelector({ categories = [], categoryId, itemType
     onChange(type.category.id, type.id); onSearch(''); input.current?.focus(); setQuery(null); setOpen(false); setActive(-1);
   };
   const category = categories.find(row => row.id === categoryId);
-  return <div className="ui-field item-type-selector" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) { setOpen(false); setActive(-1); } }}>
+  return <div ref={root} className="ui-field item-type-selector" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget) && !pointerActive.current) { setOpen(false); setActive(-1); } }}>
     <label htmlFor="item-type">Item type</label>
     <div className="item-type-input">
       <input id="item-type" ref={input} role="combobox" aria-autocomplete="list" aria-expanded={open && !disabled}
