@@ -105,10 +105,14 @@ test('authoritative cover changes, variant errors and stale URLs preserve item i
     await s.post(item.prefix + '/images/order', { imageRevision: item.revision, imageIds: reversed });
     await page.getByRole('button', { name: 'Refresh listings', exact: true }).click();
     await expect(gallery(page).locator('.public-gallery-primary img')).toHaveAttribute('src', '/api/item-images/' + reversed[0] + '/display');
+    // Verify this batch has loaded before issuing another gallery refresh;
+    // overlapping batches may legitimately hit the unchanged eight-read budget.
+    await loaded(gallery(page).locator('img'));
     await s.post(item.prefix + '/images/' + reversed[0] + '/actions', { imageRevision: item.revision + 1, action: 'delete' });
     await page.getByRole('button', { name: 'Refresh listings', exact: true }).click();
     await expect(gallery(page).getByRole('button', { name: 'Show photo 1 of 4', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await expect(gallery(page).locator('.public-gallery-primary img')).toHaveAttribute('src', '/api/item-images/' + reversed[1] + '/display');
+    await loaded(gallery(page).locator('img'));
     expect((await s.anonymous.request.get('/api/item-images/' + reversed[0] + '/thumbnail')).status()).toBe(404);
     await page.goto(list); await loaded(page.locator('.public-item-cover img'));
     await expect(page.locator('.public-item-cover img')).toHaveAttribute('src', '/api/item-images/' + reversed[1] + '/thumbnail');
