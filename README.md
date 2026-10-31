@@ -979,3 +979,9 @@ locks and frontend source. No packages, infrastructure or provider settings chan
 cover the top-positioned Add item form, direct owner editing, ranked type search,
 minimal photo controls, always-visible discovery filters and request cleanup.
 No plan migration, production photo activation or infrastructure change is included.
+
+## Milestone 6.6 UX-2A: item-first architecture proposal
+
+[Item-first data model, compatibility, migration and UX-2B/UX-2C sequence](docs/milestone-6.6-ux2a-item-first-architecture.md)
+are design proposals for review. No item-first runtime, migration, index change or
+production activation is implemented or authorized by this documentation PR.
