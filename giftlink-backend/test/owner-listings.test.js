@@ -65,7 +65,8 @@ describe('independent private owner listings on verified disposable MongoDB', fu
     it('derives the full local deadline tuple only after explicit confirmation', async function () {
         let item = (await create({ name: 'Chair', pickupTimeZone: 'America/Los_Angeles', availableUntil: '2027-03-14' }).expect(201)).body.item;
         assert.equal((await row(item)).expiresAt, undefined);
-        item = (await patch(item, { confirmPickupTimeZone: true }).expect(200)).body.item;
+        await patch(item, { pickupTimeZoneConfirmed: true }).expect(400);
+        item = (await patch(item, { pickupTimeZone: 'America/Los_Angeles', pickupTimeZoneConfirmed: true }).expect(200)).body.item;
         assert.equal(item.pickup.expiresAt, '2027-03-15T07:00:00.000Z'); assert.equal(item.pickup.timeZoneConfirmed, true);
         const saved = await row(item); assert.equal(saved.deadlinePolicyVersion, 2); assert.ok(saved.timeZoneConfirmedAt instanceof Date);
         item = (await patch(item, { availableUntil: '2027-11-07' }).expect(200)).body.item;
@@ -73,12 +74,12 @@ describe('independent private owner listings on verified disposable MongoDB', fu
         assert.equal((await row(item)).timeZoneConfirmedAt.getTime(), saved.timeZoneConfirmedAt.getTime());
     });
     it('invalidates confirmation on location/zone changes and supports explicit reconfirmation/clearing', async function () {
-        let item = (await create({ name: 'Chair', pickupTimeZone: 'UTC', confirmPickupTimeZone: true, availableUntil: '2027-03-14' }).expect(201)).body.item;
+        let item = (await create({ name: 'Chair', pickupTimeZone: 'UTC', pickupTimeZoneConfirmed: true, availableUntil: '2027-03-14' }).expect(201)).body.item;
         item = (await patch(item, { stateId: '06' }).expect(200)).body.item;
         assert.equal(item.pickup.timeZoneConfirmed, false); assert.equal(item.pickup.expiresAt, null);
-        item = (await patch(item, { pickupTimeZone: 'America/New_York', confirmPickupTimeZone: true }).expect(200)).body.item;
+        item = (await patch(item, { pickupTimeZone: 'America/New_York', pickupTimeZoneConfirmed: true }).expect(200)).body.item;
         assert.equal(item.pickup.expiresAt, '2027-03-15T04:00:00.000Z');
-        item = (await patch(item, { confirmPickupTimeZone: false }).expect(200)).body.item;
+        item = (await patch(item, { pickupTimeZoneConfirmed: false }).expect(200)).body.item;
         assert.equal(item.pickup.expiresAt, null); assert.ok(!('expiresAt' in await row(item)));
     });
     it('checks changed starts in the selected local timezone without inventing a zone', async function () {
@@ -90,7 +91,7 @@ describe('independent private owner listings on verified disposable MongoDB', fu
     for (const input of [ { name: '' }, { name: '<script>' }, { name: 'x'.repeat(161) }, { description: [] }, { stateId: '00' },
         { metroId: '31080' }, { stateId: '36', metroId: '31080' }, { itemTypeId: 'microwave' },
         { categoryId: 'dining-kitchen', itemTypeId: 'office-chair' }, { condition: 'invented' }, { customItemType: 'unknown' },
-        { pickupTimeZone: 'Bad/Zone' }, { pickupTimeZone: '+02:00' }, { confirmPickupTimeZone: true },
+        { pickupTimeZone: 'Bad/Zone' }, { pickupTimeZone: '+02:00' }, { pickupTimeZoneConfirmed: true },
         { availableUntil: '2027-02-30' }, { availableFrom: '2027-03-15', availableUntil: '2027-03-14' },
         { pickupTimeZone: 'Pacific/Apia', availableUntil: '2011-12-30' }, { city: 'private@example.test' } ]) {
         it('rejects malformed optional draft context: ' + JSON.stringify(input), async function () {
@@ -105,7 +106,7 @@ describe('independent private owner listings on verified disposable MongoDB', fu
         item = (await patch(item, { categoryId: 'dining-kitchen', itemTypeId: 'microwave' }).expect(200)).body.item;
         assert.equal(item.classification.itemType.id, 'microwave'); assert.equal(item.classification.customItemType, undefined);
     });
-    for (const field of ['ownerId', 'listingSchemaVersion', 'coordinationRevision', 'imageRevision', 'deadlinePolicyVersion', 'expiresAt', 'deadlineTimeZone', 'timeZoneRulesVersion', 'timeZoneConfirmedAt', 'planId', 'publishedAt', 'storageBinding', 'photoId', 'status']) {
+    for (const field of ['ownerId', 'listingSchemaVersion', 'coordinationRevision', 'imageRevision', 'deadlinePolicyVersion', 'expiresAt', 'deadlineTimeZone', 'timeZoneRulesVersion', 'timeZoneConfirmedAt', 'planId', 'publishedAt', 'storageBinding', 'photoId', 'status', 'confirmPickupTimeZone']) {
         it('rejects client authority field ' + field + ' on create and patch', async function () {
             await create({ name: 'Chair', [field]: 'forged' }).expect(400);
             const item = (await create().expect(201)).body.item, saved = await row(item);
@@ -172,7 +173,7 @@ describe('independent private owner listings on verified disposable MongoDB', fu
         for (const query of ['?cursor=bad', '?limit=51', '?limit=0', '?status=picked-up', '?ownerId=foreign', '?limit=2&limit=3']) await list(query).expect(400);
     });
     it('filters derived legacy UTC expiry and preserves v2 draft status regardless of its deadline', async function () {
-        const v1 = await legacy(), v2 = (await create({ name: 'Old private draft', pickupTimeZone: 'UTC', confirmPickupTimeZone: true, availableUntil: '2000-01-01' }).expect(201)).body.item;
+        const v1 = await legacy(), v2 = (await create({ name: 'Old private draft', pickupTimeZone: 'UTC', pickupTimeZoneConfirmed: true, availableUntil: '2000-01-01' }).expect(201)).body.item;
         await db.collection('items').updateOne({ _id: new ObjectId(v1.item.id) }, { $set: { status: 'available', publishedAt: new Date('1999-01-01'), availableUntil: '2000-01-01' } });
         assert.deepEqual((await list('?status=expired').expect(200)).body.items.map(i => i.id), [v1.item.id]);
         assert.deepEqual((await list('?status=draft').expect(200)).body.items.map(i => i.id), [v2.id]);
@@ -187,7 +188,7 @@ describe('independent private owner listings on verified disposable MongoDB', fu
         }
     });
     it('allows owner-only complete unlisted/expired v2 reads, never writes or public activation', async function () {
-        const item = (await create({ name: 'Chair', description: 'A chair', categoryId: 'office-lighting', itemTypeId: 'office-chair', stateId: '06', metroId: '31080', pickupTimeZone: 'UTC', confirmPickupTimeZone: true, availableUntil: '2027-11-12' }).expect(201)).body.item;
+        const item = (await create({ name: 'Chair', description: 'A chair', categoryId: 'office-lighting', itemTypeId: 'office-chair', stateId: '06', metroId: '31080', pickupTimeZone: 'UTC', pickupTimeZoneConfirmed: true, availableUntil: '2027-11-12' }).expect(201)).body.item;
         for (const status of ['unlisted', 'expired']) {
             await db.collection('items').updateOne({ _id: new ObjectId(item.id) }, { $set: { status } });
             assert.equal((await detail(item).expect(200)).body.item.status, status); await detail(item, other).expect(404); await patch(item, { name: 'No' }).expect(409);

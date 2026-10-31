@@ -24,7 +24,7 @@ function checkInput(input, editing = false, action = false) {
         throw new InventoryError(400, 'VALIDATION_FAILED', 'Unsupported or missing fields.');
     }
     if (editing && !integer(input.version) || input.publish !== undefined && typeof input.publish !== 'boolean' ||
-        input.confirmPickupTimeZone !== undefined && typeof input.confirmPickupTimeZone !== 'boolean' ||
+        input.pickupTimeZoneConfirmed !== undefined && typeof input.pickupTimeZoneConfirmed !== 'boolean' ||
         action && !['publish', 'withdraw', 'unlist', 'clear', 'reopen'].includes(input.action)) throw new InventoryError(400, 'VALIDATION_FAILED', 'Check the action, version and confirmation fields.');
 }
 function query(raw, ownerId) {

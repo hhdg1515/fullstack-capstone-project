@@ -87,7 +87,7 @@ Example creation and edit:
   "stateId":"06",
   "metroId":"31080",
   "pickupTimeZone":"America/Los_Angeles",
-  "confirmPickupTimeZone":true,
+  "pickupTimeZoneConfirmed":true,
   "availableUntil":"2027-11-12"
 }
 ```
@@ -148,7 +148,7 @@ IDs, dates, zone and confirmation default null. No invented metro/date/timezone.
 
 Editable fields: `name`, `description`, `categoryId`, `itemTypeId`,
 `customItemType`, `condition`, `stateId`, `metroId`, `city`, `neighborhood`,
-`pickupTimeZone`, `confirmPickupTimeZone`, `availableFrom`, `availableUntil`.
+`pickupTimeZone`, `pickupTimeZoneConfirmed`, `availableFrom`, `availableUntil`.
 Create has optional boolean `publish`; edit additionally requires positive safe
 integer `version`. All unknown fields are rejected, including owner/schema/status,
 coordination/image revisions, server confirmation time, derived expiry/policy,
@@ -171,8 +171,9 @@ is available; selecting a zone later validates a previously incomplete start.
 An unchanged start keeps its compatibility exception. Past deadlines are allowed
 for private drafts but do not authorize public access or intake.
 
-An explicit valid IANA zone can be saved unconfirmed. `confirmPickupTimeZone:true`
-is owner intent; the server records confirmation time against the resulting
+An explicit valid IANA zone can be saved unconfirmed. `pickupTimeZoneConfirmed:true`
+must include the selected `pickupTimeZone` in the same request (and the current
+`version` on edits). It is owner intent; the server records confirmation time against the resulting
 context. Changing state, metro, city, neighborhood or zone clears confirmation
 unless the same edit explicitly reconfirms. False clears it. A confirmed zone plus
 deadline derives the entire B1 Temporal tuple atomically: policy 2, exact zone,
