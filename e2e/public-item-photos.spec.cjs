@@ -44,7 +44,7 @@ async function audit(page, name) {
   const errors = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations.map(row => row.id);
   await test.step('D1 ' + name + ' WCAG rules: ' + (errors.join(', ') || 'none'), async () => expect(errors).toEqual([]));
 }
-async function loaded(images) { for (const image of await images.all()) await expect.poll(() => image.evaluate(node => node.complete && node.naturalWidth > 0)).toBe(true); }
+async function loaded(images) { for (const image of await images.all()) { await image.scrollIntoViewIfNeeded(); await expect.poll(() => image.evaluate(node => node.complete && node.naturalWidth > 0)).toBe(true); } }
 async function evidence(page, info, name, target = page.locator('main')) {
   if (!process.env.PUBLIC_PHOTO_EVIDENCE) return;
   const directory = path.join(__dirname, '../docs/verification/m65d1'); fs.mkdirSync(directory, { recursive: true });

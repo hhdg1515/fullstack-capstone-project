@@ -118,7 +118,7 @@ test('private dashboards provide loading, empty/error/retry and role navigation'
 test('giver dashboard displays appointment timezone and plan, and filters accepted appointments with bounded next pages', async () => {
   fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { requests: [{ ...base, role: 'giver', plan: { id: 'plan', title: 'Summer move' } }], nextCursor: base.id }));
   mount('/app/pickups/incoming'); expect(await screen.findByRole('link', { name: 'Kitchen box' })).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Summer move' })).toHaveAttribute('href', '/app/plans/plan');
+  expect(screen.queryByRole('link', { name: 'Summer move' })).not.toBeInTheDocument();
   expect(screen.getByText(/Asia\/Kolkata/)).toBeInTheDocument(); expect(screen.getByText(/2:30 PM/)).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Request status'), { target: { value: 'accepted' } });
   await waitFor(() => expect(fetch.mock.calls.some(([url]) => url.includes('received?status=accepted'))).toBe(true));
@@ -128,7 +128,7 @@ test('giver dashboard displays appointment timezone and plan, and filters accept
 });
 test('receiver private detail retains full item and private note without giver controls or internal identities', async () => {
   mount('/app/pickups/' + base.id);
-  expect(await screen.findByText('Meet by the library')).toBeInTheDocument(); expect(screen.getByText('One whole box.')).toBeInTheDocument();
+  expect(await screen.findByText('Meet by the library')).toBeInTheDocument(); expect(screen.queryByText('One whole box.')).not.toBeInTheDocument(); expect(screen.getByRole('link', { name: 'View item' })).toHaveAttribute('href', '/app/items/' + item.id);
   expect(screen.getByRole('button', { name: 'Cancel request' })).toBeInTheDocument();
   for (const name of ['Accept pickup', 'Decline request', 'Confirm handoff', 'Record no-show']) expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
 });
@@ -189,17 +189,17 @@ test('multiple requests for one item retain applicant, proposed time, status and
     expect(within(card).getByRole('link', { name: 'View request from ' + request.counterpart.firstName + ' for Kitchen box' })).toHaveAttribute('href', '/app/pickups/' + request.id);
     expect(card.querySelector('time')).toHaveAttribute('datetime', request.proposedAt);
     expect(within(card).getByText(request.status === 'pending' ? 'Pending' : 'Declined')).toBeInTheDocument();
-    expect(within(card).getByText(request.note)).toBeInTheDocument(); expect(within(card).getByText(request.id)).toBeInTheDocument();
+    expect(within(card).getByText(request.note)).toBeInTheDocument(); expect(within(card).queryByText(request.id)).not.toBeInTheDocument();
     expect(card.textContent).not.toContain(user.email);
   }
 });
-test('identically named applicants have separate exact references and review targets without inventing identities', async () => {
+test('identically named applicants have separate exact review targets without visible internal IDs without inventing identities', async () => {
   const requests = [base, { ...base, id: '64a000000000000000000003' }];
   fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { requests, nextCursor: null }));
   mount('/app/pickups/incoming'); await screen.findAllByText('Applicant: Giver');
   const links = screen.getAllByRole('link', { name: 'View request from Giver for Kitchen box' });
   expect(links.map(link => link.getAttribute('href'))).toEqual(requests.map(request => '/app/pickups/' + request.id));
-  for (const request of requests) expect(screen.getByText(request.id)).toBeInTheDocument();
+  for (const request of requests) expect(screen.queryByText(request.id)).not.toBeInTheDocument();
 });
 test('filtered emptiness differs from no history and clearing it resets pagination', async () => {
   mount('/app/pickups'); await screen.findByText('No pickup requests here yet.');

@@ -12,9 +12,6 @@
 .discovery-filters .plan-field { margin: .6rem 0; }
 .discovery-search, .discovery-filters .plan-actions { grid-column: 1 / -1; }
 .discovery-search-actions { margin: .5rem 0; }
-.discovery-search-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .4rem; }
-.discovery-search-heading label { margin: 0; }
-.discovery-search-heading .btn { transition: none; }
 .discovery-options { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 0 1rem; }
 .discovery-options[hidden] { display: none; }
 .discovery-options small { grid-column: 1 / -1; margin: .5rem 0; }
@@ -30,8 +27,6 @@
 
 .ui-page .inventory-form { max-width: 42rem; margin-block: var(--ui-space-6); padding: var(--ui-space-6); border-color: var(--ui-border); border-radius: var(--ui-radius-surface); }
 .inventory-form fieldset { min-width: 0; }
-.inventory-form-help { color: var(--ui-muted); margin-block: var(--ui-space-3); }
-.inventory-classification { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: 0 var(--ui-space-4); }
 .inventory-form .ui-field { margin-block: var(--ui-space-4); }
 @media (max-width: 420px) { .ui-page .inventory-form { padding: var(--ui-space-4); } }
 
@@ -61,3 +56,16 @@
 .item-type-options li:hover, .item-type-options li.is-active { background: var(--ui-subtle); outline: 2px solid var(--ui-focus); outline-offset: -2px; }
 .item-type-options li[aria-selected="true"] > span { font-weight: 700; }
 .item-type-empty { margin-block: var(--ui-space-2); }
+
+/* The single save area stays in flow: keyboard/zoom cannot hide fields beneath it. */
+.inventory-save-area { position: static; margin-top: var(--ui-space-4); padding-top: var(--ui-space-4); border-top: 1px solid var(--ui-border); }
+.inventory-save-area .plan-actions { display: flex; flex-wrap: wrap; gap: var(--ui-space-3); margin-bottom: 0; }
+.inventory-form .ui-field { margin-bottom: var(--ui-space-3); }
+.inventory-form .item-photos { margin-block: var(--ui-space-3); }
+.inventory-form .ui-field small { display: block; color: var(--ui-muted); margin-top: var(--ui-space-1); }
+.inventory-form :is(input, textarea, select, [aria-invalid="true"]) { scroll-margin-block: var(--ui-space-6); }
+.public-item-heading { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: var(--ui-space-3); }
+@media (max-width: 600px) {
+  .inventory-form { padding: var(--ui-space-3); }
+  .inventory-save-area .ui-button { flex: 1 1 auto; }
+}

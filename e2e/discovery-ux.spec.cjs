@@ -68,16 +68,15 @@ test('expanded areas, responsive filters, truthful cards and recovery preserve s
       await page.setViewportSize({ width, height: 1000 });
       await page.evaluate(zoom => { document.documentElement.style.fontSize = zoom ? '200%' : ''; }, width === 640);
       await audit(page, 'populated ' + width);
-      const filters = page.getByRole('button', { name: /^Filters/ });
-      await filters.click(); await expect(page.getByLabel('City', { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: /^Filters/ })).toHaveCount(0);
+      await expect(page.getByLabel('City', { exact: true })).toBeVisible();
       await audit(page, 'filters ' + width);
       await page.getByLabel('City', { exact: true }).focus(); await page.keyboard.press('Escape');
-      await expect(filters).toBeFocused(); await expect(page.getByLabel('City', { exact: true })).toBeHidden();
-      expect(await filters.evaluate(node => getComputedStyle(node).outlineStyle)).toBe('solid');
+      await expect(page.getByLabel('City', { exact: true })).toBeFocused(); await expect(page.getByLabel('City', { exact: true })).toBeVisible();
+      expect(await page.getByLabel('City', { exact: true }).evaluate(node => getComputedStyle(node).outlineStyle)).toBe('solid');
     }
     await page.evaluate(() => { document.documentElement.style.fontSize = ''; });
     await page.getByLabel('Category', { exact: true }).selectOption('living-room'); await page.getByLabel('Item type', { exact: true }).selectOption('sofa');
-    await page.getByRole('button', { name: /^Filters/ }).click();
     await page.getByLabel('Condition', { exact: true }).selectOption('good'); await page.getByLabel('Sort items', { exact: true }).selectOption('deadline');
     await page.getByLabel('City', { exact: true }).selectOption('Philadelphia'); await page.getByLabel('Search items', { exact: true }).fill('couch');
     await page.getByRole('button', { name: 'Find free items', exact: true }).click(); await expect(count(1)).toBeVisible();

@@ -279,18 +279,18 @@ async function editPhotos(count = 3) {
   await waitFor(() => expect(screen.getByRole('button', { name: 'Delete photo 1' })).toBeEnabled());
 }
 const confirmDelete = async position => { await click(screen.getByRole('button', { name: 'Delete photo ' + position })); await click(screen.getByRole('button', { name: 'Delete photo', exact: true })); };
-test('owner cover and up/down changes persist canonical order without resetting text or selected photos', async () => {
+test('default cover retains canonical order and compact deletion preserves text and selected photos', async () => {
   await editPhotos(); const description = screen.getByLabelText('Description'); fireEvent.change(description, { target: { value: 'Keep unsaved text' } }); await select();
   const preview = screen.getByAltText('Local preview of selected photo 1').getAttribute('src');
-  await click(screen.getByRole('button', { name: 'Make photo 3 cover' }));
-  expect(reorderPhotos).toHaveBeenCalledWith(plan.id, items[0].id, 3, ['e', 'c', 'd'].map(x => x.repeat(24)));
-  await waitFor(() => expect(screen.getByRole('listitem', { name: 'Saved photo 1, Cover' })).toHaveFocus());
-  expect(screen.getByAltText('Uploaded photo 1')).toHaveAttribute('src', '/api/item-images/' + 'e'.repeat(24) + '/thumbnail');
-  await click(screen.getByRole('button', { name: 'Move photo 3 up' })); expect(photoIds()).toEqual(['e', 'd', 'c'].map(x => x.repeat(24)));
-  await click(screen.getByRole('button', { name: 'Move photo 2 down' })); expect(photoIds()).toEqual(['e', 'c', 'd'].map(x => x.repeat(24)));
+  expect(screen.queryByRole('button', { name: /Make photo|Move photo/ })).not.toBeInTheDocument();
+  expect(photoIds()).toEqual(['c', 'd', 'e'].map(x => x.repeat(24)));
+  expect(screen.getByRole('button', { name: 'Delete photo 2' })).toHaveTextContent('×');
+  await confirmDelete(2); expect(photoIds()).toEqual(['c', 'e'].map(x => x.repeat(24)));
+  expect(screen.getByAltText('Uploaded photo 1')).toHaveAttribute('src', '/api/item-images/' + 'c'.repeat(24) + '/thumbnail');
   expect(description).toHaveValue('Keep unsaved text'); expect(screen.getByAltText('Local preview of selected photo 1')).toHaveAttribute('src', preview);
-  expect(writes).toHaveLength(0); expect(uploadPhoto).not.toHaveBeenCalled(); expect(unload()).toBe(true);
+  expect(writes).toHaveLength(0); expect(uploadPhoto).not.toHaveBeenCalled(); expect(reorderPhotos).not.toHaveBeenCalled(); expect(unload()).toBe(true);
 });
+
 test('delete confirmation starts on Keep, traps focus, and ordinary/cover deletion use deterministic remaining photos', async () => {
   await editPhotos(); screen.getByRole('button', { name: 'Delete photo 1' }).focus(); await click(screen.getByRole('button', { name: 'Delete photo 1' }));
   expect(screen.getByRole('button', { name: 'Keep photo' })).toHaveFocus(); expect(screen.getByRole('dialog')).toHaveAccessibleDescription(expect.stringContaining('next photo'));
@@ -313,26 +313,28 @@ test('ambiguous deletion keeps the old thumbnail and pending files until explici
   expect(readUpload).toHaveBeenCalledWith(plan.id, items[0].id, 'c'.repeat(24)); expect(screen.getAllByAltText(/Uploaded photo/)).toHaveLength(1);
   expect(deletePhoto).toHaveBeenCalledTimes(1); expect(screen.getByAltText('Local preview of selected photo 1')).toBeVisible();
 });
-test('stale order and quota failures require a read and review, never automatic replay', async () => {
-  await editPhotos(2); reorderPhotos.mockRejectedValueOnce(photoError({ status: 409, code: 'IMAGE_CHANGED' }));
-  await click(screen.getByRole('button', { name: 'Make photo 2 cover' })); await screen.findByText('Photo change not confirmed. Check changes before continuing.');
-  expect(reorderPhotos).toHaveBeenCalledTimes(1); await click(screen.getByRole('button', { name: 'Check photo changes' }));
-  expect(screen.getByText('Photos changed. Review the current order.')).toBeVisible();
-  reorderPhotos.mockRejectedValueOnce(photoError({ status: 429, code: 'IMAGE_CONTROL_LIMIT' }));
-  await click(screen.getByRole('button', { name: 'Make photo 2 cover' })); expect(await screen.findByRole('alert')).toHaveTextContent('Too many requests');
-  expect(reorderPhotos).toHaveBeenCalledTimes(2);
+test('stale deletion and quota failures require a read and review, never automatic replay', async () => {
+  await editPhotos(2); deletePhoto.mockRejectedValueOnce(photoError({ status: 409, code: 'IMAGE_CHANGED' }));
+  await confirmDelete(2); await screen.findByText('Photo change not confirmed. Check changes before continuing.');
+  expect(deletePhoto).toHaveBeenCalledTimes(1); await click(screen.getByRole('button', { name: 'Check photo changes' }));
+  expect(screen.getByText('Photo is still present. Review it before deleting again.')).toBeVisible();
+  deletePhoto.mockRejectedValueOnce(photoError({ status: 429, code: 'IMAGE_CONTROL_LIMIT' }));
+  await confirmDelete(2); expect(await screen.findByRole('alert')).toHaveTextContent('Too many requests'); expect(deletePhoto).toHaveBeenCalledTimes(2);
   readPhotos.mockRejectedValueOnce(photoError({ status: 429, code: 'IMAGE_CONTROL_LIMIT' }));
   await click(screen.getByRole('button', { name: 'Check photo changes' })); expect(await screen.findByRole('alert')).toHaveTextContent('Too many requests');
-  await click(screen.getByRole('button', { name: 'Check photo changes' })); expect(reorderPhotos).toHaveBeenCalledTimes(2);
+  await click(screen.getByRole('button', { name: 'Check photo changes' })); expect(deletePhoto).toHaveBeenCalledTimes(2);
 });
-test('uncertain management survives editor close/remount with no automatic mutation or file upload', async () => {
-  await editPhotos(2); reorderPhotos.mockRejectedValueOnce(photoError({ status: 0 }, true));
-  await click(screen.getByRole('button', { name: 'Make photo 2 cover' })); await screen.findByRole('button', { name: 'Check photo changes' });
+
+test('uncertain deletion survives editor close/remount with no automatic mutation or file upload', async () => {
+  await editPhotos(2); deletePhoto.mockRejectedValueOnce(photoError({ status: 0 }, true));
+  await confirmDelete(2); await screen.findByRole('button', { name: 'Check photo changes' });
   await click(screen.getByRole('button', { name: 'Cancel edit' })); await click(screen.getByRole('button', { name: 'Edit Synthetic chair' }));
   expect(await screen.findByRole('button', { name: 'Check photo changes' })).toBeEnabled();
-  expect(screen.getByRole('button', { name: 'Make photo 2 cover' })).toBeDisabled(); expect(reorderPhotos).toHaveBeenCalledTimes(1);
-  await click(screen.getByRole('button', { name: 'Check photo changes' })); expect(screen.getByRole('button', { name: 'Make photo 2 cover' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Delete photo 2' })).toBeDisabled(); expect(deletePhoto).toHaveBeenCalledTimes(1);
+  await click(screen.getByRole('button', { name: 'Check photo changes' })); expect(screen.getByRole('button', { name: 'Delete photo 2' })).toBeEnabled();
+  expect(uploadPhoto).not.toHaveBeenCalled();
 });
+
 test('failed canonical read after deletion acknowledgment retains the UI until recovery succeeds', async () => {
   await editPhotos(2); readPhotos.mockRejectedValueOnce(photoError({ status: 503 })); await confirmDelete(1);
   await screen.findByText('Photo change not confirmed. Check changes before continuing.'); expect(screen.getAllByAltText(/Uploaded photo/)).toHaveLength(2);
@@ -341,7 +343,7 @@ test('failed canonical read after deletion acknowledgment retains the UI until r
 test('in-flight management disables other submissions and a late expired session clears private drafts', async () => {
   await editPhotos(2); await select(); let reject;
   deletePhoto.mockImplementationOnce(() => new Promise((resolve, fail) => { reject = fail; }));
-  await confirmDelete(1); fireEvent.click(screen.getByRole('button', { name: 'Make photo 2 cover' }));
+  await confirmDelete(1); fireEvent.click(screen.getByRole('button', { name: 'Delete photo 2' }));
   expect(reorderPhotos).not.toHaveBeenCalled(); expect(screen.getByRole('button', { name: 'Save draft with 1 photo' })).toBeDisabled();
   await act(async () => reject(photoError({ status: 401, code: 'SESSION_EXPIRED' })));
   expect(await screen.findByRole('heading', { name: 'Login required' })).toBeVisible(); expect(screen.queryAllByRole('img')).toHaveLength(0); expect(unload()).toBe(false);
@@ -356,4 +358,20 @@ test('a delete status/list race stays unresolved rather than falsely claiming th
   await click(screen.getByRole('button', { name: 'Check photo changes' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Could not check photo changes. Try again.');
   expect(screen.queryByText('Photo is still present. Review it before deleting again.')).not.toBeInTheDocument(); expect(deletePhoto).toHaveBeenCalledTimes(1);
+});
+
+test('delayed preparation preserves selected batch order through sequential uploads and the default cover', async () => {
+  let resolveFirst;
+  const first = new File(['first'], 'first.png', { type: 'image/png' }), second = new File(['second'], 'second.png', { type: 'image/png' });
+  preparePhoto.mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; })).mockResolvedValueOnce(second);
+  mount(); await screen.findByLabelText('Item name'); fireEvent.change(screen.getByLabelText('Item name'), { target: { value: 'Ordered photos' } });
+  fireEvent.change(screen.getByLabelText('Choose photos'), { target: { files: [first, second] } });
+  await waitFor(() => expect(preparePhoto).toHaveBeenCalledTimes(1)); expect(uploadPhoto).not.toHaveBeenCalled();
+  await act(async () => { resolveFirst(first); }); await screen.findByAltText('Local preview of selected photo 2');
+  expect(preparePhoto.mock.calls.map(call => call[0])).toEqual([first, second]);
+  await save(2); await ready(2);
+  expect(uploadPhoto.mock.calls.map(call => call[3])).toEqual([first, second]);
+  const firstImageId = uploadPhoto.mock.calls[0][2];
+  expect(screen.getByAltText('Uploaded photo 1')).toHaveAttribute('src', '/api/item-images/' + firstImageId + '/thumbnail');
+  expect(reorderPhotos).not.toHaveBeenCalled();
 });

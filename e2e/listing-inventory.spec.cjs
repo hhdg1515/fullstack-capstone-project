@@ -51,7 +51,7 @@ test('giver publishes a draft, distinguishes reservations and handoffs, and reco
     await page.getByRole('button', { name: 'Edit Local chair', exact: true }).click();
     await selectItemType(page, 'office-chair');
     await page.getByLabel('Description', { exact: true }).fill('Local chair with a detailed description. '.repeat(15));
-    await page.getByLabel('Condition (optional)', { exact: true }).selectOption('good');
+    await page.getByText('More details', { exact: true }).click(); await page.getByLabel('Condition (optional)', { exact: true }).selectOption('good');
     await page.getByRole('button', { name: 'Publish', exact: true }).evaluate(node => { node.click(); node.click(); });
     const card = name => page.getByRole('heading', { name, exact: true }).locator('xpath=ancestor::li[1]');
     await expect(card('Local chair').getByText('Posted', { exact: true })).toBeVisible(); expect(patches).toBe(1); await audit('Posted inventory');
@@ -60,7 +60,7 @@ test('giver publishes a draft, distinguishes reservations and handoffs, and reco
     const { request: accepted } = await call(giver, 'post', '/api/pickup-requests/' + request.id + '/actions', { action: 'accept', version: request.version });
     await page.getByRole('button', { name: 'Refresh inventory', exact: true }).click(); await expect(card('Local chair').getByText('Reserved', { exact: true })).toBeVisible();
     await expect(card('Local chair').getByText('Picked Up', { exact: true })).toHaveCount(0); await audit('Reserved inventory');
-    confirm = false; await card('Local chair').getByRole('button', { name: 'Hide Local chair', exact: true }).click();
+    await expect(card('Local chair').getByRole('button', { name: 'Hide Local chair', exact: true })).toHaveCount(0);
     await expect(card('Local chair').getByText('Reserved', { exact: true })).toBeVisible(); confirm = true;
     const { item: manual } = await call(giver, 'post', root, { name: 'Local manually dealt with item' });
     await page.getByRole('button', { name: 'Refresh inventory', exact: true }).click(); await expect(card(manual.name)).toBeVisible();

@@ -61,15 +61,17 @@ async function deleted(panel, position) {
   await expect(panel.getByRole('button', { name: 'Check photo changes', exact: true })).toHaveCount(0);
   await expect(panel.getByText(/Photo deleted\./)).toBeVisible();
 }
-test('cover, up/down, ordinary delete and cover fallback persist across reload', async ({ browser, deployment }, info) => {
+test('legacy order compatibility, ordinary delete and cover fallback persist across reload', async ({ browser, deployment }, info) => {
   const s = await scene(browser, deployment, info, 3); const { page, panel, card, context, photos } = s;
   try {
     await evidence(page, info, 'initial', card); await audit(page, 'initial');
-    await panel.getByRole('button', { name: 'Make photo 3 cover', exact: true }).focus(); await page.keyboard.press('Enter');
+    // Legacy ordering remains API-compatible; UX-1 intentionally removes its visible controls.
+    await expect(panel.getByRole('button', { name: /Make photo|Move photo/ })).toHaveCount(0);
+    for (const [imageRevision, imageIds] of [[3, [photos[2], photos[0], photos[1]]], [4, [photos[2], photos[1], photos[0]]], [5, [photos[2], photos[0], photos[1]]]]) {
+      await s.post(s.prefix + '/order', { imageRevision, imageIds });
+    }
+    await panel.getByText('Photo tips', { exact: true }).click(); await panel.getByRole('button', { name: 'Refresh photos', exact: true }).click();
     await expect.poll(() => ids(panel)).toEqual([photos[2], photos[0], photos[1]]);
-    await expect(panel.getByRole('listitem', { name: 'Saved photo 1, Cover', exact: true })).toBeFocused();
-    await panel.getByRole('button', { name: 'Move photo 3 up', exact: true }).click(); await expect.poll(() => ids(panel)).toEqual([photos[2], photos[1], photos[0]]);
-    await panel.getByRole('button', { name: 'Move photo 2 down', exact: true }).click(); await expect.poll(() => ids(panel)).toEqual([photos[2], photos[0], photos[1]]);
     await expect(card.getByAltText('Uploaded photo 1', { exact: true })).toHaveAttribute('src', '/api/item-images/' + photos[2] + '/thumbnail');
     await evidence(page, info, 'reordered', card); await audit(page, 'reordered');
     await deleted(panel, 2); await expect.poll(() => ids(panel)).toEqual([photos[2], photos[1]]); await evidence(page, info, 'ordinary-deleted', card);
@@ -102,18 +104,16 @@ test('stale and uncertain changes preserve independent text/files and require re
       if (request.method() === 'POST' && /\/images\/[a-f0-9]{24}\/actions$/.test(url)) deletes++;
       if (request.method() === 'PUT') uploads++;
     });
-    await panel.getByRole('button', { name: 'Make photo 2 cover', exact: true }).click();
+    await panel.getByRole('button', { name: 'Delete photo 1', exact: true }).click();
+    await panel.getByRole('button', { name: 'Delete photo', exact: true }).click();
     await expect(panel.getByRole('alert')).toHaveText(/Photo change not confirmed/); await panel.getByRole('button', { name: 'Check photo changes' }).click();
-    await expect.poll(() => ids(panel)).toEqual(photos.slice().reverse()); expect(orders).toBe(1);
-    gate = deployment.deferNextPhotoResponse('photo-order'); await panel.getByRole('button', { name: 'Make photo 2 cover', exact: true }).click();
-    await gate.arrived; gate.discard(); gate = undefined;
-    await expect(panel.getByRole('alert')).toHaveText(/Photo change not confirmed/); expect(orders).toBe(2);
-    await evidence(page, info, 'uncertain'); await audit(page, 'uncertain');
-    await panel.getByRole('button', { name: 'Check photo changes' }).click(); await expect.poll(() => ids(panel)).toEqual(photos); expect(orders).toBe(2);
+    await expect.poll(() => ids(panel)).toEqual(photos.slice().reverse()); expect(orders).toBe(0); expect(deletes).toBe(1);
     gate = deployment.deferNextPhotoResponse('photo-delete'); await panel.getByRole('button', { name: 'Delete photo 1', exact: true }).click();
     await panel.getByRole('button', { name: 'Delete photo', exact: true }).click(); await gate.arrived; gate.discard(); gate = undefined;
-    await expect(panel.getByRole('alert')).toHaveText(/Photo change not confirmed/); await expect.poll(() => ids(panel)).toEqual(photos);
-    await panel.getByRole('button', { name: 'Check photo changes' }).click(); await expect.poll(() => ids(panel)).toEqual([photos[1]]); expect(deletes).toBe(1);
+    await expect(panel.getByRole('alert')).toHaveText(/Photo change not confirmed/); expect(deletes).toBe(2);
+    await evidence(page, info, 'uncertain'); await audit(page, 'uncertain');
+    await expect.poll(() => ids(panel)).toEqual(photos.slice().reverse());
+    await panel.getByRole('button', { name: 'Check photo changes' }).click(); await expect.poll(() => ids(panel)).toEqual([photos[0]]); expect(deletes).toBe(2); expect(orders).toBe(0);
     await expect(description).toHaveValue('Keep this unsaved text.'); await expect(panel.getByAltText('Local preview of selected photo 1')).toBeVisible(); expect(uploads).toBe(0);
     await page.getByRole('button', { name: 'Cancel edit', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Stay and keep photos' })).toBeFocused(); await page.keyboard.press('Escape');

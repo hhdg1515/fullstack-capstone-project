@@ -2,7 +2,7 @@ import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } f
 import { useAppContext } from '../../context/AuthContext';
 import { photoDraftWarning, useUnsavedForm } from '../../forms/UnsavedChanges';
 import { Feedback, Surface } from '../../design-system/primitives';
-import { deletePhoto, reorderPhotos, fileDigest, photoError, photoUrl, readPhotos, readUpload, reservePhoto, securePhotoBrowser, uploadId, uploadPhoto, validReady } from '../../api/itemImages';
+import { deletePhoto, fileDigest, photoError, photoUrl, readPhotos, readUpload, reservePhoto, securePhotoBrowser, uploadId, uploadPhoto, validReady } from '../../api/itemImages';
 import { preparePhoto, sourcePhotoError } from '../../api/photoPreparation';
 import PhotoDeleteDialog from './PhotoDeleteDialog';
 import './ItemPhotos.css';
@@ -235,39 +235,25 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item = {}, onClo
   }, [uploadIntent, item.id, draft, saving, loading, data, metadataStale, claimUploadIntent]);
   const reviewChange = async intent => {
     // Status + a full canonical list are reads, never an automatic mutation retry.
-    let status;
-    if (intent.kind === 'delete') {
-      status = await readUpload(planId, item.id, intent.imageId);
-      if (status.upload.id !== intent.imageId) throw photoError({ status: 503 });
-    }
+    const status = await readUpload(planId, item.id, intent.imageId);
+    if (status.upload.id !== intent.imageId) throw photoError({ status: 503 });
     const latest = await load(); if (!current()) return;
-    if (intent.kind === 'delete') {
-      const removed = ['delete_pending', 'deleted'].includes(status.upload.state);
-      const present = latest.images.some(image => image.id === intent.imageId);
-      if ((!removed && status.upload.state !== 'ready') || removed === present) throw photoError({ status: 503 });
-      if (removed) deletionNotice.current = intent.imageId;
-      setMessage(removed ? (status.upload.state === 'deleted' ? 'Photo deleted.' : 'Photo deleted. Cleanup pending.') : 'Photo is still present. Review it before deleting again.');
-      managementFocus.current = latest.images[Math.min(intent.position, latest.images.length - 1)]?.id || 'heading';
-    } else {
-      setMessage(latest.images.map(image => image.id).join(',') === intent.imageIds.join(',') ? 'Photo order saved.' : 'Photos changed. Review the current order.');
-      managementFocus.current = intent.imageId;
-    }
+    const removed = ['delete_pending', 'deleted'].includes(status.upload.state);
+    const present = latest.images.some(image => image.id === intent.imageId);
+    if ((!removed && status.upload.state !== 'ready') || removed === present) throw photoError({ status: 503 });
+    if (removed) deletionNotice.current = intent.imageId;
+    setMessage(removed ? (status.upload.state === 'deleted' ? 'Photo deleted.' : 'Photo deleted. Cleanup pending.') : 'Photo is still present. Review it before deleting again.');
+    managementFocus.current = latest.images[Math.min(intent.position, latest.images.length - 1)]?.id || 'heading';
     setChange(null);
   };
-  const manage = async (kind, imageId, direction) => {
+  const manage = async imageId => {
     const latest = dataRef.current;
     if (!latest?.capabilities.imageRead || inFlight.current || batch.current || saving || loading || metadataStale || changeRef.current || uploadIntent) return;
     const position = latest.images.findIndex(image => image.id === imageId); if (position < 0) return;
-    const imageIds = latest.images.map(image => image.id);
-    if (kind === 'order') {
-      if (direction === 'cover') imageIds.unshift(...imageIds.splice(position, 1));
-      else { const target = position + direction; if (target < 0 || target >= imageIds.length) return; [imageIds[position], imageIds[target]] = [imageIds[target], imageIds[position]]; }
-    }
-    const intent = { kind, imageId, imageIds, position, imageRevision: latest.imageRevision };
+    const intent = { kind: 'delete', imageId, position, imageRevision: latest.imageRevision };
     inFlight.current = true; setBusy(true); onBusyChange?.(true); setChange(intent); setError(null); setMessage(''); setMetadataStale(true);
     try {
-      if (kind === 'delete') await deletePhoto(planId, item.id, imageId, intent.imageRevision);
-      else await reorderPhotos(planId, item.id, intent.imageRevision, imageIds);
+      await deletePhoto(planId, item.id, imageId, intent.imageRevision);
       if (current()) await reviewChange(intent);
     } catch (failure) {
       if (current()) failed({ ...failure, message: failure.status === 401 ? failure.message : failure.status === 429 ? failure.message : 'Photo change not confirmed. Check changes before continuing.' });
@@ -310,7 +296,7 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item = {}, onClo
     {pendingChange && <div className="item-photo-change-status">{(busy || !error) && <p role="status">{busy ? 'Updating photos…' : 'Review the last photo change.'}</p>}
       <button type="button" className="ui-button ui-button--secondary" disabled={busy || batchBusy || saving || loading} onClick={checkChange}>Check photo changes</button></div>}
     {deleting && <PhotoDeleteDialog position={deleting.position} cover={deleting.position === 0 && data.images.length > 1}
-      onDecision={approved => { const id = deleting.id; setDeleting(null); if (approved) manage('delete', id); }} />}
+      onDecision={approved => { const id = deleting.id; setDeleting(null); if (approved) manage(id); }} />}
     {loading && <p role="status">Loading photos…</p>}
     {error && !error.clientUploadId && <p id="photo-error" className="item-photo-problem" role={error.code === 'NOT_FOUND' ? 'status' : 'alert'} ref={feedback} tabIndex={-1}>{error.message}</p>}
     {message && <p role="status" className="item-photo-note">{message}</p>}
@@ -320,12 +306,9 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item = {}, onClo
     {!securePhotoBrowser() && <p role="status">Use a current browser over HTTPS or localhost.</p>}
     {(entries.length > 0 || data?.images.length > 0) && <ul className="item-photos-grid" aria-label="Photos and selections">
       {(!embedded || !recovery) && data?.capabilities.imageRead && data.images.map((image, index) => <ReadyPhoto key={image.id + ':' + refresh} image={image} position={index} cover={index === 0} managing={embedded}>
-        {embedded && <div className="item-photo-controls">
-          <button type="button" className="ui-button ui-button--secondary" aria-label={`Move photo ${index + 1} up`} disabled={managementDisabled || index === 0} onClick={() => manage('order', image.id, -1)}>Up</button>
-          <button type="button" className="ui-button ui-button--secondary" aria-label={`Move photo ${index + 1} down`} disabled={managementDisabled || index === data.images.length - 1} onClick={() => manage('order', image.id, 1)}>Down</button>
-          {index > 0 && <button type="button" className="ui-button ui-button--secondary" aria-label={`Make photo ${index + 1} cover`} disabled={managementDisabled} onClick={() => manage('order', image.id, 'cover')}>Make cover</button>}
-          <button type="button" className="ui-button ui-button--secondary item-photo-delete" aria-label={`Delete photo ${index + 1}`} disabled={managementDisabled} onClick={() => setDeleting({ id: image.id, position: index })}>Delete</button>
-        </div>}
+        {embedded && <button type="button" className="item-photos-icon item-photo-remove item-photo-delete" aria-label={`Delete photo ${index + 1}`} title="Delete photo"
+          disabled={managementDisabled} onClick={() => setDeleting({ id: image.id, position: index })}>×</button>}
+
       </ReadyPhoto>)}
       {entries.map((entry, index) => {
         const problem = error?.clientUploadId === entry.clientUploadId ? error.message : entry.error || entryProblem(entry);

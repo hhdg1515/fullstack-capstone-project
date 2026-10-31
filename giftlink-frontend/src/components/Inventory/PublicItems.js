@@ -65,12 +65,12 @@ function Discovery() {
   const [fields, setFields] = useState(() => fieldsFrom(params));
   const [regionEditing, setRegionEditing] = useState(false);
   const regionPanel = useRef(), regionButton = useRef(), focusAfterRegion = useRef(false);
-  const [filtersOpen, setFiltersOpen] = useState(false), [filterError, setFilterError] = useState('');
-  const filterRegion = useRef(), filterToggle = useRef(), dateInput = useRef();
+  const [filterError, setFilterError] = useState('');
+  const dateInput = useRef();
   const [attempt, setAttempt] = useState(0), [locationAttempt, setLocationAttempt] = useState(0);
   const [places, setPlaces] = useState({ locations: [] }), [result, setResult] = useState({});
   const revision = useRef(null), moreFlight = useRef(false), changedAvailability = useRef(null);
-  useEffect(() => { if (filterError && filtersOpen) dateInput.current?.focus(); }, [filterError, filtersOpen]);
+  useEffect(() => { if (filterError) dateInput.current?.focus(); }, [filterError]);
   useEffect(() => { setFields(fieldsFrom(new URLSearchParams(query))); setFilterError(''); }, [query]);
   useEffect(() => {
     if (!directory.data || params.has('stateId') || params.has('metroId')) return;
@@ -126,11 +126,6 @@ function Discovery() {
   if (params.get('availability') && params.get('availability') !== 'all') applied.push(`Pickup: ${params.get('availability') === 'date' ? params.get('date') || 'choose a date' : params.get('availability')}`);
   if (params.get('sort') === 'deadline') applied.push('Sort: earliest pickup deadline');
   const canClear = (applied.length > 0 || Object.entries(fields).some(([name, value]) => !['stateId', 'metroId'].includes(name) && value && !((name === 'availability' && value === 'all') || (name === 'sort' && value === 'newest'))));
-  const filterCount = applied.length - (params.get('q') ? 1 : 0);
-  const closeFilters = () => {
-    if (filterRegion.current?.contains(document.activeElement) || document.activeElement?.closest('.discovery-extra-option')) filterToggle.current?.focus();
-    setFiltersOpen(false);
-  };
   const changeRegion = changes => {
     const next = new URLSearchParams(query);
     for (const name of ['cursor', 'city', 'neighborhood']) next.delete(name);
@@ -145,9 +140,9 @@ function Discovery() {
   const submit = event => {
     event.preventDefault(); if (!selected) return;
     if (fields.availability === 'date' && (!isCalendarDate(fields.date) || fields.date < utcToday())) {
-      setFilterError('Choose today or a later pickup date (UTC).'); setFiltersOpen(true); return;
+      setFilterError('Choose today or a later pickup date (UTC).'); return;
     }
-    setFilterError(''); closeFilters();
+    setFilterError('');
     const next = new URLSearchParams({ stateId, metroId });
     for (const [name, value] of Object.entries({ q: normalize(fields.q), city, neighborhood, categoryId: fields.categoryId, itemTypeId: fields.itemTypeId,
       condition: fields.condition, availability: fields.availability, date: fields.availability === 'date' ? fields.date : '', sort: fields.sort })) {
@@ -158,7 +153,7 @@ function Discovery() {
   };
   const restart = () => { const next = new URLSearchParams(query); next.delete('cursor'); if (sameQuery(next, query)) setAttempt(value => value + 1); else setParams(next, { replace: true }); };
   const clear = () => {
-    setFilterError(''); closeFilters(); const next = new URLSearchParams({ stateId, metroId });
+    setFilterError(''); const next = new URLSearchParams({ stateId, metroId });
     if (sameQuery(next, query)) setAttempt(value => value + 1); else setParams(next);
     setFields(fieldsFrom(next)); setLocationAttempt(value => value + 1);
   };
@@ -199,11 +194,8 @@ function Discovery() {
       </div>
     </Surface>
     {selected && <>
-    <Surface as="form" aria-label="Search and filters" className={`discovery-filters${filtersOpen ? ' discovery-filters--expanded' : ''}${category ? ' discovery-filters--has-category' : ''}`} onSubmit={submit} noValidate
-      onKeyDown={event => { if (event.key === 'Escape' && filtersOpen) { event.preventDefault(); closeFilters(); filterToggle.current?.focus(); } }}>
-      <div className="ui-field discovery-search"><div className="discovery-search-heading"><label htmlFor="browse-q">Search items</label>
-        <button type="button" ref={filterToggle} className="ui-button ui-button--secondary" aria-expanded={filtersOpen} aria-controls="discovery-common-options discovery-filter-options"
-          onClick={() => filtersOpen ? closeFilters() : setFiltersOpen(true)}>Filters{filterCount ? ` (${filterCount})` : ''}</button></div>
+    <Surface as="form" aria-label="Search and filters" className="discovery-filters" onSubmit={submit} noValidate>
+      <div className="ui-field discovery-search"><label htmlFor="browse-q">Search items</label>
         <input id="browse-q" name="q" maxLength={100} placeholder="Name, description or item type" value={fields.q} onChange={change} /></div>
       <div id="discovery-common-options" className="discovery-common-options">
         <div className="ui-field"><label htmlFor="browse-category">Category</label><select id="browse-category" name="categoryId" value={fields.categoryId} onChange={change} disabled={catalog.loading || Boolean(catalog.error)}>
@@ -221,7 +213,7 @@ function Discovery() {
         <div className="ui-field discovery-extra-option"><label htmlFor="browse-sort">Sort items</label><select id="browse-sort" name="sort" value={fields.sort} onChange={change}>
           <option value="newest">Newest publication</option><option value="deadline">Earliest pickup deadline</option></select></div>
       </div>
-      <div id="discovery-filter-options" ref={filterRegion} className="discovery-options" hidden={!filtersOpen}>
+      <div id="discovery-filter-options" className="discovery-options">
         <div className="ui-field"><label htmlFor="browse-condition">Condition</label><select id="browse-condition" name="condition" value={fields.condition} onChange={change} disabled={catalog.loading || Boolean(catalog.error)}>
           <option value="">Any condition</option>{catalog.data?.conditions.map(entry => <option value={entry.id} key={entry.id}>{entry.label}</option>)}
         </select></div>
@@ -230,7 +222,7 @@ function Discovery() {
         <div className="ui-field"><label htmlFor="browse-neighborhood">Neighborhood</label><select id="browse-neighborhood" name="neighborhood" value={neighborhood} onChange={change}><option value="">All neighborhoods</option>
           {neighborhoods.map(value => <option key={key(value)} value={value}>{value}</option>)}</select></div>
       </div>
-      {filtersOpen && <p className="discovery-help">Pickup windows use UTC calendar dates. City/neighborhood options belong to this metro.</p>}
+      <p className="discovery-help">Pickup dates use UTC.</p>
       <div className="discovery-search-actions"><button className="ui-button">Find free items</button>{canClear && <button type="button" className="ui-button ui-button--secondary" onClick={clear}>Clear filters</button>}</div>
     </Surface>
     <p className="discovery-summary" aria-label="Applied filters">{applied.length ? applied.join(' · ') : 'No account needed to browse.'}</p>
@@ -284,12 +276,12 @@ function PublicItemDetail({ itemId }) {
     {current.error && <div role="alert"><p>{current.error.status === 404 ? 'This listing is no longer available.' : current.error.message}</p>
       <button className="btn btn-outline-secondary ui-button ui-button--secondary" onClick={() => setAttempt(value => value + 1)}>Retry listing</button></div>}
     {item && <article className="plan-panel">
-      <h1>{item.name}</h1><p>{item.neighborhood}, {item.city} · Free</p>
+      <div className="public-item-heading"><h1>{item.name}</h1>{item.isOwner === true && auth?.status === 'authenticated' && <Link className="btn btn-primary ui-button" to={`/app/items/${item.id}/edit`}>Edit item</Link>}</div><p>{item.neighborhood}, {item.city} · Free</p>
       <ItemLabels item={item} />
       <PublicItemGallery key={`${scope}:${attempt}`} item={item} />
       <PickupWindow item={item} />
       <h2>Description</h2><p className="public-item-description">{item.description || 'No additional description provided.'}</p>
-      {item.isOwner === true ? <p role="status">Your listing. Manage this item from My plans.</p> : item.isReserved === true ? <p role="status">This item has an accepted pickup. Check back if it becomes available.</p> : item.pickupTimeZone ? <><p>Pickup timezone: {item.pickupTimeZone}</p><Link className="btn btn-primary ui-button" to={`/app/items/${item.id}/request`} state={{ discoverySearch: previous }}>Request pickup</Link>
+      {item.isOwner === true ? <p role="status">Your listing.</p> : item.isReserved === true ? <p role="status">This item has an accepted pickup. Check back if it becomes available.</p> : item.pickupTimeZone ? <><p>Pickup timezone: {item.pickupTimeZone}</p><Link className="btn btn-primary ui-button" to={`/app/items/${item.id}/request`} state={{ discoverySearch: previous }}>Request pickup</Link>
         <p>A request does not reserve the item. The giver must accept an appointment.</p></> : <p>The giver needs to set a pickup timezone before this listing can receive requests.</p>}
       {typeof item.isReserved !== 'boolean' && <p>Current pickup availability will be checked when you send a request.</p>}
       {item.publishedAt && <p>First published: <time dateTime={item.publishedAt}>{formatDeadline(item.publishedAt.slice(0, 10))}</time>. Publication is separate from pickup dates.</p>}
