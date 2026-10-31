@@ -59,7 +59,7 @@ describe('feature-scoped startup indexes on verified isolated MongoDB', function
     before(async function () {
         isolated = await createIsolatedMongo(); db = isolated.db;
         await prepareDatabaseIndexes(db); definitions = (await inspectDatabaseIndexes(db)).operations;
-        assert.equal(definitions.filter(o => o.collection !== 'itemImages').length, 12);
+        assert.equal(definitions.filter(o => o.collection !== 'itemImages' && o.index !== 'items_owner_created').length, 12);
         assert.equal(definitions.filter(o => o.collection === 'itemImages').length, 4);
         baseEnv = { MONGO_URL: isolated.mongoUrl, MONGO_DB_NAME: isolated.dbName, DB_ENVIRONMENT: 'staging', APP_ORIGIN: origin, PORT: '0' };
         const app = createApp({ connectToDatabase: async () => db, logger });
@@ -102,7 +102,7 @@ describe('feature-scoped startup indexes on verified isolated MongoDB', function
     });
     it('still refuses every missing legacy application index with metadata disabled', async function () {
         await db.collection('itemImages').drop();
-        for (const definition of definitions.filter(o => o.collection !== 'itemImages')) {
+        for (const definition of definitions.filter(o => o.collection !== 'itemImages' && o.index !== 'items_owner_created')) {
             await db.collection(definition.collection).dropIndex(definition.index);
             const before = await snapshot();
             try { await assert.rejects(start(false), /Database indexes are required/); assert.deepEqual(await snapshot(), before); }

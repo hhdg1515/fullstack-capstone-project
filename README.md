@@ -991,3 +991,7 @@ production activation is implemented or authorized by this documentation PR.
 [Context, deadline policies, transaction fences and rollback](docs/milestone-6.6-ux2b1-dual-model-foundation.md)
 describe internal v2 helpers and fail-closed legacy route guards. Independent
 creation/publication, media, requests and migration remain unavailable pending B2/C.
+
+UX-2B2 adds default-disabled private independent-listing APIs and a guarded owner-feed
+index. See [API, preparation and rollback contracts](docs/milestone-6.6-ux2b2-independent-listing-api.md).
+Public v2 publishing, photos and pickup requests remain unavailable.

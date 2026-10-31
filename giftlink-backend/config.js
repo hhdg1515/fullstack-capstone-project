@@ -19,6 +19,8 @@ function readServerConfig(env = process.env) {
     if (env.ITEM_IMAGE_PIPELINE_ENABLED !== undefined && env.ITEM_IMAGE_PIPELINE_ENABLED !== 'false') {
         throw new Error('Deployed photo processing remains disabled pending real-provider approval; use reviewed B4-compatible explicit context injection only');
     }
+    if (env.OWNER_LISTINGS_ENABLED !== undefined && !['true', 'false'].includes(env.OWNER_LISTINGS_ENABLED)) throw new Error('OWNER_LISTINGS_ENABLED must be true or false');
+    const ownerListingsEnabled = env.OWNER_LISTINGS_ENABLED === 'true';
     const database = readDatabaseConfig(env);
     const secureCookies = env.NODE_ENV === 'production';
     const appOrigin = env.APP_ORIGIN || (secureCookies ? '' : 'http://localhost:3000');
@@ -36,7 +38,7 @@ function readServerConfig(env = process.env) {
     if (env.PORT === '' || !Number.isInteger(port) || port < 0 || port > 65535) {
         throw new Error('PORT must be an integer from 0 to 65535');
     }
-    const config = { mongoUrl: database.mongoUrl, dbName: database.dbName, appOrigin, secureCookies, sessionTtlSeconds, port };
+    const config = { mongoUrl: database.mongoUrl, dbName: database.dbName, appOrigin, secureCookies, sessionTtlSeconds, port, ownerListingsEnabled };
     const imageMetadata = require('./services/item-image-policy').readImageMetadataConfig(env);
     if (imageMetadata) config.imageMetadata = imageMetadata;
     return config;

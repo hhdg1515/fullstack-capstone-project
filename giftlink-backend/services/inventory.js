@@ -189,6 +189,6 @@ function createInventoryService({ connectToDatabase, imageMetadata = null, image
         });
     }
 
-    return { list, create, mutate, editContext };
+    return { list, create, mutate, editContext, ownerPhotoPreview: photoPreview };
 }
 module.exports = { createInventoryService, InventoryError, planTransaction, validatePublication, listingPolicy, dateConflicts, endDate, effectiveStatus };

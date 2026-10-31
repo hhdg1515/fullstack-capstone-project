@@ -5,7 +5,7 @@ const { InventoryError } = require('./inventory-error');
 const conflict = () => new InventoryError(409, 'LISTING_CHANGED', 'Listing changed or is unavailable.');
 // Internal foundation, not an HTTP publishing API. Callback must contain DB work
 // only. No external PUT, automatic conversion, creation/upsert, or index DDL.
-async function listingTransaction(db, ownerId, itemId, expectedVersion, operation) {
+async function listingTransaction(db, ownerId, itemId, expectedVersion, operation, { contextOperation = 'strict' } = {}) {
     if (!(ownerId instanceof ObjectId) || !(itemId instanceof ObjectId) || !Number.isSafeInteger(expectedVersion) || expectedVersion < 1) throw conflict();
     const session = db.client.startSession();
     try {
@@ -20,14 +20,14 @@ async function listingTransaction(db, ownerId, itemId, expectedVersion, operatio
                 if (!plan) throw conflict();
             }
             const clock = await db.collection('items').aggregate([{ $match: { _id: itemId, ownerId } }, { $project: { now: '$$NOW' } }], { session }).next();
-            const context = resolveListingContext(item, plan, ownerId, clock.now);
+            const context = resolveListingContext(item, plan, ownerId, clock.now, { operation: contextOperation });
             const revision = item.coordinationRevision;
             if (revision !== undefined && (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER)) throw conflict();
             const filter = { _id: itemId, ownerId, version: expectedVersion,
                 coordinationRevision: revision === undefined ? { $exists: false } : revision };
             const result = await db.collection('items').updateOne(filter, { $inc: { coordinationRevision: 1 } }, { session });
             if (result.modifiedCount !== 1) throw conflict();
-            const value = await operation(context, session);
+            const value = await operation(context, session, clock.now);
             // A trusted caller must not accidentally overwrite the acquired fence
             // with its preimage, transfer ownership, or change the model binding.
             const saved = await db.collection('items').findOne({ _id: itemId, ownerId }, { session });

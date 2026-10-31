@@ -9,7 +9,7 @@ const { classificationResponse, classificationChanges } = require('./item-taxono
 const { validatePublication, listingPolicy } = require('./inventory');
 const { isCalendarDate, todayUTC } = require('./calendar');
 const invalid = () => new InventoryError(409, 'LISTING_CONTEXT_INVALID', 'Listing context is unavailable.');
-function resolveListingContext(item, plan, ownerId, now) {
+function resolveListingContext(item, plan, ownerId, now, { operation = 'strict' } = {}) {
     if (!item || !(item._id instanceof ObjectId) || !(ownerId instanceof ObjectId) ||
         !(item.ownerId instanceof ObjectId) || !item.ownerId.equals(ownerId) ||
         !(now instanceof Date) || !Number.isFinite(now.getTime())) throw invalid();
@@ -26,8 +26,14 @@ function resolveListingContext(item, plan, ownerId, now) {
     }
     try {
         if (Object.prototype.hasOwnProperty.call(item, 'planId') || !['draft', 'available', 'unlisted', 'expired', 'cleared'].includes(item.status) ||
-            !Number.isSafeInteger(item.version) || item.version < 1 || !Number.isSafeInteger(item.coordinationRevision) || item.coordinationRevision < 0 ||
-            !item.stateId || !item.metroId) throw invalid();
+            !Number.isSafeInteger(item.version) || item.version < 1 || !Number.isSafeInteger(item.coordinationRevision) || item.coordinationRevision < 0) throw invalid();
+        if (operation === 'ownerDraft' && item.status === 'draft') {
+            const deadline = require('./listing-draft').draftContext(item, now);
+            return Object.assign({ modelVersion: 2, item, ownerId, region: { stateId: item.stateId, metroId: item.metroId, city: item.city, neighborhood: item.neighborhood },
+                pickupTimeZone: item.pickupTimeZone, availableFrom: item.availableFrom, availableUntil: item.availableUntil,
+                status: 'draft', fence: 'item', policyEligible: false, publicEnabled: false, disabledReason: 'V2_NOT_ACTIVATED' }, deadline);
+        }
+        if (!item.stateId || !item.metroId) throw invalid();
         validateRegion(item.stateId, item.metroId);
         if (typeof item.name !== 'string' || !item.name.trim() || Array.from(item.name).length > 160 || /[<>\u0000-\u001f\u007f]/.test(item.name) ||
             typeof item.description !== 'string' || Array.from(item.description).length > 2000 || /[<>\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(item.description)) throw invalid();
