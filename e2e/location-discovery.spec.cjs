@@ -74,7 +74,8 @@ test('regional discovery, structured items, counts and ownership work without ch
     await page.route('**/api/items?**', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: { code: 'DISCOVERY_BUSY', message: 'Search is busy. Retry.' } }) }));
     await page.getByRole('button', { name: 'Find free items', exact: true }).click(); await expect(page.getByRole('alert').filter({ hasText: 'Search is busy' })).toBeVisible();
     await expect(page.getByText(/No available items/)).toHaveCount(0);
-    await a.goto('/app/items/' + itemId); await expect(a.getByText('Your listing. Manage this item from My plans.', { exact: true })).toBeVisible();
+    await a.goto('/app/items/' + itemId); await expect(a.getByText('Your listing.', { exact: true })).toBeVisible();
+    await expect(a.getByRole('link', { name: 'Edit item', exact: true })).toHaveAttribute('href', '/app/items/' + itemId + '/edit');
     await expect(a.getByRole('link', { name: 'Request pickup', exact: true })).toHaveCount(0);
     await a.goto('/app/items/' + itemId + '/request'); await expect(a.getByText('Your listing. You cannot request your own item. Manage it from My plans.', { exact: true })).toBeVisible();
     await expect(a.getByLabel('Pickup date and time', { exact: true })).toHaveCount(0);
