@@ -96,7 +96,9 @@ a compare-and-set coordination write. There is no upsert. Exhausted, negative,
 non-integer or stale revisions/versions fail. Legacy missing coordination counters
 initialize only inside that explicit existing-item transaction; there is no scan
 or backfill. Content `version`, photo `imageRevision` and coordination revision are
-separate. Content callbacks must retain their own state/authorization predicates
+separate. The callback receives the preimage; a final transactional check prevents overwriting
+the acquired fence, changing owner/model/legacy parent, or decreasing content
+version. Content callbacks must retain their own state/authorization predicates
 and increment content version when changing content/lifecycle.
 
 For legacy, the helper first updates the owned plan's `inventoryRevision`, then
@@ -104,6 +106,8 @@ updates the owned item: **Plan → Item**. For v2 there is no plan acquisition.
 The transaction uses snapshot reads, majority writes, primary read preference and
 the native driver's bounded `withTransaction` retry behavior, with a 10-second
 maximum commit time (not a claim of a ten-second overall callback deadline).
+Do not nest this helper inside another plan transaction or open a second
+transaction from its callback; composition must share the provided session.
 Callbacks must perform database work only: never place PUTs, external effects or
 non-idempotent provider operations inside a retryable transaction.
 

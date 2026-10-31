@@ -106,6 +106,15 @@ describe('listing fences on verified disposable native MongoDB', function () {
         const saved = await db.collection('items').findOne({ _id: item._id });
         assert.equal(saved.version, 2); assert.equal(saved.coordinationRevision, 1);
     });
+    it('rolls back callbacks that overwrite a fence, change owner, or change model', async function () {
+        const item = independent({ availableUntil: '2099-01-01', timeZoneConfirmedAt: new Date('2020-01-01') });
+        Object.assign(item, deriveDeadline(item.availableUntil, item.pickupTimeZone)); await db.collection('items').insertOne(item);
+        for (const changes of [{ coordinationRevision: 0 }, { ownerId: other }, { listingSchemaVersion: 9 }, { version: 0 }]) {
+            await assert.rejects(listingTransaction(db, owner, item._id, 1, (ctx, session) =>
+                db.collection('items').updateOne({ _id: item._id }, { $set: changes }, { session })));
+            assert.deepEqual(await db.collection('items').findOne({ _id: item._id }), item);
+        }
+    });
     it('never upserts missing/foreign items and rolls back its fence on callback failure', async function () {
         await assert.rejects(listingTransaction(db, owner, new ObjectId(), 1, () => {}));
         const plan = { _id: new ObjectId(), ownerId: owner, moveOutDeadline: '2099-01-01' };

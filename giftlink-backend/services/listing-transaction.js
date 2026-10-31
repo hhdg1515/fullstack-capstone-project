@@ -27,7 +27,14 @@ async function listingTransaction(db, ownerId, itemId, expectedVersion, operatio
                 coordinationRevision: revision === undefined ? { $exists: false } : revision };
             const result = await db.collection('items').updateOne(filter, { $inc: { coordinationRevision: 1 } }, { session });
             if (result.modifiedCount !== 1) throw conflict();
-            return operation(context, session);
+            const value = await operation(context, session);
+            // A trusted caller must not accidentally overwrite the acquired fence
+            // with its preimage, transfer ownership, or change the model binding.
+            const saved = await db.collection('items').findOne({ _id: itemId, ownerId }, { session });
+            if (!saved || saved.coordinationRevision !== (revision === undefined ? 0 : revision) + 1 ||
+                modelVersion(saved) !== version || !Number.isSafeInteger(saved.version) || saved.version < expectedVersion ||
+                (version === 1 && (!(saved.planId instanceof ObjectId) || !saved.planId.equals(item.planId)))) throw conflict();
+            return value;
         }, { readConcern: { level: 'snapshot' }, writeConcern: { w: 'majority' }, readPreference: 'primary', maxCommitTimeMS: 10000 });
     } finally { await session.endSession(); }
 }
