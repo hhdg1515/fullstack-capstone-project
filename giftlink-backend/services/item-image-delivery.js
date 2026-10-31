@@ -1,3 +1,4 @@
+const { legacyMatch } = require('./listing-model');
 const { ObjectId } = require('mongodb');
 const { assertOperation, unavailable } = require('./item-image-policy');
 const { visibilityPipeline, initialMatch } = require('./discovery');
@@ -13,7 +14,7 @@ function createImageAuthorization({ connectToDatabase, configuration }) {
             try { assertOperation(row); } catch (error) { throw unavailable(); }
             const account = await db.collection('users').aggregate([{ $match: { _id: row.ownerId } }, { $project: { now: '$$NOW' } }], options).next();
             const plan = await db.collection('moveOutPlans').findOne({ _id: row.planId, ownerId: row.ownerId }, options);
-            const item = await db.collection('items').findOne({ _id: row.itemId, planId: row.planId, ownerId: row.ownerId }, options);
+            const item = await db.collection('items').findOne(Object.assign(legacyMatch(), { _id: row.itemId, planId: row.planId, ownerId: row.ownerId }), options);
             if (!account || !plan || !item || !['draft', 'available', 'unlisted', 'expired', 'cleared'].includes(item.status)) throw unavailable();
             if (!(plan.ownerId instanceof ObjectId) || !plan.ownerId.equals(row.ownerId) || !(item.ownerId instanceof ObjectId) ||
                 !item.ownerId.equals(row.ownerId) || !(item.planId instanceof ObjectId) || !item.planId.equals(row.planId)) throw unavailable();

@@ -1,3 +1,4 @@
+const { legacyMatch } = require('./listing-model');
 const { ObjectId } = require('mongodb');
 const { randomUUID } = require('node:crypto');
 const { InventoryError, planTransaction } = require('./inventory');
@@ -63,7 +64,7 @@ function createItemImagesService({ connectToDatabase, configuration, control = n
         const account = await db.collection('users').aggregate([{ $match: { _id: ownerId } },
             { $project: { itemImageQuota: 1, serverNow: '$$NOW' } }], options(session)).next();
         if (!account) throw unavailable();
-        const item = await db.collection('items').findOne({ _id: new ObjectId(itemId), planId: plan._id, ownerId }, options(session));
+        const item = await db.collection('items').findOne(Object.assign(legacyMatch(), { _id: new ObjectId(itemId), planId: plan._id, ownerId }), options(session));
         if (!item || !['draft', 'available', 'unlisted', 'expired', 'cleared'].includes(item.status)) throw unavailable();
         if (!(plan.ownerId instanceof ObjectId) || !plan.ownerId.equals(ownerId) || !(item.ownerId instanceof ObjectId) ||
             !item.ownerId.equals(ownerId) || !(item.planId instanceof ObjectId) || !item.planId.equals(plan._id)) throw unavailable();
@@ -148,7 +149,7 @@ function createItemImagesService({ connectToDatabase, configuration, control = n
         for (const row of rows) {
             assertOperation(row);
             const parent = await db.collection('moveOutPlans').findOne({ _id: row.planId, ownerId }, options(session));
-            const item = await db.collection('items').findOne({ _id: row.itemId, planId: row.planId, ownerId }, options(session));
+            const item = await db.collection('items').findOne(Object.assign(legacyMatch(), { _id: row.itemId, planId: row.planId, ownerId }), options(session));
             if (!parent || !item) continue; // Orphan/corrupt references require operator review, never a blind refund.
             settleNeverClaimed(row, quota, now);
             settled.push(row._id.toHexString());

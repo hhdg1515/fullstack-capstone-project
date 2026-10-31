@@ -1,3 +1,4 @@
+const { legacyMatch } = require('./listing-model');
 const { ObjectId } = require('mongodb');
 const { planTransaction, InventoryError, endDate } = require('./inventory');
 const { appointment, fitsWindow, eligible, originalParticipants, validProposal, appointmentState, appointmentResponse,
@@ -13,7 +14,7 @@ function createPickupService({ connectToDatabase, now = () => new Date(), imageM
     async function serialize(db, row, userId, session) {
         const giver = row.giverId.equals(userId);
         const options = session ? { session } : {};
-        const item = await db.collection('items').findOne({ _id: row.itemId, planId: row.planId, ownerId: row.giverId }, options);
+        const item = await db.collection('items').findOne(Object.assign(legacyMatch(), { _id: row.itemId, planId: row.planId, ownerId: row.giverId }), options);
         const plan = await db.collection('moveOutPlans').findOne({ _id: row.planId, ownerId: row.giverId }, options);
         const person = await db.collection('users').findOne({ _id: giver ? row.receiverId : row.giverId }, Object.assign({}, options, { projection: { firstName: 1 } }));
         const result = { id: row._id.toString(), role: giver ? 'giver' : 'receiver', status: row.status, version: row.version,
@@ -49,11 +50,11 @@ function createPickupService({ connectToDatabase, now = () => new Date(), imageM
     async function create(userId, itemId, input) {
         if (!isId(itemId)) throw conflict('LISTING_UNAVAILABLE', 'This listing is no longer accepting pickup requests.');
         const db = await connectToDatabase();
-        const original = await db.collection('items').findOne({ _id: new ObjectId(itemId) });
+        const original = await db.collection('items').findOne(Object.assign(legacyMatch(), { _id: new ObjectId(itemId) }));
         if (!original || !(original.ownerId instanceof ObjectId) || !(original.planId instanceof ObjectId)) throw conflict('LISTING_UNAVAILABLE', 'This listing is no longer accepting pickup requests.');
         try {
             return await planTransaction(db, original.ownerId, original.planId.toString(), async (plan, session) => {
-                const item = await db.collection('items').findOne({ _id: original._id, planId: plan._id, ownerId: plan.ownerId }, { session });
+                const item = await db.collection('items').findOne(Object.assign(legacyMatch(), { _id: original._id, planId: plan._id, ownerId: plan.ownerId }), { session });
                 const at = now();
                 if (!item || !eligible(item, plan, at)) throw conflict('LISTING_UNAVAILABLE', 'This listing is no longer accepting pickup requests.');
                 if (userId.equals(plan.ownerId)) throw conflict('OWN_ITEM', 'You cannot request your own item.');
@@ -110,7 +111,7 @@ function createPickupService({ connectToDatabase, now = () => new Date(), imageM
                 const allowed = action === 'cancel' ? ['pending', 'accepted'].includes(row.status) : giver &&
                     (['accept', 'decline'].includes(action) ? row.status === 'pending' : ['complete', 'no_show'].includes(action) && row.status === 'accepted');
                 if (!allowed) throw conflict('INVALID_PICKUP_TRANSITION', 'This action is unavailable for your role and the current request status.');
-                const item = await db.collection('items').findOne({ _id: row.itemId, ownerId: plan.ownerId, planId: plan._id }, { session });
+                const item = await db.collection('items').findOne(Object.assign(legacyMatch(), { _id: row.itemId, ownerId: plan.ownerId, planId: plan._id }), { session });
                 if (action === 'accept') {
                     if (!item || !eligible(item, plan, at) || !fitsWindow(row, item, plan)) throw conflict('LISTING_UNAVAILABLE', 'The listing or pickup window changed. Decline or cancel this request.');
                     if (row.proposedAt <= at) throw conflict('APPOINTMENT_PAST', 'That pickup time has passed. Decline this request so the receiver can propose a new time.');
@@ -155,7 +156,7 @@ function createPickupService({ connectToDatabase, now = () => new Date(), imageM
                 if (!row || !originalParticipants(row) || !row.giverId.equals(plan.ownerId) || !row.planId.equals(plan._id)) throw missing();
                 if (row.version !== input.version) throw conflict('PICKUP_CHANGED', 'This request changed. Reload and review its current status.');
                 if (row.status !== 'accepted' || row.active !== true) throw conflict('RESCHEDULE_UNAVAILABLE', 'Only an accepted pickup can change time. Reload the request.');
-                const item = await db.collection('items').findOne({ _id: row.itemId, ownerId: plan.ownerId, planId: plan._id }, { session });
+                const item = await db.collection('items').findOne(Object.assign(legacyMatch(), { _id: row.itemId, ownerId: plan.ownerId, planId: plan._id }), { session });
                 const people = await db.collection('users').countDocuments({ _id: { $in: [row.giverId, row.receiverId] } }, { session });
                 if (!item || !(item.ownerId instanceof ObjectId) || !(item.planId instanceof ObjectId) || people !== 2) throw missing();
                 const giver = row.giverId.equals(userId); const role = giver ? 'giver' : 'receiver'; const at = now();

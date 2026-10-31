@@ -1,3 +1,4 @@
+const { legacyMatch } = require('./listing-model');
 const { ObjectId } = require('mongodb');
 const { InventoryError, planTransaction } = require('./inventory');
 const { eligible, fitsWindow, originalParticipants } = require('./pickup-policy');
@@ -59,7 +60,7 @@ function createPickupCommunicationService({ connectToDatabase, now = () => new D
         if (!row || !open && !closed || row.active !== open || sending && !open ||
             !originalParticipants(row)) throw unavailable();
         const plan = await db.collection('moveOutPlans').findOne({ _id: row.planId, ownerId: row.giverId }, { session });
-        const item = await db.collection('items').findOne({ _id: row.itemId, planId: row.planId, ownerId: row.giverId }, { session });
+        const item = await db.collection('items').findOne(Object.assign(legacyMatch(), { _id: row.itemId, planId: row.planId, ownerId: row.giverId }), { session });
         if (!plan || !item) throw unavailable();
         // Closed history survives legitimate listing/plan/time changes; ownership
         // and participant checks still apply. Open requests retain their policy.

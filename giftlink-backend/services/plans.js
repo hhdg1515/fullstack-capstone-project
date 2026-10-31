@@ -1,3 +1,4 @@
+const { isLegacyItem } = require('./listing-model');
 const { ObjectId } = require('mongodb');
 const { todayUTC, isCalendarDate } = require('./calendar');
 const { planTransaction, dateConflicts, effectiveStatus, InventoryError } = require('./inventory');
@@ -46,6 +47,7 @@ function createPlanService({ connectToDatabase }) {
                 throw new InventoryError(400, 'VALIDATION_FAILED', 'Choose today or a later deadline (UTC).');
             }
             const items = await db.collection('items').find({ planId: previous._id, ownerId }, { session }).toArray();
+            if (items.some(item => !isLegacyItem(item))) throw new InventoryError(409, 'LISTING_CONTEXT_INVALID', 'Plan contains unsupported listing context.');
             const affected = items.filter(item => dateConflicts(item, next));
             if (affected.length) throw new InventoryError(409, 'ITEM_DATE_CONFLICT', 'Resolve the listed item dates before changing this deadline. Your plan was not changed.', {
                 conflicts: affected.map(item => ({ id: item._id.toString(), name: item.name,

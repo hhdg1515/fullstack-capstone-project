@@ -39,6 +39,23 @@ describe('transactional plan inventory on verified isolated MongoDB', function (
         }
         plan = await parent(owner); otherPlan = await parent(other);
     });
+    it('rejects model injection and never exposes or mutates unsupported records through legacy endpoints', async function () {
+        for (const field of ['listingSchemaVersion', 'coordinationRevision', 'deadlinePolicyVersion', 'expiresAt', 'ownerId']) {
+            await create({ [field]: field === 'ownerId' ? other.id : 2 }).expect(400);
+        }
+        const legacy = (await create({ categoryId: 'dining-kitchen', itemTypeId: 'microwave', description: 'Household microwave.', publish: true }).expect(201)).body.item;
+        for (const model of [2, 1, 9, null]) {
+            await db.collection('items').updateOne({ _id: new ObjectId(legacy.id) }, { $set: { listingSchemaVersion: model } });
+            const original = await db.collection('items').findOne({ _id: new ObjectId(legacy.id) });
+            await publicGet(legacy).expect(404);
+            await edit(legacy, { name: 'Unsafe edit' }).expect(404);
+            await action(legacy, 'publish').expect(404);
+            await request(app).get('/api/items/' + legacy.id + '/edit-context').set('Cookie', owner.cookie).expect(404);
+            assert.deepEqual((await list().expect(200)).body.items, []);
+            assert.deepEqual((await request(app).get('/api/items?stateId=06&metroId=41860').expect(200)).body.items, []);
+            assert.deepEqual(await db.collection('items').findOne({ _id: original._id }), original);
+        }
+    });
     it('resolves an owner-only edit context for public and private items without changing public draft access', async function () {
         const item = (await create().expect(201)).body.item, url = '/api/items/' + item.id + '/edit-context';
         await request(app).get(url).expect(401);

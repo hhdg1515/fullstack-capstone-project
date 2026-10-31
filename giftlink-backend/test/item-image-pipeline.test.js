@@ -86,6 +86,19 @@ describe('native image pipeline with owned MongoDB and real private SeaweedFS', 
         assert.equal((await db.collection('items').findOne({ _id: item._id })).imageRevision, 1);
         assert.equal((await db.collection('items').findOne({ _id: item._id })).version, 1);
     });
+    it('denies legacy photo access for independent or unsupported listing records without changing ledgers or quotas', async function () {
+        const id = await reserve(); await upload(id).expect(201);
+        const before = await row(id), held = await quota();
+        for (const version of [2, 1, null, 99]) {
+            await db.collection('items').updateOne({ _id: item._id }, { $set: { listingSchemaVersion: version } });
+            await view(id, 'thumbnail', owner).expect(404);
+            await view(id, 'display', other).expect(404);
+            await request(app).get(root()).set('Cookie', owner.cookie).expect(404);
+            assert.deepEqual(await row(id), before); assert.deepEqual(await quota(), held);
+        }
+        await db.collection('items').updateOne({ _id: item._id }, { $unset: { listingSchemaVersion: '' } });
+        await view(id, 'thumbnail', owner).expect(200);
+    });
     it('keeps draft images private and serves verified owner GET/HEAD with fixed safe headers', async function () {
         const id = await reserve(); await upload(id).expect(201);
         await view(id).expect(404); await view(id, 'display', other).expect(404);

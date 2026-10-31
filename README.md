@@ -985,3 +985,9 @@ No plan migration, production photo activation or infrastructure change is inclu
 [Item-first data model, compatibility, migration and UX-2B/UX-2C sequence](docs/milestone-6.6-ux2a-item-first-architecture.md)
 are design proposals for review. No item-first runtime, migration, index change or
 production activation is implemented or authorized by this documentation PR.
+
+## Milestone 6.6 UX-2B1: disabled dual-model backend foundation
+
+[Context, deadline policies, transaction fences and rollback](docs/milestone-6.6-ux2b1-dual-model-foundation.md)
+describe internal v2 helpers and fail-closed legacy route guards. Independent
+creation/publication, media, requests and migration remain unavailable pending B2/C.

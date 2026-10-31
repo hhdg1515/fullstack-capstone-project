@@ -1,3 +1,4 @@
+const { legacyMatch } = require('./listing-model');
 const { ObjectId } = require('mongodb');
 const { todayUTC } = require('./calendar');
 const { InventoryError } = require('./inventory-error');
@@ -100,7 +101,7 @@ function createInventoryService({ connectToDatabase, imageMetadata = null, image
     async function editContext(ownerId, itemId) {
         if (!(ownerId instanceof ObjectId) || typeof itemId !== 'string' || !/^[a-fA-F0-9]{24}$/.test(itemId)) throw notFound();
         const db = await connectToDatabase();
-        const item = await db.collection('items').findOne({ _id: new ObjectId(itemId), ownerId }, { projection: { planId: 1 }, maxTimeMS: 2000 });
+        const item = await db.collection('items').findOne(Object.assign(legacyMatch(), { _id: new ObjectId(itemId), ownerId }), { projection: { planId: 1 }, maxTimeMS: 2000 });
         if (!item || !(item.planId instanceof ObjectId) || !await db.collection('moveOutPlans').findOne({ _id: item.planId, ownerId }, { projection: { _id: 1 }, maxTimeMS: 2000 })) throw notFound();
         return { itemId: item._id.toHexString(), planId: item.planId.toHexString() };
     }
@@ -109,7 +110,7 @@ function createInventoryService({ connectToDatabase, imageMetadata = null, image
         const rows = await db.collection('moveOutPlans').aggregate([
             { $match: { _id: new ObjectId(planId), ownerId } },
             { $lookup: { from: 'items', let: { parent: '$_id', owner: '$ownerId' }, pipeline: [
-                { $match: { $expr: { $and: [{ $eq: ['$planId', '$$parent'] }, { $eq: ['$ownerId', '$$owner'] }] } } },
+                { $match: legacyMatch() }, { $match: { $expr: { $and: [{ $eq: ['$planId', '$$parent'] }, { $eq: ['$ownerId', '$$owner'] }] } } },
                 { $sort: { createdAt: 1, _id: 1 } }
             ].concat(photoStages, pickupReservationStages(), [
                 { $lookup: { from: 'pickupRequests', let: { reference: '$clearedByPickupRequestId' }, pipeline: [
@@ -149,7 +150,7 @@ function createInventoryService({ connectToDatabase, imageMetadata = null, image
     async function mutate(ownerId, planId, itemId, input, action) {
         const db = await connectToDatabase();
         return planTransaction(db, ownerId, planId, async (plan, session) => {
-            const filter = { _id: new ObjectId(itemId), planId: plan._id, ownerId };
+            const filter = Object.assign(legacyMatch(), { _id: new ObjectId(itemId), planId: plan._id, ownerId });
             const existing = await db.collection('items').findOne(filter, { session });
             if (!existing) throw notFound();
             if (input.version !== existing.version) throw new InventoryError(409, 'ITEM_CHANGED', 'This item changed. Reload the inventory and review it before trying again.');
@@ -190,4 +191,4 @@ function createInventoryService({ connectToDatabase, imageMetadata = null, image
 
     return { list, create, mutate, editContext };
 }
-module.exports = { createInventoryService, InventoryError, planTransaction, dateConflicts, endDate, effectiveStatus };
+module.exports = { createInventoryService, InventoryError, planTransaction, validatePublication, listingPolicy, dateConflicts, endDate, effectiveStatus };

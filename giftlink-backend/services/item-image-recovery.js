@@ -1,3 +1,4 @@
+const { isLegacyItem } = require('./listing-model');
 /* jshint loopfunc: true */
 const { ObjectId, BSON } = require('mongodb');
 const { randomUUID, createHash } = require('node:crypto');
@@ -95,7 +96,7 @@ function createRecovery({ db, verifyDatabase, identity, receipts, control = null
         const plan = await db.collection('moveOutPlans').findOne({ _id: row.planId }, opts(session));
         const item = await db.collection('items').findOne({ _id: row.itemId }, opts(session));
         if (plan && (!(plan.ownerId instanceof ObjectId) || !plan.ownerId.equals(row.ownerId)) ||
-            item && (!(item.ownerId instanceof ObjectId) || !item.ownerId.equals(row.ownerId) || !(item.planId instanceof ObjectId) || !item.planId.equals(row.planId))) throw failure('integrity');
+            item && (!isLegacyItem(item) || !(item.ownerId instanceof ObjectId) || !item.ownerId.equals(row.ownerId) || !(item.planId instanceof ObjectId) || !item.planId.equals(row.planId))) throw failure('integrity');
         return policy.quotaFor(q, time);
     }
     async function transaction(callback, mutate = false) {
