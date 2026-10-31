@@ -79,9 +79,11 @@ test('the same real photo batch survives compression, uncertain publish, managem
     }
     await page.getByRole('button', { name: 'Edit ' + name, exact: true }).click(); const panel = page.locator('#owner-photo-manager');
     const text = page.getByLabel('Description', { exact: true }); await text.fill('Independent unsaved acceptance text.');
-    await panel.getByRole('button', { name: 'Make photo 3 cover', exact: true }).focus(); await page.keyboard.press('Enter');
-    await expect(panel.getByRole('listitem', { name: 'Saved photo 1, Cover', exact: true })).toBeFocused();
-    await panel.getByRole('button', { name: 'Move photo 3 up', exact: true }).click();
+    await expect(panel.getByRole('button', { name: /Make photo|Move photo/ })).toHaveCount(0);
+    // Verify old C2 ordering is preserved without exposing ordering controls again.
+    await post(owner, itemRoot + '/images/order', { imageRevision: 3, imageIds: [ready[2]._id.toString(), ready[1]._id.toString(), ready[0]._id.toString()] });
+    await panel.getByText('Photo tips', { exact: true }).click(); await panel.getByRole('button', { name: 'Refresh photos', exact: true }).click();
+    await expect(panel.getByRole('listitem', { name: 'Saved photo 1, Cover', exact: true }).getByRole('img')).toHaveAttribute('src', '/api/item-images/' + ready[2]._id + '/thumbnail');
     await panel.getByRole('button', { name: 'Delete photo 1', exact: true }).click(); await page.getByRole('dialog').getByRole('button', { name: 'Delete photo', exact: true }).click();
     await expect(panel.getByText('Photo deleted. Cleanup pending.', { exact: true })).toBeVisible(); await expect(text).toHaveValue('Independent unsaved acceptance text.');
     const expected = [ready[1]._id.toString(), ready[0]._id.toString()];

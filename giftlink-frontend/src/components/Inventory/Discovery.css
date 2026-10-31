@@ -9,7 +9,6 @@
 .discovery-feed .discovery-region-fields { margin-top: var(--ui-space-4); }
 .discovery-feed .discovery-filters { display: block; }
 .discovery-feed .discovery-search { margin-bottom: var(--ui-space-4); }
-.discovery-feed .discovery-search-heading { margin-bottom: var(--ui-space-2); }
 .discovery-feed .discovery-options { margin-top: var(--ui-space-4); padding-top: var(--ui-space-4); border-top: 1px solid var(--ui-border); }
 .discovery-feed [hidden] { display: none; }
 .discovery-feed .discovery-search-actions { display: flex; flex-wrap: wrap; gap: var(--ui-space-3); margin-top: var(--ui-space-4); margin-bottom: 0; }
@@ -18,16 +17,10 @@
 @media (max-width: 420px) {
   .discovery-feed .discovery-search-actions .ui-button { flex: 1 1 auto; }
 }
-/* Narrow screens keep category/type at hand; pickup/sort join optional filters. */
-@media (max-width: 600px) {
-  .discovery-feed .discovery-extra-option { display: none; }
-  .discovery-feed .discovery-filters--expanded .discovery-extra-option { display: block; }
-}
+/* All filters stay visible at every width; native controls reflow in source order. */
+.discovery-feed .discovery-common-options, .discovery-feed .discovery-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: var(--ui-space-3); }
 @media (max-width: 600px) {
   .discovery-feed .discovery-area--selected { background: transparent; border: 0; padding: 0; margin-bottom: var(--ui-space-6); }
-  .discovery-feed .discovery-type-option { display: none; }
-  .discovery-feed .discovery-filters--has-category .discovery-type-option,
-  .discovery-feed .discovery-filters--expanded .discovery-type-option { display: block; }
 }
 .discovery-feed .discovery-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr)); gap: var(--ui-space-4); margin-top: var(--ui-space-4); }
 .discovery-listing { display: flex; flex-direction: column; gap: var(--ui-space-3); }

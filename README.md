@@ -854,8 +854,10 @@ assignment. See [classification UX and compatibility](docs/item-classification-u
 for the additive catalog, Other/custom validation and local visual evidence.
 
 [Owner photo management (C2)](docs/milestone-6.5c2-owner-photo-management.md)
-reuses the existing versioned ordering/deletion APIs inside Edit Item. Logical
-deletion and physical cleanup remain separate; production image gates stay disabled.
+introduced the existing versioned ordering/deletion APIs inside Edit Item. UX-1
+keeps deletion in the UI and preserves existing server order while removing visible
+reordering controls. Logical deletion and physical cleanup remain separate;
+production image gates stay disabled.
 
 ## Public item covers and gallery (6.5D1)
 
@@ -970,3 +972,10 @@ or independent rollback-resistant trust authority. Production gates remain off.
 The [dependency checkpoint](docs/milestone-6.5f5-dependency-checkpoint.md) reproduces
 352 cached versus 67 fresh-cache package entries with identical direct advisories,
 locks and frontend source. No packages, infrastructure or provider settings change.
+
+## Milestone 6.6 UX-1: item-centered interactions
+
+[Behavior, compatibility, actual desktop/mobile evidence and UX-2 dependencies](docs/milestone-6.6-ux1-item-centered.md)
+cover the top-positioned Add item form, direct owner editing, ranked type search,
+minimal photo controls, always-visible discovery filters and request cleanup.
+No plan migration, production photo activation or infrastructure change is included.

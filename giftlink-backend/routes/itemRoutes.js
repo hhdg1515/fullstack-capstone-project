@@ -59,6 +59,9 @@ function createItemRoutes({ connectToDatabase, auth, discoveryLimit = 120, image
     publicRouter.get('/locations', async (req, res, next) => {
         try { res.json(await discovery.locations(req.query)); } catch (error) { next(error); }
     });
+    publicRouter.get('/:itemId/edit-context', auth.requireAuth, async (req, res, next) => {
+        try { res.json(await service.editContext(req.user._id, req.params.itemId)); } catch (error) { next(error); }
+    });
     publicRouter.get('/:itemId', auth.optionalAuth, async (req, res, next) => {
         try { res.json(await discovery.detail(req.params.itemId, req.user && req.user._id)); } catch (error) { next(error); }
     });

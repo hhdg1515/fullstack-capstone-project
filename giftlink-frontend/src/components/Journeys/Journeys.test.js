@@ -106,7 +106,6 @@ test('one account gives in Pasadena and searches Irvine without copying or enfor
   await click(primary().getByRole('link', { name: 'Find Free Items' }));
   await act(async () => fireEvent.change(screen.getByLabelText('State'), { target: { value: '06' } }));
   await act(async () => fireEvent.change(screen.getByLabelText('Metro area'), { target: { value: '31080' } }));
-  await click(screen.getByRole('button', { name: /^Filters/ }));
   await screen.findByRole('option', { name: 'Irvine' }); expect(screen.getByLabelText('City', { exact: true })).toHaveValue('');
   fireEvent.change(screen.getByLabelText('City', { exact: true }), { target: { value: 'Irvine' } });
   await click(screen.getByRole('button', { name: 'Find free items' }));
@@ -171,13 +170,14 @@ test('brand and default account/logout navigation return to the two-path homepag
   expect(screen.getByTestId('route')).toHaveTextContent('/');
 });
 test('existing demo routes and item detail links remain usable outside the primary journeys', async () => {
-  mount(); await click(screen.getByRole('link', { name: 'Demo gift collection' }));
+  const rendered = mount('/app'); expect(screen.queryByRole('link', { name: 'Demo gift collection' })).not.toBeInTheDocument();
   expect(await screen.findByText('Original chair')).toBeInTheDocument();
   await click(screen.getByRole('button', { name: 'View Details' }));
   expect(await screen.findByRole('heading', { name: 'Original chair' })).toBeInTheDocument();
   await click(screen.getByRole('button', { name: 'Back', exact: true }));
   expect(await screen.findByRole('heading', { name: 'Demo gift collection' })).toBeInTheDocument();
-  await click(screen.getByRole('link', { name: 'Demo gift search' })); expect(await screen.findByRole('button', { name: 'Search', exact: true })).toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Demo gift search' })).not.toBeInTheDocument();
+  rendered.unmount(); mount('/app/search'); expect(await screen.findByRole('button', { name: 'Search', exact: true })).toBeInTheDocument();
 });
 test.each(['https://example.invalid/', '//example.invalid', '/app/login?again=1', '/app/register#again'])('unsafe or looping login destination %s returns to the homepage', async from => {
   mount({ pathname: '/app/login', state: { from } }); await screen.findByRole('heading', { name: 'Login' }); await login();

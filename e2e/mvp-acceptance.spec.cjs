@@ -56,8 +56,8 @@ test('two independent users complete the integrated marketplace journey with tru
     }
   };
   const filterPanel = async page => {
-    const toggle = page.getByRole('button', { name: /^Filters(?: \(\d+\))?$/ });
-    if (await toggle.getAttribute('aria-expanded') === 'false') await toggle.click();
+    await expect(page.getByLabel('Category', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Condition', { exact: true })).toBeVisible();
   };
   const register = async (page, account) => {
     for (const [label, value] of [['First name', account.firstName], ['Last name', 'Acceptance'], ['Email', account.email], ['Password', account.password]]) {
@@ -114,7 +114,7 @@ test('two independent users complete the integrated marketplace journey with tru
     await a.getByRole('button', { name: 'Save Draft', exact: true }).click();
     await expect(card('Local study desk').getByText('Draft', { exact: true })).toBeVisible();
     await a.getByRole('button', { name: 'Edit Local study desk', exact: true }).click();
-    await selectItemType(a, 'desk'); await a.getByLabel('Condition (optional)', { exact: true }).selectOption('good');
+    await selectItemType(a, 'desk'); await a.getByText('More details', { exact: true }).click(); await a.getByLabel('Condition (optional)', { exact: true }).selectOption('good');
     await a.getByLabel('Description', { exact: true }).fill('A sturdy household study desk. Legs detach for transport.');
     await a.getByRole('button', { name: 'Publish', exact: true }).evaluate(node => { node.click(); node.click(); });
     await expect(card('Local study desk').getByText('Posted', { exact: true })).toBeVisible();
@@ -122,7 +122,7 @@ test('two independent users complete the integrated marketplace journey with tru
     await a.getByLabel('Item name', { exact: true }).fill('Local office chair');
     await selectItemType(a, 'office-chair');
     await a.getByLabel('Description', { exact: true }).fill('An adjustable household office chair, with working wheels.');
-    await a.getByLabel('Condition (optional)', { exact: true }).selectOption('good');
+    await a.getByText('More details', { exact: true }).click(); await a.getByLabel('Condition (optional)', { exact: true }).selectOption('good');
     await a.getByRole('button', { name: 'Publish', exact: true }).click();
     await expect(a.getByLabel('Item name', { exact: true })).toHaveCount(0);
     await a.getByRole('button', { name: 'Add item', exact: true }).click();

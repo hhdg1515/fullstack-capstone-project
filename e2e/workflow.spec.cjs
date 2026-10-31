@@ -43,8 +43,8 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     await page.getByRole('navigation', { name: 'Primary', exact: true }).getByRole('link', { name: label, exact: true }).click();
   }
   async function filters(page) {
-    const toggle = page.getByRole('button', { name: /^Filters(?: \(\d+\))?$/ });
-    if (await toggle.getAttribute('aria-expanded') === 'false') await toggle.click();
+    await expect(page.getByLabel('Category', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Condition', { exact: true })).toBeVisible();
   }
   async function register(page, email) {
     await page.goto('/app/register');

@@ -1,13 +1,30 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 
+const normalize = value => value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
+export function rankedItemTypes(entries, query) {
+  const search = normalize(query || '');
+  if (!search) return entries;
+  const rank = type => {
+    const label = normalize(type.label), terms = (type.searchTerms || []).map(normalize);
+    if (label === search) return 0;
+    if (terms.includes(search)) return 1;
+    if (label.startsWith(search)) return 2;
+    if (terms.some(term => term.startsWith(search))) return 3;
+    if ([label, normalize(type.category.label), ...terms].some(term => term.includes(search))) return 4;
+    return 5;
+  };
+  return entries.map((type, index) => ({ type, index, rank: rank(type) })).filter(row => row.rank < 5)
+    .sort((a, b) => a.rank - b.rank || a.index - b.index).map(row => row.type);
+}
+
 // Editable listbox: only choosing a catalog entry assigns canonical IDs.
 export default function ItemTypeSelector({ categories = [], categoryId, itemTypeId, onChange, onSearch, disabled, fieldProps }) {
   const listId = useId(); const input = useRef();
   const entries = categories.flatMap(category => category.itemTypes.map(type => ({ ...type, category })));
   const selected = entries.find(type => type.id === itemTypeId && type.category.id === categoryId);
   const [query, setQuery] = useState(null), [open, setOpen] = useState(false), [active, setActive] = useState(-1);
-  const search = (query || '').trim().toLocaleLowerCase();
-  const matches = entries.filter(type => [type.label, type.category.label, ...(type.searchTerms || [])].some(term => term.toLocaleLowerCase().includes(search)));
+  const search = normalize(query || '');
+  const matches = rankedItemTypes(entries, search);
   // Keep the global fallback easy to find, even when a search has no matches.
   const fallback = entries.find(type => type.id === 'other');
   const options = search && fallback && !matches.includes(fallback) ? [...matches, fallback] : matches;

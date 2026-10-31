@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Link, Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import MainPage from './components/MainPage/MainPage';
 import DetailsPage from './components/DetailsPage/DetailsPage';
 import SearchPage from './components/SearchPage/SearchPage';
@@ -48,6 +48,7 @@ function App() {
         <Route path="/app/plans/:planId/items" element={<RequireAuth><Inventory /></RequireAuth>} />
         <Route path="/app/items" element={<PublicItems />} />
         <Route path="/app/items/:itemId" element={<PublicItems />} />
+        <Route path="/app/items/:itemId/edit" element={<RequireAuth><Inventory /></RequireAuth>} />
         <Route path="/app/items/:itemId/request" element={<RequireAuth><RequestPickup /></RequireAuth>} />
         <Route path="/app/pickups" element={<RequireAuth><PickupDashboard key="sent" /></RequireAuth>} />
         <Route path="/app/pickups/incoming" element={<RequireAuth><PickupDashboard key="incoming" incoming /></RequireAuth>} />
@@ -55,7 +56,6 @@ function App() {
       </Routes>
       </div>
       <footer className="site-footer"><p>Useful things, shared freely. One account for giving and finding.</p>
-        <Link to="/app">Demo gift collection</Link><Link to="/app/search">Demo gift search</Link>
       </footer>
     </>
   );

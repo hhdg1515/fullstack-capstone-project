@@ -97,6 +97,13 @@ function createInventoryService({ connectToDatabase, imageMetadata = null, image
             return { availability: images.length ? 'ready' : 'none', imageRevision: item.imageRevision || 0, images };
         } catch (_) { return { availability: 'unavailable', images: [] }; }
     }
+    async function editContext(ownerId, itemId) {
+        if (!(ownerId instanceof ObjectId) || typeof itemId !== 'string' || !/^[a-fA-F0-9]{24}$/.test(itemId)) throw notFound();
+        const db = await connectToDatabase();
+        const item = await db.collection('items').findOne({ _id: new ObjectId(itemId), ownerId }, { projection: { planId: 1 }, maxTimeMS: 2000 });
+        if (!item || !(item.planId instanceof ObjectId) || !await db.collection('moveOutPlans').findOne({ _id: item.planId, ownerId }, { projection: { _id: 1 }, maxTimeMS: 2000 })) throw notFound();
+        return { itemId: item._id.toHexString(), planId: item.planId.toHexString() };
+    }
     async function list(ownerId, planId) {
         const db = await connectToDatabase();
         const rows = await db.collection('moveOutPlans').aggregate([
@@ -181,6 +188,6 @@ function createInventoryService({ connectToDatabase, imageMetadata = null, image
         });
     }
 
-    return { list, create, mutate };
+    return { list, create, mutate, editContext };
 }
 module.exports = { createInventoryService, InventoryError, planTransaction, dateConflicts, endDate, effectiveStatus };

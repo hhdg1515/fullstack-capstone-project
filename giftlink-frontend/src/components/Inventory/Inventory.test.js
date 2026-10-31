@@ -133,7 +133,7 @@ test('all five item states, availability and real clearance progress remain dist
   expect(screen.getByRole('heading', { name: 'unlisted item' })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'cleared item' })).not.toBeInTheDocument();
 });
-test.each([['available', 'Hide', 'unlist', 'unlisted'], ['unlisted', 'Publish', 'publish', 'available'],
+test.each([['unlisted', 'Publish', 'publish', 'available'],
   ['unlisted', 'Mark', 'clear', 'cleared'], ['cleared', 'Reopen', 'reopen', 'draft']])('%s owner action confirms intent and uses the current item version', async (initial, label, action, next) => {
   data = inventory([{ ...item, status: initial, version: 7, description: 'A household item.', classification: { category: { id: 'other-household' }, itemType: { id: 'other' } } }]);
   handler = async (url, options) => {
@@ -151,7 +151,7 @@ test.each([['available', 'Hide', 'unlist', 'unlisted'], ['unlisted', 'Publish', 
 });
 test('cancelling a consequential action leaves the inventory unchanged', async () => {
   window.confirm.mockReturnValue(false); data = inventory([{ ...item, status: 'available' }]);
-  mount(); await formReady(); await click(screen.getByRole('button', { name: `Hide ${item.name}` }));
+  mount(); await formReady(); screen.getByText('More actions').closest('details').open = true; await click(screen.getByRole('button', { name: `Mark ${item.name} cleared` }));
   expect(fetch.mock.calls.some(([, options]) => options.method === 'POST')).toBe(false);
 });
 test('reopening with a past pickup end is rejected before sending an action or confirming publication', async () => {
@@ -180,7 +180,7 @@ test('editing and clearing date overrides uses PATCH and preserves the plan asso
 test('stale actions show an error and let the owner reload authoritative state', async () => {
   data = inventory([{ ...item, status: 'available' }]);
   handler = async () => { data = inventory([{ ...item, status: 'cleared', version: 2 }]); return reply(409, { error: { message: 'This item changed. Reload the inventory.' } }); };
-  mount(); await formReady(); await click(screen.getByRole('button', { name: `Hide ${item.name}` }));
+  mount(); await formReady(); screen.getByText('More actions').closest('details').open = true; await click(screen.getByRole('button', { name: `Mark ${item.name} cleared` }));
   expect(await screen.findByRole('alert')).toHaveTextContent('This item changed');
   await click(screen.getByRole('button', { name: 'Reload inventory' }));
   expect(await screen.findByText('1 of 1 items cleared')).toBeInTheDocument();
@@ -269,4 +269,14 @@ test('an incomplete draft opens its existing editor instead of posting an invali
   await click(screen.getByRole('button', { name: 'Edit ' + item.name }));
   expect(screen.getByLabelText('Item name')).toBeVisible(); expect(screen.getByLabelText('Item name')).toHaveValue(item.name);
   expect(fetch.mock.calls.some(([, options]) => options.method !== 'GET')).toBe(false);
+});
+
+test('Add item inserts its only creation form before existing cards and focuses without scrolling', async () => {
+  data = inventory([item]); mount(); await screen.findByRole('heading', { name: item.name });
+  const focus = jest.spyOn(HTMLElement.prototype, 'focus');
+  await click(screen.getByRole('button', { name: 'Add item', exact: true }));
+  const input = screen.getByLabelText('Item name'), form = input.closest('form'), card = screen.getByRole('heading', { name: item.name }).closest('li');
+  expect(input).toHaveFocus(); expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+  expect(form.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(document.querySelectorAll('.inventory-form')).toHaveLength(1);
 });

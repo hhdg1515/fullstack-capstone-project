@@ -99,14 +99,12 @@ export function PickupDashboard({ incoming = false }) {
           <span className="ui-status">{pickupLabels[request.status] || 'Status unavailable'}</span></div>
         <p>Applicant: {incoming ? request.counterpart.firstName : 'You'}</p>
         {!incoming && <p>Giver: {request.counterpart.firstName}</p>}<Appointment request={request} compact />
+        {Number.isFinite(Date.parse(request.createdAt)) && <p className="pickup-help">Requested <time dateTime={request.createdAt}>{new Date(request.createdAt).toLocaleString()}</time></p>}
         <div className="pickup-actions"><Link className="ui-button" to={`/app/pickups/${request.id}`} state={state}
           aria-label={`View request ${incoming ? 'from' : 'to'} ${request.counterpart.firstName} for ${request.item?.name || 'former listing'}`}>View request</Link>
           {conversationAvailable(request) && <Link className="ui-button ui-button--secondary" to={`/app/pickups/${request.id}#conversation`} state={state}
             aria-label={`Open conversation with ${request.counterpart.firstName} for ${request.item.name}`}>Open conversation</Link>}</div>
-        <details className="pickup-request-details"><summary>Note and request reference</summary>
-          <p className="pickup-note">{request.note || 'No note provided.'}</p><p>Request reference: <code>{request.id}</code></p>
-          {incoming && request.plan && <p><Link to={`/app/plans/${request.plan.id}`}>{request.plan.title || 'Move-out plan'}</Link></p>}
-        </details>
+        {request.note && <details className="pickup-request-details"><summary>Pickup note</summary><p className="pickup-note">{request.note}</p></details>}
         {!request.item && <p>The listing is no longer available. You can still review the request.</p>}
       </Surface>)}</ul>
       <div className="pickup-actions">{cursor && <button className="ui-button ui-button--secondary" onClick={() => setCursor('')}>First page</button>}
@@ -189,12 +187,8 @@ function RequestDetail({ requestId }) {
       </Surface>
       <PickupConversation requestId={request.id} requestStatus={request.status} itemName={request.item?.name} hasTimeProposal={request.status === 'accepted' && Boolean(request.rescheduling?.proposal)} />
       <Surface className="pickup-secondary" aria-label="Request details and history">
-        <details className="pickup-request-details"><summary>Request details</summary>
-          <h3>Private coordination note</h3><p className="pickup-note">{request.note || 'No note provided.'}</p>
-          {request.item && <><p className="pickup-note">{request.item.description}</p><Link to={`/app/items/${request.item.id}`}>Public listing (if still available)</Link></>}
-          {request.plan && <p><Link to={`/app/plans/${request.plan.id}`}>{request.plan.title || 'Move-out plan'}</Link></p>}
-          <p>Request reference: <code>{request.id}</code></p>
-        </details>
+        {request.note && <details className="pickup-request-details"><summary>Pickup note</summary><p className="pickup-note">{request.note}</p></details>}
+        {request.item && <p><Link to={`/app/items/${request.item.id}`}>View item</Link></p>}
         <details className="pickup-request-details"><summary>Request history</summary><ul>{request.history.map((entry, index) => <li key={index}>
           {entry.action.startsWith('reschedule_') ? <SchedulingEvent entry={entry} /> : entry.action === 'pending' ? 'Request submitted' : pickupLabels[entry.action] || 'Request updated'}
           {' — '}{entry.actor === 'receiver' ? 'requester' : entry.actor}, <PickupTime compact value={{ proposedAt: entry.at, timeZone: request.timeZone }} />

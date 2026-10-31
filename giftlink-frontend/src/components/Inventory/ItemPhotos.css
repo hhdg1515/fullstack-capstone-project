@@ -29,12 +29,12 @@
 .item-photo-history li { margin-block: var(--ui-space-3); overflow-wrap: anywhere; }
 .item-photo-ready { position: relative; }
 .item-photo-cover { position: absolute; inset-block-start: var(--ui-space-2); inset-inline-start: var(--ui-space-2); padding: var(--ui-space-1) var(--ui-space-2); border-radius: var(--ui-radius-control); background: var(--ui-surface); font-size: var(--ui-text-small); font-weight: 700; }
-.item-photo-controls { display: flex; gap: var(--ui-space-2); flex-wrap: wrap; margin-top: var(--ui-space-2); }
-.item-photo-controls .ui-button { flex: 1 1 auto; padding-inline: var(--ui-space-2); font-size: var(--ui-text-small); }
-.item-photo-controls .item-photo-delete { color: var(--ui-error); }
 .item-photo-delete-dialog.ui-page { font-family: var(--ui-font); max-height: calc(100vh - 2rem); overflow: auto; width: calc(100% - 2rem); max-width: 28rem; padding: var(--ui-space-4); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-surface); color: var(--ui-text); background: var(--ui-surface); }
 .item-photo-delete-dialog::backdrop { background: rgb(0 0 0 / 45%); }
 .item-photo-delete-dialog h2 { font-size: var(--ui-text-section); }
 .item-photo-delete-actions { display: flex; gap: var(--ui-space-3); flex-wrap: wrap; }
 
 .item-photo-cover--unavailable { position: static; display: inline-block; }
+
+.item-photo-delete { color: var(--ui-error); box-shadow: 0 0 0 1px var(--ui-border); }
+.item-photo-remove { z-index: 1; }

@@ -26,9 +26,9 @@ test('field errors are linked, focusable and recoverable in real forms', async (
     await page.getByLabel('Item name', { exact: true }).fill('Desk');
     const writesBefore = await post('/api/move-out-plans/' + plan.id + '/items', { name: 'Local override draft', availableUntil: new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10) });
     await page.goto('/app/plans/' + plan.id + '/items?edit=' + writesBefore.item.id);
-    await page.getByText('Pickup end override', { exact: true }).click();
+    await page.getByText('Change pickup end', { exact: true }).click();
     await page.getByLabel('Available until (optional)', { exact: true }).fill('2099-01-01');
-    await page.getByText('Pickup end override', { exact: true }).click();
+    await page.getByText('Change pickup end', { exact: true }).click();
     await page.getByRole('button', { name: 'Save Draft', exact: true }).click();
     await expect(page.getByLabel('Available until (optional)', { exact: true })).toBeFocused();
     await expect(page.getByLabel('Available until (optional)', { exact: true })).toHaveAccessibleDescription(/Choose an end date on or before the plan deadline/);

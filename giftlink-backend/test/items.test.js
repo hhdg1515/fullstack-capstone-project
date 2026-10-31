@@ -39,6 +39,36 @@ describe('transactional plan inventory on verified isolated MongoDB', function (
         }
         plan = await parent(owner); otherPlan = await parent(other);
     });
+    it('resolves an owner-only edit context for public and private items without changing public draft access', async function () {
+        const item = (await create().expect(201)).body.item, url = '/api/items/' + item.id + '/edit-context';
+        await request(app).get(url).expect(401);
+        await request(app).get(url).set('Cookie', other.cookie).expect(404);
+        const result = await request(app).get(url).set('Cookie', owner.cookie).expect(200);
+        assert.deepEqual(result.body, { itemId: item.id, planId: plan.id }); assert.equal(result.headers['cache-control'], 'no-store');
+        await publicGet(item).set('Cookie', owner.cookie).expect(404);
+        const published = (await edit(item, { description: 'A local household item.', categoryId: 'dining-kitchen', itemTypeId: 'microwave', publish: true }).expect(200)).body.item;
+        const detail = (await publicGet(published).expect(200)).body.item; assert.equal(detail.classification.itemType.id, 'microwave');
+        for (const key of ['planId', 'ownerId', 'email']) assert.ok(!Object.prototype.hasOwnProperty.call(detail, key));
+        await request(app).get(url).set('Cookie', owner.cookie).expect(200);
+        for (const bad of ['invalid', new ObjectId().toHexString()]) await request(app).get('/api/items/' + bad + '/edit-context').set('Cookie', owner.cookie).expect(404);
+    });
+    it('denies edit-context access for missing parents and compromised item/plan ownership references', async function () {
+        const item = (await create().expect(201)).body.item, url = '/api/items/' + item.id + '/edit-context';
+        await db.collection('items').updateOne({ _id: new ObjectId(item.id) }, { $set: { planId: new ObjectId(otherPlan.id) } });
+        for (const user of [owner, other]) await request(app).get(url).set('Cookie', user.cookie).expect(404);
+        await db.collection('items').updateOne({ _id: new ObjectId(item.id) }, { $set: { planId: new ObjectId() } });
+        await request(app).get(url).set('Cookie', owner.cookie).expect(404);
+    });
+    it('accepts distinct Microwave and Mirror types and discovers their safe synonyms without changing legacy classification', async function () {
+        for (const [categoryId, itemTypeId, q] of [['dining-kitchen', 'microwave', 'microwave oven'], ['other-household', 'mirror', 'looking glass']]) {
+            const item = (await create({ categoryId, itemTypeId, description: 'Synthetic household item.', publish: true }).expect(201)).body.item;
+            const results = await request(app).get('/api/items').query({ stateId: '06', metroId: '41860', q, categoryId }).expect(200);
+            assert.equal(results.body.total, 1); assert.equal(results.body.items[0].id, item.id);
+            await edit(item, { name: 'Renamed item' }).expect(200);
+            assert.equal((await publicGet(item).expect(200)).body.item.classification.itemType.id, itemTypeId);
+        }
+        await create({ categoryId: 'bedroom', itemTypeId: 'microwave' }).expect(400);
+    });
     it('reports the owner plan timezone explicitly without requiring it to publish', async function () {
         await updatePlan({ pickupTimeZone: null }).expect(200);
         assert.equal((await list().expect(200)).body.plan.pickupTimeZone, null);

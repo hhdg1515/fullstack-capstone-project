@@ -35,7 +35,7 @@ test('regional discovery, structured items, counts and ownership work without ch
     await a.getByLabel('Item name', { exact: true }).fill('Comfortable seat');
     await selectItemType(a, 'sofa');
     await a.getByLabel('Description', { exact: true }).fill('A comfortable local sofa.');
-    await a.getByLabel('Condition (optional)', { exact: true }).selectOption('good');
+    await a.getByText('More details', { exact: true }).click(); await a.getByLabel('Condition (optional)', { exact: true }).selectOption('good');
     await a.getByRole('button', { name: 'Publish', exact: true }).click();
     const card = a.getByRole('heading', { name: 'Comfortable seat', exact: true }).locator('xpath=ancestor::li[1]'); await expect(card.getByText('Sofa · Good', { exact: true })).toBeVisible();
     const itemId = (await card.getByRole('link', { name: 'Public listing', exact: true }).getAttribute('href')).split('/').pop();
@@ -56,7 +56,7 @@ test('regional discovery, structured items, counts and ownership work without ch
     await expect(results.getByText('Reserved sofa', { exact: true })).toHaveCount(0); await expect(results.getByText('Other metro couch', { exact: true })).toHaveCount(0);
     await page.getByLabel('Search items', { exact: true }).fill('couch'); await page.getByRole('button', { name: 'Find free items', exact: true }).click();
     await expect(results.getByRole('link', { name: 'Comfortable seat', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: /^Filters/ }).click(); await page.getByLabel('Category', { exact: true }).selectOption('living-room');
+    await page.getByLabel('Category', { exact: true }).selectOption('living-room');
     await page.getByLabel('Item type', { exact: true }).selectOption('sofa'); await page.getByLabel('Condition', { exact: true }).selectOption('fair');
     await page.getByRole('button', { name: 'Find free items', exact: true }).click(); await expect(page.getByRole('heading', { name: /0 available/ })).toBeVisible();
     await expect(page.getByText('No available items match these filters. Clear filters or try another search.', { exact: true })).toBeVisible();
