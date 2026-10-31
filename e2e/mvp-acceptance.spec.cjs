@@ -137,7 +137,7 @@ test('two independent users complete the integrated marketplace journey with tru
     expect(owned.find(i => i.name === 'Local unfinished shelf').status).toBe('draft');
     expect((await requester.request.get('/api/move-out-plans/' + planId)).status()).toBe(401);
     await a.goto('/app/items/' + desk.id);
-    await expect(a.getByText('Your listing. Manage this item from My plans.', { exact: true })).toBeVisible();
+    await expect(a.getByText('Your listing.', { exact: true })).toBeVisible();
     await expect(a.getByRole('link', { name: 'Request pickup', exact: true })).toHaveCount(0);
     const self = await giver.request.post('/api/pickup-requests', { headers, data: { itemId: desk.id, localDateTime: day(2) + 'T12:00', timeZone: 'America/Los_Angeles' } });
     expect(self.status()).toBe(409);
