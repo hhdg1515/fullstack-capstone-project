@@ -9,6 +9,7 @@ const definitions = [
     { collection: 'sessions', name: 'sessions_expiry', key: { expiresAt: 1 }, options: { expireAfterSeconds: 0, collation: { locale: 'simple' } } },
     { collection: 'moveOutPlans', name: 'move_out_plans_owner_deadline', key: { ownerId: 1, moveOutDeadline: 1, _id: 1 },
         options: { collation: { locale: 'simple' } } },
+    { collection: 'items', name: 'items_owner_created', key: { ownerId: 1, createdAt: -1, _id: -1 }, options: { collation: { locale: 'simple' } } },
     { collection: 'items', name: 'items_plan_owner', key: { planId: 1, ownerId: 1, createdAt: 1, _id: 1 }, options: { collation: { locale: 'simple' } } },
     { collection: 'items', name: 'items_publication', key: { status: 1, publishedAt: -1, _id: -1 }, options: { collation: { locale: 'simple' } } },
     { collection: 'items', name: 'items_pickup_start', key: { status: 1, availableFrom: 1, publishedAt: -1, _id: -1 }, options: { collation: { locale: 'simple' } } },
@@ -117,14 +118,15 @@ async function prepareDatabaseIndexes(db) {
     return plan;
 }
 
-async function assertDatabaseIndexes(db, { imageMetadataEnabled = true } = {}) {
+async function assertDatabaseIndexes(db, { imageMetadataEnabled = true, ownerListingsEnabled = true } = {}) {
     try {
         for (const definition of definitions) {
             // Explicit preparation/full-registry callers retain the default check.
             // Only startup with disabled metadata may omit the four photo indexes.
+            if (definition.name === 'items_owner_created' && ownerListingsEnabled === false) continue;
             if (definition.collection === 'itemImages' && imageMetadataEnabled === false) continue;
             const indexes = await listIndexes(db, definition.collection);
-            if (!hasCompatible(indexes, definition) || definition.collection === 'itemImages' && hasConflict(indexes, definition)) {
+            if (!hasCompatible(indexes, definition) || (definition.collection === 'itemImages' || definition.name === 'items_owner_created') && hasConflict(indexes, definition)) {
                 throw new Error('Missing or incompatible index');
             }
         }

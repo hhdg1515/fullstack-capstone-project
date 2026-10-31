@@ -86,6 +86,20 @@ describe('native image pipeline with owned MongoDB and real private SeaweedFS', 
         assert.equal((await db.collection('items').findOne({ _id: item._id })).imageRevision, 1);
         assert.equal((await db.collection('items').findOne({ _id: item._id })).version, 1);
     });
+    it('enriches the bounded owner feed with permitted legacy previews and never exposes storage or transaction metadata', async function () {
+        const id = await reserve(); await upload(id).expect(201);
+        const server = createApp({ connectToDatabase: async () => db, imageMetadata: config, imagePipeline: pipeline, ownerListingsEnabled: true, logger: pino({ level: 'silent' }) });
+        const result = await request(server).get('/api/me/items').set('Cookie', owner.cookie).expect(200);
+        assert.equal(result.body.items.length, 1);
+        const entry = result.body.items[0];
+        assert.equal(entry.id, item._id.toHexString()); assert.equal(entry.photoPreview.availability, 'ready');
+        assert.deepEqual(entry.photoPreview.images.map(photo => photo.id), [id]);
+        assert.equal(entry.photoPreview.images[0].thumbnail.width, 400);
+        for (const field of ['ownerId', 'planId', 'imageRevision', 'coordinationRevision', 'storageBinding', 'key', 'ticket']) assert.ok(!JSON.stringify(entry).includes('"' + field + '"'));
+        assert.deepEqual((await request(server).get('/api/me/items').set('Cookie', other.cookie).expect(200)).body.items, []);
+        await request(server).get('/api/me/items/' + item._id).set('Cookie', other.cookie).expect(404);
+        await view(id, 'thumbnail', other).expect(404);
+    });
     it('denies legacy photo access for independent or unsupported listing records without changing ledgers or quotas', async function () {
         const id = await reserve(); await upload(id).expect(201);
         const before = await row(id), held = await quota();

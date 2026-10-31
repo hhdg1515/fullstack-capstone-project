@@ -16,7 +16,7 @@ const { requestDiagnostics } = require('./middleware/diagnostics');
 
 function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', secureCookies = false,
     sessionTtlSeconds = 28800, authLimit = 30, discoveryLimit = 120, pickupNow, messageLimit,
-    imageMetadata = null, imageControlLimit = 20, imagePipeline = null, logger = require('./logger') }) {
+    ownerListingsEnabled = false, imageMetadata = null, imageControlLimit = 20, imagePipeline = null, logger = require('./logger') }) {
     const app = express();
     const pipeline = imagePipeline ? require('./services/item-image-pipeline').pipelineBinding(imagePipeline, imageMetadata, connectToDatabase) : null;
     const identity = createIdentityService({ connectToDatabase, sessionTtlSeconds });
@@ -46,6 +46,9 @@ function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', sec
     app.use('/api/gifts', createGiftRoutes({ connectToDatabase, logger, auth }));
     app.use('/api/search', createSearchRoutes({ connectToDatabase }));
     app.use('/api/auth', createAuthRoutes({ identity, auth, authLimit }));
+    const ownerListings = require('./routes/ownerListingRoutes')({ connectToDatabase, auth, ownerListingsEnabled, imageMetadata, pipeline });
+    app.use('/api/me/items', ownerListings.read);
+    app.use('/api/items', ownerListings.write);
     app.use('/api/me', createMeRoutes({ identity, auth }));
     app.use('/api/move-out-plans', createPlanRoutes({ connectToDatabase, auth }));
     app.use('/api/move-out-plans/:planId/items', items.privateRouter);
