@@ -1,3 +1,4 @@
+const { legacyMatch } = require('./listing-model');
 const { createHash } = require('crypto');
 const { ObjectId } = require('mongodb');
 const { InventoryError } = require('./inventory');
@@ -81,7 +82,7 @@ function publicItem(row, today, viewerId) {
 }
 function eligibilityStages(today) {
     return [{ $addFields: { effectiveAvailableUntil: { $ifNull: ['$availableUntil', '$plan.moveOutDeadline'] } } },
-        { $match: { 'plan.status': 'active', $expr: { $and: [
+        { $match: legacyMatch() }, { $match: { 'plan.status': 'active', $expr: { $and: [
             { $regexMatch: { input: { $convert: { input: '$status', to: 'string', onError: '', onNull: '' } }, regex: '^available$' } },
             { $regexMatch: { input: { $convert: { input: '$plan.status', to: 'string', onError: '', onNull: '' } }, regex: '^active$' } },
             { $eq: [{ $type: '$publishedAt' }, 'date'] }, { $eq: [{ $type: '$ownerId' }, 'objectId'] },

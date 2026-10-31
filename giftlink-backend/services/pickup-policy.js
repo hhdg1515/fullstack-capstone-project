@@ -1,3 +1,4 @@
+const { isLegacyItem } = require('./listing-model');
 const { Temporal } = require('@js-temporal/polyfill');
 const { ObjectId } = require('mongodb');
 const { InventoryError } = require('./inventory-error');
@@ -31,7 +32,7 @@ function fitsWindow(request, item, plan) {
 }
 function eligible(item, plan, now = new Date()) {
     const end = item.availableUntil || plan.moveOutDeadline;
-    return item.status === 'available' && item.publishedAt instanceof Date && item.publishedAt <= now &&
+    return isLegacyItem(item) && item.status === 'available' && item.publishedAt instanceof Date && item.publishedAt <= now &&
         plan.status === 'active' && item.ownerId.equals(plan.ownerId) && end >= todayUTC(now) &&
         end <= plan.moveOutDeadline && (!item.availableFrom || item.availableFrom <= end);
 }

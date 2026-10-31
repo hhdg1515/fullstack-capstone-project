@@ -1,3 +1,4 @@
+const { legacyMatch } = require('./listing-model');
 const { ObjectId } = require('mongodb');
 const { originalParticipants } = require('./pickup-policy');
 const { initialMatch, visibilityPipeline } = require('./discovery');
@@ -24,7 +25,7 @@ function createPickupItemMedia({ connectToDatabase, configuration }) {
                 { $lookup: { from: 'users', localField: 'giverId', foreignField: '_id', pipeline: [{ $project: { _id: 1 } }, { $limit: 1 }], as: 'mediaGiver' } },
                 { $lookup: { from: 'users', localField: 'receiverId', foreignField: '_id', pipeline: [{ $project: { _id: 1 } }, { $limit: 1 }], as: 'mediaReceiver' } },
                 { $lookup: { from: 'items', let: { item: '$itemId', plan: '$planId', owner: '$giverId' }, pipeline: [
-                    { $match: { $expr: { $and: [{ $eq: ['$_id', '$$item'] }, { $eq: ['$planId', '$$plan'] }, { $eq: ['$ownerId', '$$owner'] }] } } }
+                    { $match: legacyMatch() }, { $match: { $expr: { $and: [{ $eq: ['$_id', '$$item'] }, { $eq: ['$planId', '$$plan'] }, { $eq: ['$ownerId', '$$owner'] }] } } }
                 ].concat(itemStages, [
                     { $lookup: { from: 'itemImages', let: { item: '$_id' }, pipeline: [
                         { $match: { state: 'ready', $expr: { $eq: ['$itemId', '$$item'] } } },
