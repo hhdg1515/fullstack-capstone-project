@@ -1,6 +1,6 @@
 # Milestone 6.6 UX-2A — Item-first architecture and migration design
 
-Status: **proposal for owner review; not implemented or approved for execution**.
+Status: **architecture decisions updated following owner review; implementation and conversion are not authorized by this document**.
 Baseline: PR #76 merged on 2026-10-31, main
 `f7940024251c5bae09560ae9fd2580aaba558791`. Working tree was clean before
 creating `codex/m66-ux2a-item-first-architecture` from fetched main.
@@ -26,6 +26,7 @@ listing architecture must retain, rather than replace with client-side checks.
 | `giftlink-backend/services/inventory.js` | `planTransaction` reads an owned plan and increments its `inventoryRevision` in a snapshot/majority transaction; item create/mutate filters bind `planId` and `ownerId`. `completedHandoff` validates the completed request, first/last history events and plan owner. | Ownership, serialization and verified handoff are essential. A shared move-out plan as the mutex/parent is architectural coupling. |
 | `services/plans.js` (backend) | Plan edits inspect children, validate end-date overrides, expire items, cancel affected requests and invalidate proposals with confirmation. | Atomic consequential edits are essential; letting a parent change several listings implicitly is not required for item-first listings. |
 | `services/discovery.js` | Regional query begins with eligible plans, joins their owned items, applies publication/window/reservation conditions, then exact totals/cursors. Public DTO location/zone/deadline comes from the plan. | Regional isolation, exact totals, stable sorting and eligibility are essential. Plan-rooted aggregation is replaceable. |
+| `services/calendar.js`, `pickup-policy.js`, `discovery.js`, `item-images.js`, frontend `MoveOutPlans/dates.js` and `forms/pickupTime.js` | Current UTC calendar helpers and UTC cutoff participate in expiration, filters, date input minimums, appointment fits and upload eligibility. | Keep these helpers for v1; v2 needs a separate policy-aware resolver shared by reads, writes, media and UI. Never change `todayUTC` globally. |
 | `services/pickup-policy.js`, `pickups.js` | Request holds `itemId`, `planId`, giver/receiver IDs, version, original-participant history, appointment and proposal. Acceptance, cancellation, handoff and rescheduling use the plan transaction. | Original participants, one accepted request/item, appointment validity and atomic transitions remain essential. Plan ID in a new request should not be required. |
 | `services/pickup-communication.js` | New sends use the plan transaction; reference checks verify item/plan ownership. Closed history has distinct original-participant rules. | Canonical conversation ID is still `pickupRequests._id`. Historical text permission must stay separate from permission to send or read media. |
 | `services/item-images.js`, `item-image-policy.js`, `item-image-format.js` | Image rows/tickets bind owner, plan, item, generation, immutable identity and storage binding; revisions and quota settlement use transactional checks. | Immutable identity, quotas, leases, admission fences and idempotency are essential. Requiring a plan on every new photo operation is coupling, but cannot be removed from old receipts. |
@@ -46,6 +47,9 @@ flowchart TD
   I --> F[itemImages / ledger / immutable storage identity]
   C[photoControls / signed exact target / transaction fence] --> F
   L --> D[Regional discovery and current media eligibility]
+  V[V2 item-owned dates + confirmed zone + policy 2] --> X[Stored exclusive UTC expiry]
+  X --> D
+  X --> A[Policy-aware pickup, admission and revocation]
   R --> H[Confirmed appointment and handoff history]
 ```
 
@@ -108,9 +112,10 @@ BSON/document fields:
 | `categoryId`, `itemTypeId`, `customItemType`, `condition`, `category` | Preserve canonical IDs, relationship validation and optional sanitized custom Other. Preserve legacy category text without rewriting it. Category is derived from the explicitly selected type in the UI. |
 | `stateId`, `metroId` | Item-owned canonical IDs validated together against the pinned directory, including cross-state membership. Both required for a newly published v2 listing; draft may leave them absent. |
 | `city`, `neighborhood` | Optional normalized bounded display labels, empty string when unspecified; never an address field. Proposed maximum 100 Unicode code points each, plain text, no controls/markup/contact data. Final validation must reuse/audit existing region normalizers. |
-| `pickupTimeZone` | Explicit valid IANA zone, draft nullable. Required for new v2 publication. Directory suggestion is a visible suggestion requiring explicit confirmation/correction, never a precise inference for ambiguous metros. No account-wide automatic location defaults. |
-| `availableFrom` | Nullable `YYYY-MM-DD`, existing UTC-calendar policy and validation; null means immediate pickup availability. |
-| `availableUntil` | Item's required pickup deadline on publication, nullable in an incomplete draft. No parent cap/fallback for v2. Preserve current inclusive UTC-date expiration and appointment local-day plus UTC cutoff checks. |
+| `pickupTimeZone` | Explicitly confirmed valid IANA zone, draft nullable. Required for new v2 publication; record server-validated confirmation against the exact selected zone/context revision. An unconfirmed suggestion does not satisfy publication. Directory suggestion is a visible suggestion requiring explicit confirmation/correction, never a precise inference for ambiguous metros. No account-wide automatic location defaults. |
+| `availableFrom` | Nullable `YYYY-MM-DD`; v1 retains existing rules, v2 uses the selected pickup location timezone as defined below. Null means immediate pickup availability. |
+| `availableUntil` | Item's inclusive local pickup date (`YYYY-MM-DD`) for v2, required on publication and nullable in an incomplete draft. No parent cap/fallback. V1 remains UTC-based; never interpret this field without the deadline policy discriminator. |
+| `deadlinePolicyVersion`, `expiresAt`, `deadlineTimeZone`, `timeZoneConfirmedAt`, `timeZoneRulesVersion` | Server-owned v2 deadline policy discriminator `2`, derived exclusive UTC BSON Date expiry, confirmed IANA zone snapshot, server confirmation time and recorded resolver/tzdb version. Never accept client-computed expiry or policy versions. Validate consistency and fail closed on unsupported/corrupt context. |
 | `status`, `publishedAt` | Keep canonical `draft/available/unlisted/cleared/expired`; publication timestamp remains the original publication instant on republish. Derived labels are specified below. |
 | `publicationRequirementsVersion` | Preserve the existing marker for legacy behavior. Specify a reviewed new marker for v2 publication requirements rather than retroactively applying them to old records. |
 | `version` | Existing optimistic content/lifecycle version; stale writes return 409. |
@@ -125,15 +130,97 @@ labels have privacy guidance, bounded validation and owner withdrawal; do not
 claim complete automatic PII detection. Public DTOs allowlist general location,
 item fields, eligibility flags and safe application media summaries only.
 
-Draft-photo prerequisite proposal: name-only drafts without a deadline remain
+Draft-photo admission decision: name-only drafts without a deadline remain
 valid, and files may be selected/prepared in memory. Saving a draft **with photos**
 requires an explicit valid item deadline before authorizing binary intake, retaining
-the current admission requirement for a live valid pickup end. Surface that field
+the current admission requirement for a live valid pickup end, evaluated with the
+record's explicit v1/v2 policy. V2 intake requires sufficient explicitly confirmed
+timezone context to derive that deadline safely. Surface that field
 error before saving/uploading; do not invent a plan deadline, silently upload an
-unbounded draft or discard staged files. Draft photo intake need not require a
-metro/timezone where the existing admission contract does not. This UX trade-off
-requires owner approval alongside publication prerequisites; navigation/reload loss
+unbounded draft or discard staged files. Do not relax owner authorization, exact storage target binding, quotas, leases,
+durable permits or recovery controls to accommodate incomplete drafts. Missing
+required admission context means files remain staged and binary upload is blocked; navigation/reload loss
 protection remains necessary because staged files are not persistent drafts.
+
+### Final publication requirements
+
+New v2 publication requires a nonblank item name and description, valid canonical
+classification, valid state/metro membership, explicitly confirmed IANA pickup
+timezone, and a valid pickup deadline. Photos, city, neighborhood and condition
+remain optional. The category continues to derive from the chosen canonical type.
+A directory suggestion requires explicit confirmation; never infer a precise zone
+from metro membership or browser/account timezone. Clearing/changing the selected
+zone invalidates its prior confirmation. Confirmation is a validated UI/API intent,
+not a claim that software can prove the human's physical location.
+
+### Final deadline policy: v1 UTC, v2 giver-local
+
+These are different policies, not a global replacement of `todayUTC`:
+
+* **V1:** preserve exactly the existing end date, inclusive UTC expiration and
+  existing appointment local-day plus UTC-cutoff validation. Missing policy
+  metadata on legacy records means v1. Do not backfill them to policy 2 on reads,
+  startup, editing, restore or release. Unsupported explicit versions fail closed.
+* **V2:** `availableUntil = D` means the entire valid local calendar date D in the
+  confirmed giver zone Z. `expiresAt` is the **exclusive** instant at the end of
+  that day: the earliest real instant after day D whose local date in Z is later
+  than D. A listing is live only while `now < expiresAt`; at equality it is expired.
+  An appointment must also satisfy `appointmentInstant < expiresAt`. V2 comparisons
+  use one authoritative database snapshot/transaction timestamp per operation,
+  not the browser clock or differently cached worker times. Never add
+  24 hours to an instant or use `D + T23:59:59.999` to derive the boundary.
+* Resolve local calendar boundaries on the server with the existing Temporal
+  library and pinned/recorded timezone rules. For a repeated boundary midnight,
+  use the earliest occurrence; for a midnight gap, use the first valid instant
+  after the gap. If a whole following date is skipped, use the first subsequent
+  existing local day boundary. Reject a selected deadline/start date that never
+  exists in Z; do not silently move the owner's chosen date. Boundary resolution
+  is distinct from appointment input: appointments in DST gaps or folds still
+  reject using the existing `disambiguation: reject` rule.
+* A non-null v2 `availableFrom` is a local date in Z and must not exceed D; its
+  start uses the same explicit start-of-day boundary rules. Null keeps immediate
+  pickup availability. Preserve publication before a future pickup start; apply
+  existing availability filters using the correct policy. A past date compared
+  with the giver's current local date is invalid for new/changed input, with the
+  existing unchanged-start compatibility exception. Publishing requires a future
+  exclusive expiry, not merely a date that is still today in UTC.
+* Store the original date, confirmed zone, policy 2, derived UTC `expiresAt` and
+  resolver/rules version together in the same versioned transaction. Use the
+  stored instant for expiration, ordering by deadline and all read/mutation/media
+  checks. Recompute with the pinned rules to verify consistency; if the required
+  rules cannot be reproduced, refuse activation/mutation rather than reinterpret.
+  A tzdb upgrade needs explicit compatibility tests/review; reads never silently
+  recompute saved deadlines. Drafts lacking context have no derived expiry and
+  cannot publish or bypass binary admission.
+* Browser timezone changes display convenience only. Show the giver-local date
+  and IANA zone prominently, optionally a clearly labeled viewer-time equivalent.
+  Two viewers must get identical eligibility at the same UTC instant. Exact-date
+  v2 filters mean the selected pickup-local calendar date for each listing; mixed
+  v1/v2 queries evaluate each policy independently before exact counts/pagination.
+  Never choose a single browser-zone UTC cutoff for all metros.
+* Editing D or Z requires an explicit owner intent and optimistic version. Changing
+  Z needs fresh confirmation even when the date text is unchanged; recompute and
+  atomically replace the full deadline tuple. Review/cancel affected requests and
+  invalidate proposals under the existing confirmation protocol. No silent
+  appointment relocation or timezone substitution is permitted. A zone change
+  treats all active pickups as affected, preserving the existing explicit
+  cancellation rule; a deadline-only change reviews the affected window/proposals.
+
+Examples for the existing IANA `America/Los_Angeles` zone: local deadline
+`2027-11-12` expires at `2027-11-13T08:00:00Z`. The day `2027-03-14` runs from
+`08:00Z` on March 14 to `07:00Z` on March 15 (23 hours); `2027-11-07` runs from
+`07:00Z` on November 7 to `08:00Z` on November 8 (25 hours). Dates are examples,
+not scheduled deployments. Resolver tests must verify these values before code
+activation, including non-hour offsets and midnight transitions.
+
+Requests retain their original UTC instant, wall time and zone. New v2 requests
+must also carry a server-derived deadline-policy/context snapshot (policy, date,
+zone, expiry and listing version) for audit. Existing requests/appointments/history
+remain v1 and are never relabeled or recomputed. Live operations additionally
+check the current listing's explicit policy and expiry; historical snapshots do
+not authorize access past withdrawal/expiry. Any separately approved conversion
+must review active appointments against the proposed new boundary and obtain
+cancellation consent where required; it cannot silently reinterpret history.
 
 An internal `resolveListingContext` contract should return a validated owner,
 effective location/zone/window/publication gate, model kind and fence strategy.
@@ -234,7 +321,7 @@ approved reauthorization; restoring old trust cannot guarantee permanent revocat
 | Valid accepted request | Pickup arranged / Reserved | Derived from authoritative request data; preserve the unique accepted-item index and conservative blocking of inconsistent accepted references. |
 | `cleared` + verified completed handoff chain | Picked up | Only the existing giver-authorized, version-checked legitimate handoff path qualifies. |
 | `cleared` without that chain | Cleared | Manually dealt with; never label it a verified pickup. |
-| Stored or effectively expired `available` | Expired | Derived UTC deadline eligibility; no automatic destructive state repair on GET. |
+| Stored or effectively expired `available` | Expired | Policy-specific eligibility: v1 UTC cutoff, v2 stored exclusive expiry; no automatic destructive state repair on GET. |
 | `unlisted` | Withdrawn | Public visibility revoked, legitimate history retained; not completion. |
 
 Design **Withdraw listing** in owner detail and My Listings secondary actions.
@@ -259,7 +346,7 @@ appointments/proposals according to existing rules. No automatic rescheduling.
 
 All additions below require later implementation review. Existing auth/session,
 CSRF/Origin, bounded body/query validation, quota and error serialization apply.
-No request body may select owner, schema version, coordination revision, storage
+Accept explicit `pickupTimeZoneConfirmed: true` only with the exact zone and current context/version; the server records the confirmation and derives expiry. No request body may select owner, schema version, coordination revision, storage
 binding or derived reservation/handoff flags.
 
 | Proposed endpoint | Contract |
@@ -276,11 +363,11 @@ binding or derived reservation/handoff flags.
 Illustrative v2 publish body (not an available endpoint today):
 
 ```json
-{"name":"Shoe cabinet","description":"Household shoe cabinet.","categoryId":"storage-organization","itemTypeId":"cabinet","stateId":"06","metroId":"31080","city":"","neighborhood":"","pickupTimeZone":"America/Los_Angeles","availableFrom":null,"availableUntil":"2027-11-12","publish":true}
+{"name":"Shoe cabinet","description":"Household shoe cabinet.","categoryId":"storage-organization","itemTypeId":"cabinet","stateId":"06","metroId":"31080","city":"","neighborhood":"","pickupTimeZone":"America/Los_Angeles","pickupTimeZoneConfirmed":true,"availableFrom":null,"availableUntil":"2027-11-12","publish":true}
 ```
 
 Preserve existing response envelopes (`{item:...}`), status/error conventions and
-field-associated validation. Missing publish context yields actionable 400 errors;
+field-associated validation. Add allowlisted `deadlinePolicyVersion`, local deadline, zone and exclusive expiry for v2 public date display; never label the local date as UTC. Keep legacy DTO aliases only with their documented v1 meanings. Missing publish context yields actionable 400 errors;
 stale versions/cancellation confirmation yield 409. Owner foreign resources use
 generic 404 after authentication; anonymous private access is 401. No idempotency
 claim for item creation exists today: retain C1 uncertain-create blocking and
@@ -318,10 +405,11 @@ Public discovery/request/conversation URLs remain stable.
    isolated testing; do not release listings that cannot accept pickups safely.
 4. Enable independent creation only by separately reviewed release/config approval.
    Each new listing has its own location/deadline; no hidden plan is inserted.
-5. Offer a separate, explicitly approved operator conversion, never startup/lazy
-   read migration. Old records need not convert immediately and remain usable.
+5. Do not automatically offer or execute conversion as part of rollout. Any
+   conversion tooling/apply requires a separate owner-approved scope and target
+   manifest, never startup/lazy-read migration. Old records remain v1 and usable.
 
-### Bounded conversion design
+### Separately approved conversion design — not scheduled execution
 
 An eventual script is needed **only** to detach existing records, not to create
 new independent items. It must preview exact target fingerprint/environment,
@@ -340,7 +428,8 @@ require reviewed withdrawal/cancellation or leave it legacy. Expired/completed
 items and histories keep their semantics; no conversion resurrects visibility.
 
 Compare-and-set the item version, plan `inventoryRevision` and coordination fences in one transaction;
-copy approved effective context into the item, preserve `_id`, `publishedAt`,
+copy separately approved effective context into the item (including an explicitly
+reviewed UTC-to-local policy transition; copying the same date is not equivalent), preserve `_id`, `publishedAt`,
 classification and completion references, increment content/coordination versions,
 and record provenance/digest. Do not rewrite request/message history or photo
 operation receipts. An already converted row with the same approved provenance
@@ -362,7 +451,7 @@ Keep all 16 current indexes and unique request/image constraints. Evaluate an ow
 feed index `{ownerId:1,createdAt:-1,_id:-1}` and an independent regional index
 `{metroId:1,status:1,stateId:1,publishedAt:-1,_id:-1}` with a partial filter on
 `listingSchemaVersion:2`. Select final keys after isolated `explain` for newest,
-deadline and combined filters; do not assert one index handles all sorts. Recovery
+deadline and combined filters; evaluate a separate partial v2 `(metroId,status,expiresAt,_id)` deadline-order index. V1 deadline ordering must derive its original UTC cutoff, and v2 must use stored `expiresAt`; compare UTC instants, never raw local-date strings across timezones. Do not assert one index handles all sorts. Recovery
 schema validation may change without changing its due-work index. Never remove
 uniqueness constraints or introduce TTL on operation/tombstone history.
 
@@ -380,6 +469,8 @@ compatibility release**, not a pre-UX-2 binary: old code cannot safely serve new
 planless rows, media tickets or transactions. No deletion, synthetic plan insertion,
 quota reset, unknown-PUT replay or reverse rewriting of signed ledgers.
 
+Do not reinterpret v2 saved local dates through a legacy UTC-only binary or regenerate expiry with different timezone rules during rollback. Retain both policy resolvers, the original deadline tuple and appointment snapshots. Gate new writes while preserving compatible reads/status and separately approved cleanup.
+
 Data reversal would be a new, separately reviewed migration after reconciling all
 post-conversion edits and operations; old source snapshots are not a safe inverse.
 If compatibility integrity is uncertain, use full photo outage, retain text/auth
@@ -395,11 +486,11 @@ scope; dependent PRs may be stacked but nothing activates before C acceptance.
 | PR / dependency | Scope and expected modules | DB / authorization risk | Required tests and acceptance | Rollback |
 | --- | --- | --- | --- | --- |
 | **B1: dual-model context and fences**, after approved UX-2A | `inventory`, `plans`, `pickup-policy`, `discovery`, serializers; introduce explicit discriminators/resolver and per-item fence while retaining legacy plan locking. No new public create UI yet. | Item fence field initialization is a versioned change; prevent old-writer/new-writer write skew and parent fallback on corrupt v2. | Independent OS workers, legacy plan edit vs item mutation, acceptance/withdraw races, invalid schema/owner; old suite still passes with v2 disabled. | Disable new model; retain compatible resolver/fences; do not restore old workers after v2 data exists. |
-| **B2: item-owned APIs and guarded index proposal**, after B1 | `itemRoutes`, inventory service, `database-indexes`, guarded preparation tests; private owner feed/detail, create/edit/publish/withdraw with v2 creation off by default. | Proposed owner/regional indexes need explicit preparation, no startup DDL. Deny owner spoofing, validate optional location labels and explicit timezone. | Isolated native Mongo transactions, wrong-owner 404, stale versions, confirmation races, exact counts/cursors/explain; two different metros/deadlines have no hidden plan. | Gate creation; keep old routes and dual-model readers. |
-| **B3: Create Listing / My Listings / owner detail**, after B2 | `App`, `Journeys`, Inventory form/session/API clients, new owner feed, shared RegionSelector. Reuse C1 submit/draft pipeline, add withdrawal confirmation. | No new DB schema beyond B2. Do not expose owner-only DTOs through public detail or overwrite another listing's location via browse preferences. | Keyboard/320/375/desktop, optional city/neighborhood, first listing without plan, two independent locations, validation focus, uncertain create and native/in-app draft loss guards. | Hide new navigation/admission; existing routes remain; keep support for saved v2 drafts. |
-| **C1: versioned private media + recovery**, after B1/B2; may stack with B3 | `item-images`, format/policy/intake/delivery/recovery, storage ticket/approval code, photo controls/restore harness, image routes and frontend image client. Preserve old immutable receipts. | New receipt/schema validation is security-critical; old/new cleanup must remain exact-target fenced. Production gates remain off. | Real private SeaweedFS/Sharp, conditional/concurrent/unknown PUT, quotas/tombstones, cover/delete, late workers/pause/revocation, wrong parent/account and restored snapshots. | Stop admission, retain both readers and approved cleanup; outage if integrity uncertain. |
-| **C2: requests, chat and scheduling compatibility**, after B1/B2/C1 | `pickups`, `pickup-policy`, communication/media services, existing request/chat/time components and old route adapters. Add explicit reference version; never a second inbox/conversation entity. | Binding original participants and legacy conversion relationships; keep unique accepted-item constraint and cancellation semantics. | Two accounts, pending/accepted/all terminal states, original-participant history, no self-request/self-approval, DST, deadline/location edits, stale proposals, handoff and closure races, no permanent requester photo rights. | Disable new creation; support both historical formats and existing appointments; no downgrade to legacy-only validators. |
-| **C3: conversion preview + full acceptance**, after B3/C1/C2 | Separate guarded conversion preview/apply utility, test fixtures, docs/operator runbook, complete browser/policy suites. No remote execution without approval. | Approved manifest/preimage fencing, no automatic schema/index apply or record deletion. Block unresolved operations. | Dry-run no writes; repeat no-op; partial batch/stale manifest; mixed plan writes; full desktop/mobile/axe two-account suite and F5 restore drills; preserve 16 gifts. | Stop conversion; compatibility release remains rollback floor; reconcile before any reversal. |
+| **B2: item-owned APIs and guarded index proposal**, after B1 | `itemRoutes`, inventory service, `database-indexes`, guarded preparation tests; private owner feed/detail, create/edit/publish/withdraw with v2 creation off by default; implement policy-2 local-date resolution and atomic expiry tuples, leaving v1 UTC paths intact. | Proposed owner/regional indexes need explicit preparation, no startup DDL. Deny owner spoofing, validate optional location labels and explicit timezone. | Isolated native Mongo transactions, wrong-owner 404, stale versions, confirmation races, exact counts/cursors/explain; two different metros/deadlines have no hidden plan; exact local boundaries, DST, timezone confirmation and mixed-policy counts pass. | Gate creation; keep old routes and dual-model readers. |
+| **B3: Create Listing / My Listings / owner detail**, after B2 | `App`, `Journeys`, Inventory form/session/API clients, new owner feed, shared RegionSelector. Reuse C1 submit/draft pipeline, add withdrawal confirmation. | No new DB schema beyond B2. Do not expose owner-only DTOs through public detail or overwrite another listing's location via browse preferences. | Keyboard/320/375/desktop, optional city/neighborhood, first listing without plan, two independent locations/deadlines, explicit zone confirmation, optional photos/city/neighborhood/condition, validation focus, uncertain create and native/in-app draft loss guards. | Hide new navigation/admission; existing routes remain; keep support for saved v2 drafts. |
+| **C1: versioned private media + recovery**, after B1/B2; may stack with B3 | `item-images`, format/policy/intake/delivery/recovery, storage ticket/approval code, photo controls/restore harness, image routes and frontend image client. Preserve old immutable receipts. | New receipt/schema validation is security-critical; old/new cleanup must remain exact-target fenced. Production gates remain off. | Incomplete-draft admission denial without a valid policy-specific deadline; real private SeaweedFS/Sharp, conditional/concurrent/unknown PUT, quotas/tombstones, cover/delete, late workers/pause/revocation, wrong parent/account and restored snapshots. | Stop admission, retain both readers and approved cleanup; outage if integrity uncertain. |
+| **C2: requests, chat and scheduling compatibility**, after B1/B2/C1 | `pickups`, `pickup-policy`, communication/media services, existing request/chat/time components and old route adapters. Add explicit reference version; never a second inbox/conversation entity. | Binding original participants and legacy conversion relationships; keep unique accepted-item constraint and cancellation semantics. | Two accounts, pending/accepted/all terminal states, original-participant history, no self-request/self-approval, v1 UTC/v2 local DST boundaries, immutable historical appointment snapshots, deadline/location edits, stale proposals, handoff and closure races, no permanent requester photo rights. | Disable new creation; support both historical formats and existing appointments; no downgrade to legacy-only validators. |
+| **C3: compatibility + full acceptance**, after B3/C1/C2 | Dual-policy compatibility fixtures, docs/operator runbook and complete browser/policy suites. Conversion remains a design/acceptance fixture only; a real conversion utility/apply is a separately approved follow-up, not this rollout. No remote execution without approval. | Approved manifest/preimage fencing, no automatic schema/index apply or record deletion. Block unresolved operations. | Dry-run no writes; repeat no-op; partial batch/stale manifest; mixed plan writes; full desktop/mobile/axe two-account suite and F5 restore drills; preserve 16 gifts. | No conversion runs; compatibility release remains rollback floor; reconcile before any reversal. |
 
 Merge order: UX-2A → B1 → B2 → B3/C1 in their declared dependency order → C2 → C3.
 B3's published workflow cannot activate until C2/C3 are complete. Each PR reports
@@ -428,6 +519,9 @@ synthetic identities; browser checks use actual local HTTPS. These scenarios are
 | 12. Old appointments/history | Preserve IDs, UTC/local/zone snapshots, first/last actor evidence, completed handoff links; closed text read-only and separate photo permission. |
 | 13. Cross-account denial | Owner A/B, requester and third user: denied GET/PATCH/actions/images/status/cleanup; forged versions/parent IDs/reference formats never transfer ownership. |
 | 14. General location privacy | Optional city/neighborhood; no address/GPS/apartment fields, owner IDs/emails or exact pickup details in public DTOs/logs. Manual content review acknowledges limits of PII detection. |
+| Deadline boundaries and rollback | Verify one millisecond before/exactly at/after expiry; 23/25-hour LA examples; half/quarter-hour offsets; midnight gap/fold and skipped-date rejection; viewer in another zone; zone changes with identical date text; unsupported/corrupt policy; pinned-rules upgrades; v1 unchanged UTC outputs; no v2-to-UTC fallback during rollback. |
+| Incomplete draft photos | Name-only draft succeeds without photos; files may stage in memory, but intake fails closed until its policy-specific deadline/context is valid; no quota/authorization/lease/recovery bypass, duplicate PUT or silent file loss. |
+| No automatic conversion | Deployment/startup/GET/edit/restore do not convert old plans, requests, conversations, image receipts or audit references. Separate approval and exact manifest required for any future conversion. |
 | Migration/recovery | Bounded dry-run, exact fingerprint and preimage conflicts, repeated/partial conversion, old worker fencing, live leases, unknown writes/tombstones, pause/restore/revocation rollback limitations. |
 | Human UX | Desktop, 320/375, 200% reflow, keyboard/error focus, first-click save after type search, cover fallback, no unnecessary plan step; actual screenshots and two browser sessions. Physical Windows/Safari/iOS and screen-reader use require separate human evidence. |
 
@@ -437,12 +531,14 @@ No CI green result alone proves actual R2, hosted Vercel or Atlas readiness.
 
 ## 10. Review decisions and blockers
 
-Owner approval is needed for this architecture and the PR boundaries, the proposed
-v2 publication requirement (explicit state/metro/timezone/deadline while retaining
-legacy exceptions), UTC-date deadline semantics versus a future local-time change,
-and the conversion/legacy-plan-edit policy. Recommendation: keep current UTC
-semantics, retain unconverted plan inheritance, detach only by approved per-item
-manifest, and retain all historical parents/receipts. No erasure policy is proposed.
+Owner review has finalized independent items with explicit legacy compatibility,
+the v2 publication requirements above, safe incomplete-draft photo admission, v1
+UTC versus v2 giver-local deadline semantics, and no automatic legacy conversion.
+These product decisions do not authorize implementation, index preparation or data
+conversion. Review still needs to approve implementation PR boundaries and the
+versioned timezone-rules deployment mechanism. Any legacy conversion, including
+its policy transition and mixed-plan edit behavior, requires separate approval.
+Retain all historical parents/receipts; no erasure policy is proposed.
 
 P0 implementation blockers before v2 publishing: shared transaction fences across
 all workers, versioned participant/media/recovery verification, approved indexes
@@ -463,3 +559,5 @@ No app tests, new browser screenshots, Docker fixture execution or live staging
 E2E were required to assert a design-only patch; previous UX-1 test totals are not
 presented as UX-2A or item-first implementation evidence. Normal repository CI may
 run automatically on PR creation and is reported separately in the PR.
+
+Review revision validation: documentation-only changes. Local links, JSON example, balanced code fences, stale-decision search and whitespace pass. Ten read-only assertions against the installed Temporal library / Node timezone data `2026e` pass for the three LA expiry examples, 23/25-hour lengths, Kathmandu/Kolkata offsets, Sao Paulo midnight gap, Apia skipped-date detection and following-day boundary. These validate representative examples only, not an implemented resolver, all IANA transitions or future provider behavior. Full future acceptance includes midnight folds, exact expiry equality, tzdb-version mismatch, policy races and unchanged historical records. No runtime/database behavior is claimed from these checks.
