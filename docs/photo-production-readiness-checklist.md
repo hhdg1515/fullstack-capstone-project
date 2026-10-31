@@ -117,6 +117,29 @@ belong in chat, PR comments or screenshots.
   provider token revocation, clock policy, single-row contention budget and actual
   host failover/partition/load behavior. Late authorized I/O cannot be recalled.
 
+## F5 coordinated restore evidence and unresolved release decisions
+
+- [x] [Local coordinated recovery drills](milestone-6.5f5-coordinated-recovery.md)
+  use independent DB/object snapshots, real private storage and separate OS
+  restore/app/recovery processes. Known inconsistent checkpoints keep photos off.
+- [x] [Restore runbook and decision matrix](photo-disaster-recovery-runbook.md)
+  preserve tombstones/unknown holds, invalidate sessions and require independent
+  account/visibility/history review plus fresh paused grants before read-only access.
+- [x] [Dependency reporting checkpoint](milestone-6.5f5-dependency-checkpoint.md):
+  cached 352 versus fresh-cache 67 reproduces with identical full direct advisory
+  records and lock/frontend source. Both remain nonzero; no dependency fix claimed.
+- [ ] Approve actual encrypted DB/object/safety-checkpoint custody, completeness,
+  backup cadence, restore scope and retention without assuming M0/PITR/versioning.
+  No production RPO/RTO or backup feature has been established by local apply times.
+- [ ] Independently enforce a full photo outage across **all** hosts during restore.
+  The test coordinator registry is not a hosted fence or permanent trust anchor.
+  Old signed DB + old trust remains a P0 revocation/restore limit.
+- [ ] Reconcile restored account security, sessions, ownership, publication, pickup
+  history and any reappeared tombstone bytes before permitting relevant service.
+  Never refund negative-read unknowns or force B4 to reopen deleted operations.
+- [ ] Complete separately approved real R2/Atlas/Vercel/device/host/restore validation
+  and narrow dependency follow-ups. No hosted commands or photo activation in F5.
+
 ## 3. Explicit database preparation (not startup migration)
 
 - [ ] Inspect authorized target/topology and run the existing guarded `db:prepare`
