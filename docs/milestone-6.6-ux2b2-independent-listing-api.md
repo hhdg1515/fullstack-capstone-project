@@ -26,6 +26,10 @@ The registry adds **only** `items_owner_created`:
 Preparation still inspects the entire application registry (17 definitions),
 preserves account/data conflict checks, and requires the existing target approvals.
 It never seeds, drops indexes, repairs documents or runs during ordinary startup.
+The new owner-index readiness check is opt-in (`ownerListingsEnabled:true`);
+existing photo maintenance/context callers retain their strict old index set
+without requiring an unrelated owner-feed index. Explicit preparation still
+inspects all 17 definitions.
 For a verified disposable local replica set, use the existing commands:
 
 ```sh

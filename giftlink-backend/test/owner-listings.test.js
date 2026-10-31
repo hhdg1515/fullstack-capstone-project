@@ -6,7 +6,7 @@ const pino = require('pino');
 const { ObjectId, MongoClient } = require('mongodb');
 const createApp = require('../app');
 const { createIsolatedMongo } = require('./helpers/isolated-mongo');
-const { prepareDatabaseIndexes, inspectDatabaseIndexes } = require('../services/database-indexes');
+const { prepareDatabaseIndexes, inspectDatabaseIndexes, assertDatabaseIndexes } = require('../services/database-indexes');
 const { initializeApplication } = require('../runtime');
 const { readServerConfig } = require('../config');
 const { tokenHash } = require('../services/identity');
@@ -232,6 +232,16 @@ describe('independent private owner listings on verified disposable MongoDB', fu
             await assert.rejects(initializeApplication(config, options), /Database indexes are required/);
         } finally {
             for (const name of ['equivalent_owner_feed', feedIndex]) try { await db.collection('items').dropIndex(name); } catch (error) { if (error.code !== 27) throw error; }
+            await db.collection('items').createIndex({ ownerId: 1, createdAt: -1, _id: -1 }, { name: feedIndex, collation: { locale: 'simple' } }); commands.length = 0;
+        }
+    });
+    it('keeps existing photo-maintenance readiness independent of the new owner index', async function () {
+        await db.collection('items').dropIndex(feedIndex); commands.length = 0;
+        try {
+            await assertDatabaseIndexes(db, { imageMetadataEnabled: true });
+            await assert.rejects(assertDatabaseIndexes(db, { imageMetadataEnabled: true, ownerListingsEnabled: true }), /Database indexes are required/);
+            assert.deepEqual(commands.filter(name => /^(create|createIndexes|drop|dropIndexes|collMod)$/.test(name)), []);
+        } finally {
             await db.collection('items').createIndex({ ownerId: 1, createdAt: -1, _id: -1 }, { name: feedIndex, collation: { locale: 'simple' } }); commands.length = 0;
         }
     });

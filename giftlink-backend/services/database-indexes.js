@@ -118,11 +118,12 @@ async function prepareDatabaseIndexes(db) {
     return plan;
 }
 
-async function assertDatabaseIndexes(db, { imageMetadataEnabled = true, ownerListingsEnabled = true } = {}) {
+async function assertDatabaseIndexes(db, { imageMetadataEnabled = true, ownerListingsEnabled = false } = {}) {
     try {
         for (const definition of definitions) {
-            // Explicit preparation/full-registry callers retain the default check.
-            // Only startup with disabled metadata may omit the four photo indexes.
+            // Preserve the old readiness contract for photo maintenance callers.
+            // Only explicitly enabled owner APIs require the additional feed index;
+            // inspect/prepare still cover every definition. Photo checks stay strict.
             if (definition.name === 'items_owner_created' && ownerListingsEnabled === false) continue;
             if (definition.collection === 'itemImages' && imageMetadataEnabled === false) continue;
             const indexes = await listIndexes(db, definition.collection);
