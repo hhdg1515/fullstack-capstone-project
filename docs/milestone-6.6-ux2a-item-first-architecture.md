@@ -125,6 +125,16 @@ labels have privacy guidance, bounded validation and owner withdrawal; do not
 claim complete automatic PII detection. Public DTOs allowlist general location,
 item fields, eligibility flags and safe application media summaries only.
 
+Draft-photo prerequisite proposal: name-only drafts without a deadline remain
+valid, and files may be selected/prepared in memory. Saving a draft **with photos**
+requires an explicit valid item deadline before authorizing binary intake, retaining
+the current admission requirement for a live valid pickup end. Surface that field
+error before saving/uploading; do not invent a plan deadline, silently upload an
+unbounded draft or discard staged files. Draft photo intake need not require a
+metro/timezone where the existing admission contract does not. This UX trade-off
+requires owner approval alongside publication prerequisites; navigation/reload loss
+protection remains necessary because staged files are not persistent drafts.
+
 An internal `resolveListingContext` contract should return a validated owner,
 effective location/zone/window/publication gate, model kind and fence strategy.
 V1 requires matching owned item **and plan**, and preserves all inheritance.
