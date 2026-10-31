@@ -119,6 +119,8 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     await b.goto('/app/items?stateId=06&metroId=41860&q=' + encodeURIComponent(prefix) + '&limit=1');
     const results = b.getByRole('list', { name: 'Available items', exact: true });
     await expect(results.getByRole('listitem')).toHaveCount(1);
+    // Visible mobile filters put results below the fold; exercise a real scroll before checking the card.
+    await results.getByRole('listitem').first().scrollIntoViewIfNeeded();
     await expect(results.getByRole('listitem').first()).toBeInViewport();
     await expect(results.getByRole('link').first()).toHaveText(prefix + ' lamp');
     for (const count of [2, 3]) {
