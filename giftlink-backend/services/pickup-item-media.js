@@ -1,6 +1,6 @@
 const { legacyMatch } = require('./listing-model');
 const { ObjectId } = require('mongodb');
-const { originalParticipants } = require('./pickup-policy');
+const { originalParticipants, referenceVersion } = require('./pickup-policy');
 const { initialMatch, visibilityPipeline } = require('./discovery');
 const { validateImageConfig } = require('./item-image-policy');
 const { mediaSummary } = require('./public-item-media');
@@ -13,6 +13,8 @@ const unavailable = () => ({ imageAvailability: 'unavailable', coverImage: null 
 function createPickupItemMedia({ connectToDatabase, configuration }) {
     const binding = validateImageConfig(configuration).storageBinding;
     return async function cover(original, userId) {
+        // UX-2C2: requests on independent items carry no photo rights yet (C3 decides public v2 media).
+        if (referenceVersion(original) !== 1) return unavailable();
         if (!validRequest(original) || !(userId instanceof ObjectId) || ![original.giverId, original.receiverId].some(id => id.equals(userId))) return unavailable();
         try {
             const db = await connectToDatabase(), owner = original.giverId.equals(userId), at = new Date();

@@ -123,7 +123,19 @@ const normalizedField = input => ({ $reduce: {
     in: { $concat: ['$$value', { $cond: [{ $eq: ['$$value', ''] }, '', ' '] }, '$$this.match'] }
 } });
 
-function createDiscoveryService({ connectToDatabase, now = () => new Date(), imageMetadata = null, imageRead = false }) {
+// UX-2C2 (gated): requester-facing detail for an eligible independent listing,
+// so a pickup can be requested and its listing link resolves. It is a single
+// direct ID read, never part of browse, counts, cursors or location options
+// (UX-2C3 owns v2 discovery). V2 public media stays withheld.
+function independentPublicItem(row, window, viewerId, current) {
+    return Object.assign({ id: row._id.toString(), name: row.name, description: row.description, category: row.category || '', classification: classificationResponse(row),
+        status: 'available', isReserved: row.isReserved, availability: window.startsAt && current < window.startsAt ? 'later' : 'now',
+        availableFrom: row.availableFrom || null, availableUntil: row.availableUntil, effectiveAvailableUntil: row.availableUntil,
+        city: normalizeLabel(row.city || ''), neighborhood: normalizeLabel(row.neighborhood || ''), moveOutDeadline: row.availableUntil,
+        publishedAt: row.publishedAt.toISOString(), pickupTimeZone: row.pickupTimeZone, isOwner: Boolean(viewerId && row.ownerId.equals(viewerId)),
+        listingModel: 2, datePolicy: 'pickup-local', imageAvailability: 'unavailable', coverImage: null, images: [] }, regionResponse(row));
+}
+function createDiscoveryService({ connectToDatabase, now = () => new Date(), imageMetadata = null, imageRead = false, independentPickups = false }) {
     const media = imageMetadata && imageRead ? require('./public-item-media').createPublicItemMedia({ connectToDatabase, configuration: imageMetadata, visibilityPipeline, initialMatch }) : null;
     async function aggregate(pipeline, options = {}, collection = 'items') {
         try {
@@ -176,7 +188,16 @@ function createDiscoveryService({ connectToDatabase, now = () => new Date(), ima
         const current = now(); const today = todayUTC(current);
         const rows = await aggregate(visibilityPipeline(Object.assign(initialMatch(current.getTime()), { _id: new ObjectId(id) }), today)
             .concat(pickupReservationStages(), [{ $project: Object.assign({}, projection, { ownerId: 1 }) }]));
-        if (!rows.length) throw new InventoryError(404, 'ITEM_NOT_FOUND', 'Listing unavailable');
+        if (!rows.length) {
+            if (!independentPickups) throw new InventoryError(404, 'ITEM_NOT_FOUND', 'Listing unavailable');
+            const { independentWindow, eligible } = require('./pickup-policy');
+            const [row] = await aggregate([{ $match: { _id: new ObjectId(id), listingSchemaVersion: 2, planId: { $exists: false }, status: 'available' } }]
+                .concat(pickupReservationStages(), [{ $set: { readNow: '$$NOW' } }]));
+            // Evaluate against the same snapshot's database clock, not this server's.
+            const window = row && eligible(row, null, row.readNow) && independentWindow(row, row.readNow);
+            if (!window) throw new InventoryError(404, 'ITEM_NOT_FOUND', 'Listing unavailable');
+            return { item: independentPublicItem(row, window, viewerId, row.readNow), today };
+        }
         const summaries = media ? await media(rows, true, current) : [];
         return { item: Object.assign(publicItem(rows[0], today, viewerId), summaries[0]), today };
     }

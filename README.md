@@ -1021,3 +1021,13 @@ legacy rows are never rewritten. Intake requires the item's own confirmed
 timezone and future pickup deadline. The new `OWNER_LISTING_PHOTOS_ENABLED`
 gate is **false by default**; public, requester and production v2 media remain
 off. See the [contract, verification and rollback report](docs/milestone-6.6-ux2c1-independent-listing-photos.md).
+
+## Milestone 6.6 UX-2C2: pickups, conversations and scheduling for independent listings
+
+Pickup requests, private conversations, time changes and handoff now work for
+independent (v2) listings through the existing state machine. V2 requests use a
+separate `referenceVersion: 2` format with no `planId`, are serialized on the
+item's own fence, and evaluate the item's confirmed local deadline at database
+time. The `OWNER_LISTING_PICKUPS_ENABLED` gate is **false by default**, and v2
+publication remains UX-2C3, so only explicit local fixtures can be eligible. See
+the [lifecycle, authorization, verification and C3 handoff](docs/milestone-6.6-ux2c2-item-first-pickup-integration.md).

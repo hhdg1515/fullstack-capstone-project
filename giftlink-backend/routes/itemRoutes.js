@@ -18,9 +18,9 @@ function itemRules(editing) {
     rules.push(body('publish').optional().isBoolean().custom(value => typeof value === 'boolean'));
     return validate(['name', 'description', 'category', 'categoryId', 'itemTypeId', 'customItemType', 'condition', 'availableFrom', 'availableUntil', 'publish'].concat(editing ? ['version', 'confirmCancelRequests'] : []), rules, editing);
 }
-function createItemRoutes({ connectToDatabase, auth, discoveryLimit = 120, imageMetadata = null, imageControlLimit = 20, pipeline = null }) {
+function createItemRoutes({ connectToDatabase, auth, discoveryLimit = 120, imageMetadata = null, imageControlLimit = 20, pipeline = null, independentPickups = false }) {
     const service = createInventoryService({ connectToDatabase, imageMetadata, imageRead: Boolean(imageMetadata && pipeline) });
-    const discovery = createDiscoveryService({ connectToDatabase, imageMetadata, imageRead: Boolean(imageMetadata && pipeline) });
+    const discovery = createDiscoveryService({ connectToDatabase, imageMetadata, imageRead: Boolean(imageMetadata && pipeline), independentPickups });
     const privateRouter = express.Router({ mergeParams: true });
     privateRouter.use(auth.requireAuth, (req, res, next) => {
         if (!id(req.params.planId)) return errorResponse(res, 404, 'ITEM_NOT_FOUND', 'Item or plan not found');

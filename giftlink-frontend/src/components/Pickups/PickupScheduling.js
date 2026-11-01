@@ -119,7 +119,7 @@ function TimeChange({ request, onRefresh, disabled = false }) {
           onChange={event => { setTime(event.target.value); validation.clear('localDateTime'); }} />
         {validation.errors.localDateTime && <p id="localDateTime-error" className="ui-field-error">{validation.errors.localDateTime}</p>}
         <small id="reschedule-zone-help">Local time in {request.timeZone}, the giver's pickup timezone. Your device timezone does not change it.
-          {' '}Choose a future time within the listing window and UTC cutoff. Avoid skipped or repeated daylight-saving times.</small>
+          {' '}{request.item?.datePolicy === 'pickup-local' ? 'Choose a future time within the listing window, before the end of its last local pickup date.' : 'Choose a future time within the listing window and UTC cutoff.'} Avoid skipped or repeated daylight-saving times.</small>
       </div>
       {!canPropose && localDateTime && <p>Your draft is kept, but cannot be submitted in the current request state.</p>}
       <div className="pickup-actions"><button type="submit" className="ui-button" disabled={locked || !canPropose}>Propose time change</button>

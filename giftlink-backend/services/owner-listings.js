@@ -65,7 +65,7 @@ function feedPipeline(ownerId, params, imageRead) {
     ], as: 'ownerPhotos' } });
     return stages;
 }
-function createOwnerListingService({ connectToDatabase, imageMetadata = null, imageRead = false, independentPhotos = false }) {
+function createOwnerListingService({ connectToDatabase, imageMetadata = null, imageRead = false, independentPhotos = false, independentPickups = false }) {
     const legacy = createInventoryService({ connectToDatabase, imageMetadata, imageRead });
     function response(item, plan, now) {
         const ctx = resolveListingContext(item, plan, item.ownerId, now, { operation: 'ownerDraft' });
@@ -82,7 +82,7 @@ function createOwnerListingService({ connectToDatabase, imageMetadata = null, im
                 timeZoneConfirmed: v2 ? Boolean(item.timeZoneConfirmedAt) : Boolean(plan.pickupTimeZone),
                 datePolicy: v2 ? 'pickup-local' : 'utc-calendar', expiresAt: v2 && ctx.expiresAt ? ctx.expiresAt.toISOString() : null },
             photoPreview: { availability: preview.availability, images: preview.images },
-            pickupSummary: v2 ? { supported: false, reserved: false } : { supported: true, reserved: Boolean(item.isReserved) },
+            pickupSummary: v2 ? { supported: independentPickups, reserved: independentPickups && Boolean(item.isReserved) } : { supported: true, reserved: Boolean(item.isReserved) },
             capabilities: { editDraft: v2 && item.status === 'draft', legacyEditor: !v2, publish: false, withdraw: false, photos: v2 && independentPhotos && item.status === 'draft' },
             createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() };
     }

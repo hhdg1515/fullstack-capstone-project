@@ -2,27 +2,43 @@ const { legacyMatch } = require('./listing-model');
 const { ObjectId } = require('mongodb');
 const { planTransaction, InventoryError, endDate } = require('./inventory');
 const { appointment, fitsWindow, eligible, originalParticipants, validProposal, appointmentState, appointmentResponse,
-    rescheduleEvent, proposalResponse, rescheduleProblem, proposalProblem } = require('./pickup-policy');
+    rescheduleEvent, proposalResponse, rescheduleProblem, proposalProblem, referenceVersion } = require('./pickup-policy');
+const { independentItem, independentItemTransaction, databaseNow } = require('./item-fence');
+const { regionResponse } = require('./regions');
 
 const missing = () => new InventoryError(404, 'PICKUP_NOT_FOUND', 'Pickup request unavailable');
 const conflict = (code, message) => new InventoryError(409, code, message);
 const isId = value => typeof value === 'string' && /^[a-fA-F0-9]{24}$/.test(value);
 const participant = (id, userId) => ({ _id: new ObjectId(id), $or: [{ giverId: userId }, { receiverId: userId }] });
 
-function createPickupService({ connectToDatabase, now = () => new Date(), imageMetadata = null, imageRead = false }) {
+function createPickupService({ connectToDatabase, now = () => new Date(), imageMetadata = null, imageRead = false, independentPickups = false }) {
     const media = imageMetadata && imageRead ? require('./pickup-item-media').createPickupItemMedia({ connectToDatabase, configuration: imageMetadata }) : null;
+    // One write boundary per request reference format: v1 keeps the plan fence
+    // (plan then item); v2 fences only its own item. Neither falls back to the other.
+    function transaction(db, reference, operation, missingError = missing) {
+        if (referenceVersion(reference) === 2) return independentItemTransaction(db, reference.giverId, reference.itemId,
+            session => operation(null, session), { missing: missingError, changed: () => conflict('PICKUP_CHANGED', 'This request changed. Reload and review its current status.') });
+        if (!(reference.planId instanceof ObjectId)) throw missingError();
+        return planTransaction(db, reference.giverId, reference.planId.toString(), operation);
+    }
+    const itemFor = (db, row, options) => db.collection('items').findOne(referenceVersion(row) === 2 ? independentItem(row.giverId, row.itemId) :
+        Object.assign(legacyMatch(), { _id: row.itemId, planId: row.planId, ownerId: row.giverId }), options);
     async function serialize(db, row, userId, session) {
         const giver = row.giverId.equals(userId);
         const options = session ? { session } : {};
-        const item = await db.collection('items').findOne(Object.assign(legacyMatch(), { _id: row.itemId, planId: row.planId, ownerId: row.giverId }), options);
-        const plan = await db.collection('moveOutPlans').findOne({ _id: row.planId, ownerId: row.giverId }, options);
+        const independent = referenceVersion(row) === 2;
+        const item = await itemFor(db, row, options);
+        const plan = independent ? null : await db.collection('moveOutPlans').findOne({ _id: row.planId, ownerId: row.giverId }, options);
         const person = await db.collection('users').findOne({ _id: giver ? row.receiverId : row.giverId }, Object.assign({}, options, { projection: { firstName: 1 } }));
         const result = { id: row._id.toString(), role: giver ? 'giver' : 'receiver', status: row.status, version: row.version,
             proposedAt: row.proposedAt.toISOString(), localDateTime: row.localDateTime, timeZone: row.timeZone, note: row.note,
             counterpart: { firstName: person ? person.firstName : 'Former member' },
             item: item && plan ? { id: item._id.toString(), name: item.name, description: item.description, category: item.category,
                 city: plan.city, neighborhood: plan.neighborhood, status: item.status,
-                availableFrom: item.availableFrom, effectiveAvailableUntil: endDate(item, plan) } : null,
+                availableFrom: item.availableFrom, effectiveAvailableUntil: endDate(item, plan) } :
+                item && independent ? { id: item._id.toString(), name: item.name, description: item.description, category: item.category || '',
+                    city: item.city || '', neighborhood: item.neighborhood || '', status: item.status, availableFrom: item.availableFrom || null,
+                    effectiveAvailableUntil: item.availableUntil, listingModel: 2, datePolicy: 'pickup-local', metroLabel: regionResponse(item).metroLabel } : null,
             createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
             cancellationReason: row.cancellationReason || null,
             history: row.history.map(entry => {
@@ -33,12 +49,13 @@ function createPickupService({ connectToDatabase, now = () => new Date(), imageM
                 };
                 return event;
             }) };
-        const references = originalParticipants(row) && item && plan && person && item.ownerId instanceof ObjectId && item.planId instanceof ObjectId;
-        const problem = references ? rescheduleProblem(row, item, plan, now()) : 'unavailable';
+        const references = originalParticipants(row) && item && (plan || independent) && person && item.ownerId instanceof ObjectId && (independent || item.planId instanceof ObjectId);
+        const current = independent ? await databaseNow(db, session) : now();
+        const problem = references ? rescheduleProblem(row, item, plan, current) : 'unavailable';
         const hasProposal = row.rescheduleProposal != null;
         const proposal = references && row.status === 'accepted' && row.active === true && validProposal(row) ? row.rescheduleProposal : null;
         const other = proposal && !proposal.proposedById.equals(userId);
-        const proposalIssue = proposal ? proposalProblem(row, item, plan, now()) : hasProposal ? 'proposal_unavailable' : null;
+        const proposalIssue = proposal ? proposalProblem(row, item, plan, current) : hasProposal ? 'proposal_unavailable' : null;
         result.rescheduling = { proposal: proposal ? proposalResponse(row, proposal) : null,
             canPropose: !problem && !hasProposal, canAccept: Boolean(!problem && other && !proposalIssue),
             canDecline: Boolean(references && row.status === 'accepted' && row.active === true && other),
@@ -51,6 +68,7 @@ function createPickupService({ connectToDatabase, now = () => new Date(), imageM
         if (!isId(itemId)) throw conflict('LISTING_UNAVAILABLE', 'This listing is no longer accepting pickup requests.');
         const db = await connectToDatabase();
         const original = await db.collection('items').findOne(Object.assign(legacyMatch(), { _id: new ObjectId(itemId) }));
+        if (!original && independentPickups) return createIndependent(db, userId, new ObjectId(itemId), input);
         if (!original || !(original.ownerId instanceof ObjectId) || !(original.planId instanceof ObjectId)) throw conflict('LISTING_UNAVAILABLE', 'This listing is no longer accepting pickup requests.');
         try {
             return await planTransaction(db, original.ownerId, original.planId.toString(), async (plan, session) => {
@@ -73,6 +91,33 @@ function createPickupService({ connectToDatabase, now = () => new Date(), imageM
         } catch (error) {
             if (error.code === 11000) throw conflict('PICKUP_CONFLICT', 'An outstanding request or reservation changed. Reload your requests.');
             if (error.code === 'ITEM_NOT_FOUND') throw conflict('LISTING_UNAVAILABLE', 'This listing is no longer accepting pickup requests.');
+            throw error;
+        }
+    }
+    // UX-2C2 (gated): a request bound to an independent item, never to a plan.
+    async function createIndependent(db, userId, itemId, input) {
+        const unavailableListing = () => conflict('LISTING_UNAVAILABLE', 'This listing is no longer accepting pickup requests.');
+        const original = await db.collection('items').findOne({ _id: itemId, listingSchemaVersion: 2, planId: { $exists: false } });
+        if (!original || !(original.ownerId instanceof ObjectId)) throw unavailableListing();
+        try {
+            return await independentItemTransaction(db, original.ownerId, itemId, async session => {
+                const item = await db.collection('items').findOne(independentItem(original.ownerId, itemId), { session });
+                const at = await databaseNow(db, session);
+                if (!item || !eligible(item, null, at)) throw unavailableListing();
+                if (userId.equals(item.ownerId)) throw conflict('OWN_ITEM', 'You cannot request your own item.');
+                if (input.timeZone !== item.pickupTimeZone) throw conflict('PICKUP_TIMEZONE_CHANGED', 'The pickup timezone changed. Reload the listing and review the appointment.');
+                const row = { _id: new ObjectId(), referenceVersion: 2, itemId: item._id, giverId: item.ownerId, receiverId: userId,
+                    proposedAt: appointment(input.localDateTime, item.pickupTimeZone, at), localDateTime: input.localDateTime,
+                    timeZone: item.pickupTimeZone, note: input.note || '', status: 'pending', active: true, version: 1,
+                    createdAt: at, updatedAt: at, history: [{ action: 'pending', actorId: userId, actorRole: 'receiver', at }] };
+                if (!fitsWindow(row, item, null, at)) throw new InventoryError(400, 'OUTSIDE_PICKUP_WINDOW', 'Choose a local pickup date and time within the listing window, before the end of its last local pickup date.');
+                if (await db.collection('pickupRequests').findOne({ itemId: item._id, receiverId: userId, active: true }, { session })) throw conflict('DUPLICATE_PICKUP', 'You already have an outstanding request for this item. Open My requests.');
+                if (await db.collection('pickupRequests').findOne({ itemId: item._id, status: 'accepted' }, { session })) throw conflict('ITEM_RESERVED', 'The giver has accepted another pickup. Try again if that appointment is released.');
+                await db.collection('pickupRequests').insertOne(row, { session });
+                return { request: await serialize(db, row, userId, session) };
+            }, { missing: unavailableListing, changed: unavailableListing });
+        } catch (error) {
+            if (error.code === 11000) throw conflict('PICKUP_CONFLICT', 'An outstanding request or reservation changed. Reload your requests.');
             throw error;
         }
     }
@@ -101,25 +146,26 @@ function createPickupService({ connectToDatabase, now = () => new Date(), imageM
     async function act(userId, id, input) {
         if (!isId(id)) throw missing();
         const db = await connectToDatabase(); const original = await db.collection('pickupRequests').findOne(participant(id, userId));
-        if (!original) throw missing();
+        if (!original || referenceVersion(original) === null) throw missing();
         try {
-            return await planTransaction(db, original.giverId, original.planId.toString(), async (plan, session) => {
+            return await transaction(db, original, async (plan, session) => {
                 const row = await db.collection('pickupRequests').findOne(participant(id, userId), { session });
-                if (!row) throw missing();
+                if (!row || referenceVersion(row) !== referenceVersion(original) || !row.giverId.equals(original.giverId) || !row.itemId.equals(original.itemId)) throw missing();
                 if (row.version !== input.version) throw conflict('PICKUP_CHANGED', 'This request changed. Reload and review its current status.');
-                const giver = row.giverId.equals(userId); const action = input.action; const at = now();
+                const giver = row.giverId.equals(userId); const action = input.action; const at = plan === null ? await databaseNow(db, session) : now();
                 const allowed = action === 'cancel' ? ['pending', 'accepted'].includes(row.status) : giver &&
                     (['accept', 'decline'].includes(action) ? row.status === 'pending' : ['complete', 'no_show'].includes(action) && row.status === 'accepted');
                 if (!allowed) throw conflict('INVALID_PICKUP_TRANSITION', 'This action is unavailable for your role and the current request status.');
-                const item = await db.collection('items').findOne(Object.assign(legacyMatch(), { _id: row.itemId, ownerId: plan.ownerId, planId: plan._id }), { session });
+                const item = plan === null ? await itemFor(db, row, { session }) :
+                    await db.collection('items').findOne(Object.assign(legacyMatch(), { _id: row.itemId, ownerId: plan.ownerId, planId: plan._id }), { session });
                 if (action === 'accept') {
-                    if (!item || !eligible(item, plan, at) || !fitsWindow(row, item, plan)) throw conflict('LISTING_UNAVAILABLE', 'The listing or pickup window changed. Decline or cancel this request.');
+                    if (!item || !eligible(item, plan, at) || !fitsWindow(row, item, plan, at)) throw conflict('LISTING_UNAVAILABLE', 'The listing or pickup window changed. Decline or cancel this request.');
                     if (row.proposedAt <= at) throw conflict('APPOINTMENT_PAST', 'That pickup time has passed. Decline this request so the receiver can propose a new time.');
                     if (await db.collection('pickupRequests').findOne({ itemId: row.itemId, status: 'accepted' }, { session })) throw conflict('ITEM_RESERVED', 'Another pickup is already accepted for this item.');
                 }
                 if (['complete', 'no_show'].includes(action)) {
                     if (row.proposedAt > at || action === 'no_show' && row.proposedAt.getTime() === at.getTime()) throw conflict('APPOINTMENT_NOT_REACHED', 'Wait until the scheduled appointment before recording a handoff or no-show.');
-                    if (!item || !['available', 'expired'].includes(item.status) || plan.status !== 'active') throw conflict('LISTING_UNAVAILABLE', 'This listing changed. Reload and review the request.');
+                    if (!item || !['available', 'expired'].includes(item.status) || (plan !== null && plan.status !== 'active')) throw conflict('LISTING_UNAVAILABLE', 'This listing changed. Reload and review the request.');
                 }
                 const state = { accept: 'accepted', decline: 'declined', cancel: 'cancelled', complete: 'completed', no_show: 'no_show' }[action];
                 const stamp = { accept: 'acceptedAt', decline: 'declinedAt', cancel: 'cancelledAt', complete: 'completedAt', no_show: 'noShowAt' }[action];
@@ -151,26 +197,29 @@ function createPickupService({ connectToDatabase, now = () => new Date(), imageM
         const db = await connectToDatabase(); const original = await db.collection('pickupRequests').findOne(participant(id, userId));
         if (!original || !originalParticipants(original)) throw missing();
         try {
-            return await planTransaction(db, original.giverId, original.planId.toString(), async (plan, session) => {
+            return await transaction(db, original, async (plan, session) => {
                 const row = await db.collection('pickupRequests').findOne(participant(id, userId), { session });
-                if (!row || !originalParticipants(row) || !row.giverId.equals(plan.ownerId) || !row.planId.equals(plan._id)) throw missing();
+                if (!row || !originalParticipants(row) || referenceVersion(row) !== referenceVersion(original) || !row.giverId.equals(original.giverId) || !row.itemId.equals(original.itemId) ||
+                    (plan !== null && (!row.giverId.equals(plan.ownerId) || !row.planId.equals(plan._id)))) throw missing();
                 if (row.version !== input.version) throw conflict('PICKUP_CHANGED', 'This request changed. Reload and review its current status.');
                 if (row.status !== 'accepted' || row.active !== true) throw conflict('RESCHEDULE_UNAVAILABLE', 'Only an accepted pickup can change time. Reload the request.');
-                const item = await db.collection('items').findOne(Object.assign(legacyMatch(), { _id: row.itemId, ownerId: plan.ownerId, planId: plan._id }), { session });
+                const item = plan === null ? await itemFor(db, row, { session }) :
+                    await db.collection('items').findOne(Object.assign(legacyMatch(), { _id: row.itemId, ownerId: plan.ownerId, planId: plan._id }), { session });
                 const people = await db.collection('users').countDocuments({ _id: { $in: [row.giverId, row.receiverId] } }, { session });
-                if (!item || !(item.ownerId instanceof ObjectId) || !(item.planId instanceof ObjectId) || people !== 2) throw missing();
-                const giver = row.giverId.equals(userId); const role = giver ? 'giver' : 'receiver'; const at = now();
+                if (!item || !(item.ownerId instanceof ObjectId) || (plan !== null && !(item.planId instanceof ObjectId)) || people !== 2) throw missing();
+                const zone = plan === null ? item.pickupTimeZone : plan.pickupTimeZone;
+                const giver = row.giverId.equals(userId); const role = giver ? 'giver' : 'receiver'; const at = plan === null ? await databaseNow(db, session) : now();
                 if (proposalId === undefined || input.action === 'accept') {
                     if (rescheduleProblem(row, item, plan, at)) throw conflict('RESCHEDULE_UNAVAILABLE', 'The confirmed appointment or listing is no longer eligible for a time change. Reload the request.');
                     if (await db.collection('pickupRequests').findOne({ itemId: row.itemId, status: 'accepted', _id: { $ne: row._id } }, { session })) throw conflict('ITEM_RESERVED', 'Another accepted pickup exists. Reload and review this request.');
                 }
                 if (proposalId === undefined) {
                     if (row.rescheduleProposal != null) throw conflict('RESCHEDULE_PENDING', 'A time change is already waiting for a response. It cannot be overwritten.');
-                    if (input.timeZone !== plan.pickupTimeZone || input.timeZone !== row.timeZone) throw conflict('PICKUP_TIMEZONE_CHANGED', 'The pickup timezone changed. Reload the request.');
-                    const proposed = appointment(input.localDateTime, plan.pickupTimeZone, at);
+                    if (input.timeZone !== zone || input.timeZone !== row.timeZone) throw conflict('PICKUP_TIMEZONE_CHANGED', 'The pickup timezone changed. Reload the request.');
+                    const proposed = appointment(input.localDateTime, zone, at);
                     const proposal = { _id: new ObjectId(), proposedById: userId, proposedAt: proposed, localDateTime: input.localDateTime,
-                        timeZone: plan.pickupTimeZone, createdAt: at };
-                    if (!fitsWindow(proposal, item, plan)) throw new InventoryError(400, 'OUTSIDE_PICKUP_WINDOW', 'Choose a local pickup date within the listing window and a time before its UTC expiration.');
+                        timeZone: zone, createdAt: at };
+                    if (!fitsWindow(proposal, item, plan, at)) throw new InventoryError(400, 'OUTSIDE_PICKUP_WINDOW', 'Choose a local pickup date within the listing window and a time before its UTC expiration.');
                     if (proposed.getTime() === row.proposedAt.getTime()) throw new InventoryError(400, 'UNCHANGED_APPOINTMENT', 'Choose a different pickup time.');
                     row.rescheduleProposal = proposal;
                     row.history.push(rescheduleEvent(row, 'reschedule_proposed', userId, role, at));
