@@ -1,115 +1,27 @@
 name: CI
 
+# DIAGNOSTIC BRANCH ONLY (claude/diag-chromium-network-change). Never merged.
+# Runs one experiment on the same runner image/Chromium as browser_e2e.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  backend:
-    name: Backend lint and integration tests
-    # Keep the reviewed Docker image/receipt semantics; ubuntu-latest moved to Docker 29.
+  network_change_diagnostic:
+    name: Chromium navigation vs Docker host-network changes
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: giftlink-backend
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1; Node 24 action runtime
-
-      - name: Set up Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0; application Node remains 22
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: giftlink-backend/package-lock.json
-
-      - name: Install backend dependencies
-        run: npm ci
-
-      - name: Lint backend
-        run: npm run lint
-
-      - name: Verify Docker is available for isolated MongoDB and SeaweedFS tests
-        run: docker info
-
-      - name: Run backend API, private storage contracts, and database preparation tests
-        run: npm test
-
-  client_build:
-    name: Frontend production build
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: giftlink-frontend
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1; Node 24 action runtime
-
-      - name: Set up Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0; application Node remains 22
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: giftlink-frontend/package-lock.json
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Verify scoped dependency security compatibility
-        run: npm run test:dependencies
-
-      - name: Test frontend identity, account, plan, inventory, discovery, and pickup flows
-        run: npm test -- --watchAll=false --runInBand
-        env:
-          CI: "true"
-          TZ: America/Los_Angeles
-
-      - name: Build frontend
-        run: npm run build
-        env:
-          CI: "true"
-          REACT_APP_BACKEND_URL: ""
-
-      - name: Save the production build for isolated browser verification
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: frontend-production-build
-          path: giftlink-frontend/build
-          retention-days: 1
-
-  browser_e2e:
-    name: Isolated full-stack Chromium E2E
-    needs: client_build
-    # Match the reviewed local storage fixture runtime without weakening image checks.
-    runs-on: ubuntu-24.04
-    # D2 main took 17 minutes; retain all regressions plus the integrated E1 cases.
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1; Node 24 action runtime
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0; application Node remains 22
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: |
-            giftlink-backend/package-lock.json
-            e2e/package-lock.json
-      - run: npm --prefix giftlink-backend ci
+          cache-dependency-path: e2e/package-lock.json
       - run: npm --prefix e2e ci
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: frontend-production-build
-          path: giftlink-frontend/build
       - run: npx playwright install --with-deps chromium
         working-directory: e2e
-      - run: npm run test:policy
-        working-directory: e2e
-      - run: npm test
+      - run: npx playwright test diag-network-change.spec.cjs --project=desktop --reporter=line
         working-directory: e2e
