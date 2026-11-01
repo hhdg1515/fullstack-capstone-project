@@ -11,6 +11,7 @@ async function initializeApplication(config, { database, logger, appFactory = cr
     if (!topology.setName && topology.msg !== 'isdbgrid') throw new Error('MongoDB replica set required for atomic inventory updates; see README');
     onPhase('app_construction');
     return appFactory({ connectToDatabase: database.connect, appOrigin: config.appOrigin,
-        secureCookies: config.secureCookies, sessionTtlSeconds: config.sessionTtlSeconds, imageMetadata: config.imageMetadata, ownerListingsEnabled: config.ownerListingsEnabled === true, ownerListingPhotosEnabled: config.ownerListingPhotosEnabled === true, logger });
+        secureCookies: config.secureCookies, sessionTtlSeconds: config.sessionTtlSeconds, imageMetadata: config.imageMetadata, ownerListingsEnabled: config.ownerListingsEnabled === true, ownerListingPhotosEnabled: config.ownerListingPhotosEnabled === true,
+        ownerListingPickupsEnabled: config.ownerListingPickupsEnabled === true, logger });
 }
 module.exports = { initializeApplication };

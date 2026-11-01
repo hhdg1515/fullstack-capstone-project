@@ -14,6 +14,7 @@ import './Discovery.css';
 import PublicItemCard from './PublicItemCard';
 import PublicItemGallery from './PublicItemPhotos';
 import { validPickupTimeZone } from '../../forms/pickupTime';
+import { placeLabel } from '../Pickups/placeLabel';
 
 const normalize = value => value.trim().replace(/\s+/g, ' ');
 const key = value => normalize(value).toLowerCase();
@@ -27,6 +28,7 @@ function PickupWindow({ item }) {
     </span></p>
     <p>Pickup from: {item.availableFrom ? <time dateTime={item.availableFrom}>{formatDeadline(item.availableFrom)}</time> : 'Immediately'}</p>
     <p>Pickup until: <time dateTime={item.effectiveAvailableUntil}>{formatDeadline(item.effectiveAvailableUntil)}</time></p>
+    {item.datePolicy === 'pickup-local' && <p>Pickup dates are local to {item.pickupTimeZone}.</p>}
   </>;
 }
 const preferenceKey = 'moveout.browse-region.v1';
@@ -276,7 +278,8 @@ function PublicItemDetail({ itemId }) {
     {current.error && <div role="alert"><p>{current.error.status === 404 ? 'This listing is no longer available.' : current.error.message}</p>
       <button className="btn btn-outline-secondary ui-button ui-button--secondary" onClick={() => setAttempt(value => value + 1)}>Retry listing</button></div>}
     {item && <article className="plan-panel">
-      <div className="public-item-heading"><h1>{item.name}</h1>{item.isOwner === true && auth?.status === 'authenticated' && <Link className="btn btn-primary ui-button" to={`/app/items/${item.id}/edit`}>Edit item</Link>}</div><p>{item.neighborhood}, {item.city} · Free</p>
+      <div className="public-item-heading"><h1>{item.name}</h1>{item.isOwner === true && auth?.status === 'authenticated' && (item.listingModel === 2 ? <Link className="btn btn-primary ui-button" to={`/app/listings/${item.id}`}>Manage listing</Link> :
+        <Link className="btn btn-primary ui-button" to={`/app/items/${item.id}/edit`}>Edit item</Link>)}</div><p>{placeLabel(item)} · Free</p>
       <ItemLabels item={item} />
       <PublicItemGallery key={`${scope}:${attempt}`} item={item} />
       <PickupWindow item={item} />

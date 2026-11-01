@@ -1,7 +1,8 @@
 const { legacyMatch } = require('./listing-model');
 const { ObjectId } = require('mongodb');
 const { InventoryError, planTransaction } = require('./inventory');
-const { eligible, fitsWindow, originalParticipants } = require('./pickup-policy');
+const { eligible, fitsWindow, originalParticipants, referenceVersion } = require('./pickup-policy');
+const { independentItem, independentItemTransaction, databaseNow } = require('./item-fence');
 
 const isId = value => typeof value === 'string' && /^[a-fA-F0-9]{24}$/.test(value);
 const unavailable = () => new InventoryError(404, 'CONVERSATION_UNAVAILABLE', 'Pickup conversation unavailable');
@@ -59,14 +60,17 @@ function createPickupCommunicationService({ connectToDatabase, now = () => new D
         const closed = row && ['declined', 'cancelled', 'completed', 'no_show'].includes(row.status);
         if (!row || !open && !closed || row.active !== open || sending && !open ||
             !originalParticipants(row)) throw unavailable();
-        const plan = await db.collection('moveOutPlans').findOne({ _id: row.planId, ownerId: row.giverId }, { session });
-        const item = await db.collection('items').findOne(Object.assign(legacyMatch(), { _id: row.itemId, planId: row.planId, ownerId: row.giverId }), { session });
-        if (!plan || !item) throw unavailable();
+        // V2 conversations bind the independent item and its owner; there is no plan.
+        const independent = referenceVersion(row) === 2;
+        const plan = independent ? null : await db.collection('moveOutPlans').findOne({ _id: row.planId, ownerId: row.giverId }, { session });
+        const item = await db.collection('items').findOne(independent ? independentItem(row.giverId, row.itemId) :
+            Object.assign(legacyMatch(), { _id: row.itemId, planId: row.planId, ownerId: row.giverId }), { session });
+        if (!independent && !plan || !item) throw unavailable();
         // Closed history survives legitimate listing/plan/time changes; ownership
         // and participant checks still apply. Open requests retain their policy.
-        const at = now();
+        const at = independent ? await databaseNow(db, session) : now();
         if (open && (!eligible(item, plan, at) || !(row.proposedAt instanceof Date) ||
-            !fitsWindow(row, item, plan) || row.status === 'pending' && row.proposedAt <= at)) throw unavailable();
+            !fitsWindow(row, item, plan, at) || row.status === 'pending' && row.proposedAt <= at)) throw unavailable();
         const people = await db.collection('users').find({ _id: { $in: [row.giverId, row.receiverId] } }, { session, projection: { firstName: 1 } }).toArray();
         if (people.length !== 2) throw unavailable();
         return { row, people };
@@ -109,13 +113,18 @@ function createPickupCommunicationService({ connectToDatabase, now = () => new D
         const db = await connectToDatabase();
         // Scope the initial lookup before acquiring the existing plan write boundary.
         const original = await db.collection('pickupRequests').findOne(scoped(id, userId));
-        if (!original || !(original.giverId instanceof ObjectId) || !(original.planId instanceof ObjectId)) throw unavailable();
+        const version = referenceVersion(original);
+        if (!original || !(original.giverId instanceof ObjectId) || version === null) throw unavailable();
+        // Sends share the request's write boundary: the plan for v1, the item for v2.
+        const fenced = callback => version === 2 ? independentItemTransaction(db, original.giverId, original.itemId, session => callback(null, session),
+            { missing: unavailable, changed: unavailable }) : planTransaction(db, original.giverId, original.planId.toString(), callback);
         try {
-            return await planTransaction(db, original.giverId, original.planId.toString(), async (plan, session) => {
+            return await fenced(async (plan, session) => {
                 const context = await authorize(db, userId, id, session, true);
-                if (!context.row.planId.equals(plan._id) || !context.row.giverId.equals(plan.ownerId)) throw unavailable();
+                if (referenceVersion(context.row) !== version || !context.row.giverId.equals(original.giverId) || !context.row.itemId.equals(original.itemId) ||
+                    (plan !== null && (!context.row.planId.equals(plan._id) || !context.row.giverId.equals(plan.ownerId)))) throw unavailable();
                 await reserveMessage(db, userId, session);
-                const message = { _id: new ObjectId(), requestId: context.row._id, senderId: userId, text, createdAt: now() };
+                const message = { _id: new ObjectId(), requestId: context.row._id, senderId: userId, text, createdAt: plan === null ? await databaseNow(db, session) : now() };
                 await db.collection('pickupMessages').insertOne(message, { session });
                 return { message: messageResponse(message, context.row) };
             });

@@ -16,13 +16,14 @@ const { requestDiagnostics } = require('./middleware/diagnostics');
 
 function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', secureCookies = false,
     sessionTtlSeconds = 28800, authLimit = 30, discoveryLimit = 120, pickupNow, messageLimit,
-    ownerListingsEnabled = false, ownerListingPhotosEnabled = false, imageMetadata = null, imageControlLimit = 20, imagePipeline = null, logger = require('./logger') }) {
+    ownerListingsEnabled = false, ownerListingPhotosEnabled = false, ownerListingPickupsEnabled = false, imageMetadata = null, imageControlLimit = 20, imagePipeline = null, logger = require('./logger') }) {
     const app = express();
     const pipeline = imagePipeline ? require('./services/item-image-pipeline').pipelineBinding(imagePipeline, imageMetadata, connectToDatabase) : null;
     const identity = createIdentityService({ connectToDatabase, sessionTtlSeconds });
     const auth = createIdentityMiddleware({ identity, appOrigin, secureCookies, sessionTtlSeconds,
         binaryRequest: pipeline ? require('./services/item-image-pipeline').isContentRequest : () => false });
-    const items = createItemRoutes({ connectToDatabase, auth, discoveryLimit, imageMetadata, imageControlLimit, pipeline });
+    const independentPickups = ownerListingsEnabled === true && ownerListingPickupsEnabled === true;
+    const items = createItemRoutes({ connectToDatabase, auth, discoveryLimit, imageMetadata, imageControlLimit, pipeline, independentPickups });
     app.disable('x-powered-by');
     app.use(requestDiagnostics);
     app.use(pinoHttp({ logger, genReqId: req => req.id, serializers: {
@@ -47,7 +48,7 @@ function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', sec
     app.use('/api/search', createSearchRoutes({ connectToDatabase }));
     app.use('/api/auth', createAuthRoutes({ identity, auth, authLimit }));
     const ownerListings = require('./routes/ownerListingRoutes')({ connectToDatabase, auth, ownerListingsEnabled,
-        ownerListingPhotosEnabled: ownerListingsEnabled === true && ownerListingPhotosEnabled === true, imageMetadata, imageControlLimit, pipeline });
+        ownerListingPhotosEnabled: ownerListingsEnabled === true && ownerListingPhotosEnabled === true, independentPickups, imageMetadata, imageControlLimit, pipeline });
     app.use('/api/me/items', ownerListings.read);
     app.use('/api/items', ownerListings.write);
     app.use('/api/me', createMeRoutes({ identity, auth }));
@@ -64,7 +65,7 @@ function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', sec
         app.head('/api/item-images/:imageId/:variant', auth.optionalAuth, deliver);
         app.get('/api/item-images/:imageId/:variant', auth.optionalAuth, deliver);
     }
-    app.use('/api/pickup-requests', createPickupRoutes({ connectToDatabase, auth, now: pickupNow, messageLimit, imageMetadata, imageRead: Boolean(imageMetadata && pipeline) }));
+    app.use('/api/pickup-requests', createPickupRoutes({ connectToDatabase, auth, now: pickupNow, messageLimit, imageMetadata, imageRead: Boolean(imageMetadata && pipeline), independentPickups }));
     app.use('/api', (req, res) => res.status(404).json({ error: { code: 'NOT_FOUND', message: 'API route not found' } }));
     app.use((err, req, res, next) => {
         if (err instanceof InventoryError) return res.status(err.status).json({ error: Object.assign({ code: err.code, message: err.message }, err.details) });

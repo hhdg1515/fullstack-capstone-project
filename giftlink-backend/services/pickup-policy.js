@@ -22,7 +22,25 @@ function appointment(localDateTime, timeZone, now) {
         throw new InventoryError(400, 'INVALID_APPOINTMENT', 'Use a real local date and time. Times skipped or repeated by daylight saving are not accepted; choose another time.');
     }
 }
-function fitsWindow(request, item, plan) {
+// UX-2C2: an independent (v2) listing owns its window. Its confirmed IANA zone
+// and stored policy-2 tuple are verified by the shared listing resolver; any
+// invalid, unconfirmed or unreproducible context yields no window (fail closed).
+function independentWindow(item, now = new Date()) {
+    try {
+        const { modelVersion } = require('./listing-model');
+        if (modelVersion(item) !== 2 || !(item.timeZoneConfirmedAt instanceof Date)) return null;
+        const ctx = require('./listing-context').resolveListingContext(item, null, item.ownerId, now, { operation: item.status === 'draft' ? 'ownerDraft' : 'strict' });
+        return ctx.expiresAt instanceof Date && validTimeZone(ctx.pickupTimeZone) && ctx.pickupTimeZone === item.pickupTimeZone ? ctx : null;
+    } catch (error) { return null; }
+}
+// A v2 appointment must be at or after the local start of availableFrom and
+// strictly before the exclusive local end of availableUntil, in the item's zone.
+function fitsWindow(request, item, plan, now = new Date()) {
+    if (plan === null) {
+        const window = independentWindow(item, now);
+        return Boolean(window && request.timeZone === window.pickupTimeZone && request.proposedAt instanceof Date &&
+            request.proposedAt < window.expiresAt && (!window.startsAt || request.proposedAt >= window.startsAt));
+    }
     if (!validTimeZone(plan.pickupTimeZone) || request.timeZone !== plan.pickupTimeZone) return false;
     const end = item.availableUntil || plan.moveOutDeadline;
     const localDay = Temporal.Instant.from(request.proposedAt.toISOString()).toZonedDateTimeISO(request.timeZone).toPlainDate().toString();
@@ -31,14 +49,27 @@ function fitsWindow(request, item, plan) {
         request.proposedAt < new Date(end + 'T00:00:00Z').getTime() + 86400000;
 }
 function eligible(item, plan, now = new Date()) {
+    if (plan === null) {
+        const window = independentWindow(item, now);
+        return Boolean(window && item.status === 'available' && window.policyEligible === true && !window.expired);
+    }
     const end = item.availableUntil || plan.moveOutDeadline;
     return isLegacyItem(item) && item.status === 'available' && item.publishedAt instanceof Date && item.publishedAt <= now &&
         plan.status === 'active' && item.ownerId.equals(plan.ownerId) && end >= todayUTC(now) &&
         end <= plan.moveOutDeadline && (!item.availableFrom || item.availableFrom <= end);
 }
+// Request reference formats. Version 1 (no referenceVersion field) binds a
+// legacy plan through its immutable planId. Version 2 binds an independent item
+// and has no planId field at all. Anything else (mixed, unknown) fails closed.
+function referenceVersion(row) {
+    if (!row || typeof row !== 'object') return null;
+    const has = key => Object.prototype.hasOwnProperty.call(row, key);
+    if (!has('referenceVersion')) return row.planId instanceof ObjectId ? 1 : null;
+    return row.referenceVersion === 2 && !has('planId') ? 2 : null;
+}
 function originalParticipants(row) {
     const created = row && Array.isArray(row.history) && row.history[0];
-    return Boolean(row && ['giverId', 'receiverId', 'itemId', 'planId'].every(field => row[field] instanceof ObjectId) &&
+    return Boolean(row && referenceVersion(row) !== null && ['giverId', 'receiverId', 'itemId'].every(field => row[field] instanceof ObjectId) &&
         !row.giverId.equals(row.receiverId) && created && created.action === 'pending' && created.actorRole === 'receiver' &&
         created.actorId instanceof ObjectId && created.actorId.equals(row.receiverId));
 }
@@ -66,15 +97,15 @@ function rescheduleProblem(row, item, plan, now) {
     if (row.status !== 'accepted' || row.active !== true) return 'request_not_accepted';
     if (!(row.proposedAt instanceof Date) || !Number.isFinite(row.proposedAt.getTime())) return 'unavailable';
     if (row.proposedAt <= now) return 'appointment_passed';
-    if (!eligible(item, plan, now) || !fitsWindow(row, item, plan)) return 'listing_unavailable';
+    if (!eligible(item, plan, now) || !fitsWindow(row, item, plan, now)) return 'listing_unavailable';
     return null;
 }
 function proposalProblem(row, item, plan, now) {
     if (!validProposal(row)) return 'proposal_unavailable';
     try {
-        const proposal = row.rescheduleProposal;
-        if (proposal.timeZone !== plan.pickupTimeZone || appointment(proposal.localDateTime, plan.pickupTimeZone, now).getTime() !== proposal.proposedAt.getTime() ||
-            !fitsWindow(proposal, item, plan)) return 'proposal_unavailable';
+        const proposal = row.rescheduleProposal, zone = plan === null ? item.pickupTimeZone : plan.pickupTimeZone;
+        if (proposal.timeZone !== zone || appointment(proposal.localDateTime, zone, now).getTime() !== proposal.proposedAt.getTime() ||
+            !fitsWindow(proposal, item, plan, now)) return 'proposal_unavailable';
         return null;
     } catch (error) { return 'proposal_unavailable'; }
 }
@@ -117,5 +148,5 @@ async function invalidateRequests(db, session, item, plan, actorId, confirmed, f
     }
     if (operations.length) await db.collection('pickupRequests').bulkWrite(operations, { session });
 }
-module.exports = { validTimeZone, appointment, fitsWindow, eligible, invalidateRequests, confirmationRequired, pickupReservationStages,
+module.exports = { validTimeZone, appointment, fitsWindow, eligible, independentWindow, referenceVersion, invalidateRequests, confirmationRequired, pickupReservationStages,
     originalParticipants, validProposal, appointmentState, appointmentResponse, rescheduleEvent, proposalResponse, rescheduleProblem, proposalProblem };

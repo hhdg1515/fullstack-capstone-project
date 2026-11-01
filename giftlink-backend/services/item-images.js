@@ -28,7 +28,7 @@ function readyResponse(row, now) {
 // The model is chosen by the route: a plan ID selects legacy schema 1 rows bound
 // to that plan; null selects an independent v2 item and schema 2 rows that have
 // no planId. Neither path falls back to the other.
-const independentItem = (ownerId, itemId) => ({ _id: itemId, ownerId, listingSchemaVersion: 2, planId: { $exists: false } });
+const { independentItem, independentItemTransaction } = require('./item-fence');
 const parentOf = row => row.schemaVersion === 2 ? null : row.planId.toHexString();
 function reservationRow(ownerId, plan, item, input, identity, now, binding) {
     const day = now.toISOString().slice(0, 10);
@@ -125,24 +125,9 @@ function createItemImagesService({ connectToDatabase, configuration, control = n
         return { account, item, revision, now: account.serverNow };
     }
     // Independent items serialize photo writes on their own coordinationRevision,
-    // the same fence used by v2 draft edits, instead of a parent plan revision.
-    async function itemTransaction(db, ownerId, itemId, operation) {
-        const session = db.client.startSession();
-        try {
-            return await session.withTransaction(async () => {
-                const filter = independentItem(ownerId, new ObjectId(itemId));
-                const item = await db.collection('items').findOne(filter, { session });
-                if (!item || !Number.isSafeInteger(item.coordinationRevision) || item.coordinationRevision < 0 || item.coordinationRevision >= Number.MAX_SAFE_INTEGER) throw unavailable();
-                const fenced = await db.collection('items').updateOne(Object.assign({}, filter, { coordinationRevision: item.coordinationRevision }),
-                    { $inc: { coordinationRevision: 1 } }, { session });
-                if (fenced.modifiedCount !== 1) throw changed();
-                return operation(null, session);
-            }, { readConcern: { level: 'snapshot' }, writeConcern: { w: 'majority' }, readPreference: 'primary' });
-        } catch (error) {
-            if (error.code === 20) throw new InventoryError(503, 'TRANSACTIONS_REQUIRED', 'Inventory updates require a MongoDB replica set. Check the documented local setup.');
-            throw error;
-        } finally { await session.endSession(); }
-    }
+    // the same fence used by v2 draft edits and pickups, instead of a parent plan.
+    const itemTransaction = (db, ownerId, itemId, operation) => independentItemTransaction(db, ownerId, new ObjectId(itemId),
+        session => operation(null, session), { missing: unavailable, changed });
     async function write(ownerId, planId, itemId, operation, admission = false) {
         inputIds(ownerId, planId, itemId);
         const db = await connect();
