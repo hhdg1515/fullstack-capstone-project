@@ -94,7 +94,9 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     const csrf = await giver.request.post(deployment.origin + '/api/auth/login', { maxRedirects: 0, data: { email: emailA, password } }); must(csrf.status() === 403, 'Missing CSRF/Origin accepted');
     const wrongOrigin = await write(giver, '/api/auth/login', { email: emailA, password }, { headers: { Origin: 'https://wrong.example.test', 'X-CSRF-Protection': '1' } }); must(wrongOrigin.status() === 403, 'Wrong Origin accepted');
     await login(a, emailA); await expect(a.getByRole('heading', { name: 'Your account', exact: true })).toBeVisible();
-    await primary(a, 'Give Away'); await a.getByRole('link', { name: 'Create your first plan', exact: true }).click();
+    // This legacy/hosted smoke flow must not depend on enabling private v2 APIs.
+    // B3 acceptance separately exercises the new primary owner navigation/gate.
+    await a.goto('/app/plans'); await a.getByRole('link', { name: 'Create your first plan', exact: true }).click();
     for (const [label, value] of [['Move-out deadline', day(deployment.now() + 7 * 86400000)], ['City', 'E2E City'], ['Neighborhood', 'E2E Neighborhood'], ['Plan title (optional)', prefix + ' move'], ['Pickup timezone (needed to receive requests)', 'America/Los_Angeles']]) await a.getByLabel(label, { exact: true }).fill(value);
     await a.getByLabel('State', { exact: true }).selectOption('06');
     await a.getByLabel('Metro area', { exact: true }).selectOption('41860');
@@ -174,7 +176,7 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     const publicText = JSON.stringify(await (await read(receiver, deployment.origin + '/api/items/' + itemIds[0])).json());
     must(![emailA, emailB, 'giverId', 'receiverId', 'password', 'note'].some(secret => publicText.includes(secret)), 'Public item disclosed private data');
     for (let i = 0; i < requestIds.length; i++) {
-      await primary(a, 'Give Away'); await a.getByRole('navigation', { name: 'Give Away', exact: true }).getByRole('link', { name: 'Incoming requests', exact: true }).click();
+      await a.goto('/app/plans'); await a.getByRole('navigation', { name: 'Give Away', exact: true }).getByRole('link', { name: 'Incoming requests', exact: true }).click();
       await a.locator(`a[href="/app/pickups/${requestIds[i]}"]`).click(); await a.getByRole('button', { name: 'Accept pickup', exact: true }).click();
       await a.getByText('Accepted', { exact: true }).first().waitFor();
     }

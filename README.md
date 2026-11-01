@@ -994,4 +994,19 @@ creation/publication, media, requests and migration remain unavailable pending B
 
 UX-2B2 adds default-disabled private independent-listing APIs and a guarded owner-feed
 index. See [API, preparation and rollback contracts](docs/milestone-6.6-ux2b2-independent-listing-api.md).
+
+## Milestone 6.6 UX-2B3: private Item-first frontend
+
+**My Listings** is the primary owner destination. Owners can create a name-only
+independent draft, view its private detail and edit its own classification,
+location and explicitly confirmed pickup timezone/deadline. Legacy inventory and
+authorized plan-based edits remain available through an explicit compatibility link.
+
+The existing `OWNER_LISTINGS_ENABLED` gate remains **false by default**. A disabled
+API shows a recoverable unavailable state; it never creates a plan as a fallback.
+Enabling the private API later requires separately approved preparation of the
+existing `items_owner_created` index. This milestone does not authorize remote
+preparation or activation. V2 publication, photos, pickups and messaging remain off.
+
+See the [implementation, verification evidence and rollback report](docs/milestone-6.6-ux2b3-item-first-frontend.md).
 Public v2 publishing, photos and pickup requests remain unavailable.

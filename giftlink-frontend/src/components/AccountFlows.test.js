@@ -87,12 +87,13 @@ test('expiry during an account update removes private UI and shows the login mes
   expect(screen.queryByText(user.email)).not.toBeInTheDocument();
   expect(screen.getByText('Your session ended. Please log in again.')).toBeInTheDocument();
 });
-test('logout failure leaves the user signed in and provides retry feedback', async () => {
-  fetch.mockResolvedValueOnce(reply(200, { user })).mockRejectedValueOnce(new Error('offline'));
+test('logout failure restores sign-in only after server revalidation and provides retry feedback', async () => {
+  fetch.mockResolvedValueOnce(reply(200, { user })).mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(reply(200, { user }));
   renderPage('/app/profile'); await screen.findByRole('button', { name: 'Logout' });
   fireEvent.click(screen.getByRole('button', { name: 'Logout' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Logout could not be confirmed');
   expect(screen.getByRole('heading', { name: 'Your account' })).toBeInTheDocument();
+  expect(fetch.mock.calls.map(([url]) => url)).toEqual(['/api/me', '/api/auth/logout', '/api/me']);
 });
 
 test('background session checks preserve an unsaved account draft', async () => {

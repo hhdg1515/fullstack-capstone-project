@@ -7,6 +7,8 @@ module.exports = defineConfig({
     launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {} },
   projects: [
     { name: 'desktop', use: { viewport: { width: 1440, height: 1000 } } },
-    { name: 'mobile', use: { ...devices['Pixel 7'] } }
+    // Dedicated B3 F2/F3 reflow checks run at 1440/320/375 in desktop Chromium.
+    // F1/F4 and every baseline spec also retain independent mobile emulation.
+    { name: 'mobile', testIgnore: ['listing-form-f2.spec.cjs', 'listing-lifecycle-f3.spec.cjs'], use: { ...devices['Pixel 7'] } }
   ]
 });

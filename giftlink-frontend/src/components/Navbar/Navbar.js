@@ -13,8 +13,9 @@ export default function Navbar() {
   const menuButton = useRef(null);
   const location = useLocation(); const navigate = useNavigate();
   useEffect(() => { setOpen(false); }, [location.pathname, location.search, location.hash]);
-  const give = location.pathname.startsWith('/app/plans') || location.pathname === '/app/pickups/incoming' || location.state?.journey === 'give';
-  const find = location.pathname.startsWith('/app/items') || location.pathname === '/app/pickups' || location.state?.journey === 'find';
+  const editingItem = /^\/app\/items\/[^/]+\/edit\/?$/.test(location.pathname);
+  const give = editingItem || (location.pathname.startsWith('/app/plans') || location.pathname.startsWith('/app/listings')) || location.pathname === '/app/pickups/incoming' || location.state?.journey === 'give';
+  const find = !editingItem && (location.pathname.startsWith('/app/items') || location.pathname === '/app/pickups' || location.state?.journey === 'find');
   const account = ['/app/profile', '/app/login', '/app/register'].includes(location.pathname);
   const handleLogout = async () => {
     if (drafts && !await drafts.requestDiscard({ release: false })) return;
@@ -32,7 +33,7 @@ export default function Navbar() {
       <nav id="primary-navigation" className={`site-navigation ${open ? 'is-open' : ''}`} aria-label="Primary">
         <ul onClick={() => setOpen(false)}>
           <li><Link to={location.pathname === '/app/items' ? location.pathname + location.search : '/app/items'} aria-current={find ? 'location' : undefined}>Find Free Items</Link></li>
-          <li><Link to="/app/plans" aria-current={give ? 'location' : undefined}>Give Away</Link></li>
+          <li><Link to="/app/listings" aria-current={give ? 'location' : undefined}>My Listings</Link></li>
           <li><Link to={isLoggedIn || status === 'loading' ? '/app/profile' : '/app/login'} aria-current={account ? 'location' : undefined}>Account</Link></li>
         </ul>
         <div className="site-session">

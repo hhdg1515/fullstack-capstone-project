@@ -14,8 +14,8 @@ export default function Home() {
         <span className="path-symbol" aria-hidden="true">↗</span>
         <h2 id="home-give-title">Give Away</h2>
         <p>Clear your space. Give useful things a second life.</p>
-        <p>Bring your belongings together in a move-out plan, arrange pickups, and see what’s cleared.</p>
-        <Link className="journey-button" to="/app/plans">Start Giving</Link>
+        <p>Create a listing, arrange pickups, and see what’s cleared.</p>
+        <Link className="journey-button" to="/app/listings">Start Giving</Link>
         <small>Sign in to organize your giveaway.</small>
       </section>
       <section className="home-path home-find" aria-labelledby="home-find-title">

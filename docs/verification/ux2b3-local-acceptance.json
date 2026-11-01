@@ -1,0 +1,149 @@
+{
+  "kind": "local-only acceptance; CI evidence is independently recorded on the PR",
+  "observed_at": "2026-10-31T19:29:48.761865-07:00",
+  "baseline": {
+    "main": "9299c2be5f2b745cd5d2c0d4b11d18be5bf2dc6f",
+    "merged_pr": 79,
+    "backend": 782,
+    "frontend": 457,
+    "frontend_suites": 25,
+    "browser": 70
+  },
+  "local": {
+    "backend": {
+      "passed": 782,
+      "failed": 0
+    },
+    "frontend": {
+      "passed": 511,
+      "suites": 30,
+      "failed": 0
+    },
+    "dependency_compatibility": 6,
+    "policies": 56,
+    "deployment_recheck_overlapping_subset": 24,
+    "browser": {
+      "passed": 91,
+      "failed": 0,
+      "skipped": 0,
+      "runner_retries": 0,
+      "baseline_cases": 70,
+      "new_b3_cases": 21,
+      "c1_cases": 10,
+      "projects": {
+        "desktop": 52,
+        "mobile": 39
+      }
+    },
+    "accessibility": {
+      "passed_labeled_checkpoints": 283,
+      "failed": 0
+    },
+    "strict_build": "passed",
+    "backend_lint": "passed",
+    "targeted_frontend_lint": "passed",
+    "actionlint": "1.7.12 passed",
+    "whitespace": "passed"
+  },
+  "demo_gifts": {
+    "count": 16,
+    "byte_identical_to_main": true,
+    "sha256": "23f3868a6c90695b112c453f7d642354970f632a337d3b432f16ed5cef78cc04"
+  },
+  "screenshots": [
+    "docs/evidence/ux2b3-f4/1440-create-empty.png",
+    "docs/evidence/ux2b3-f4/1440-create-partial.png",
+    "docs/evidence/ux2b3-f4/1440-edit.png",
+    "docs/evidence/ux2b3-f4/1440-feature-disabled.png",
+    "docs/evidence/ux2b3-f4/1440-listings-empty.png",
+    "docs/evidence/ux2b3-f4/1440-listings-populated.png",
+    "docs/evidence/ux2b3-f4/1440-private-detail.png",
+    "docs/evidence/ux2b3-f4/1440-stale-conflict.png",
+    "docs/evidence/ux2b3-f4/1440-validation.png",
+    "docs/evidence/ux2b3-f4/320-create-empty.png",
+    "docs/evidence/ux2b3-f4/320-create-partial.png",
+    "docs/evidence/ux2b3-f4/320-edit.png",
+    "docs/evidence/ux2b3-f4/320-feature-disabled.png",
+    "docs/evidence/ux2b3-f4/320-listings-empty.png",
+    "docs/evidence/ux2b3-f4/320-listings-populated.png",
+    "docs/evidence/ux2b3-f4/320-private-detail.png",
+    "docs/evidence/ux2b3-f4/320-stale-conflict.png",
+    "docs/evidence/ux2b3-f4/320-validation.png",
+    "docs/evidence/ux2b3-f4/375-create-empty.png",
+    "docs/evidence/ux2b3-f4/375-create-partial.png",
+    "docs/evidence/ux2b3-f4/375-edit.png",
+    "docs/evidence/ux2b3-f4/375-feature-disabled.png",
+    "docs/evidence/ux2b3-f4/375-listings-empty.png",
+    "docs/evidence/ux2b3-f4/375-listings-populated.png",
+    "docs/evidence/ux2b3-f4/375-private-detail.png",
+    "docs/evidence/ux2b3-f4/375-stale-conflict.png",
+    "docs/evidence/ux2b3-f4/375-validation.png",
+    "docs/evidence/ux2b3-f4/768-create-empty.png",
+    "docs/evidence/ux2b3-f4/768-create-partial.png",
+    "docs/evidence/ux2b3-f4/768-edit.png",
+    "docs/evidence/ux2b3-f4/768-feature-disabled.png",
+    "docs/evidence/ux2b3-f4/768-listings-empty.png",
+    "docs/evidence/ux2b3-f4/768-listings-populated.png",
+    "docs/evidence/ux2b3-f4/768-private-detail.png",
+    "docs/evidence/ux2b3-f4/768-stale-conflict.png",
+    "docs/evidence/ux2b3-f4/768-validation.png",
+    "docs/evidence/ux2b3-f4/native-zoom-200-form.png",
+    "docs/evidence/ux2b3-f4/native-zoom-200-inventory.png"
+  ],
+  "changed_source_sha256": {
+    "e2e/listing-acceptance-f4.spec.cjs": "ec31494464712463b9d197e0eeed568ba6b59d9d20b837c89771793640292cf6",
+    "e2e/listing-form-f2.spec.cjs": "476277a12bac685f7e44064f094ab0d10c2d0e4b8a0aa6fc8fb881a9caf7ea27",
+    "e2e/listing-lifecycle-f3.spec.cjs": "fc6b8b21d8c371e556afc534534692b318dbe182ac4e63cf1c8fb854cd5e6a0d",
+    "e2e/listing-session-f1.spec.cjs": "ff9a12643969a7d05653bf834e0de653d7350098ed9ab9b06b8a66fdebf8dde8",
+    "e2e/local.cjs": "34591003e64837d795b1b630dc9a52c0910f513f7702fb3dc232e2ee1217a183",
+    "e2e/photo-acceptance.spec.cjs": "88a86ca1534893580d7c73556fcd4258f838ac08c797501407ed9214e3dff747",
+    "e2e/playwright.config.cjs": "4f1639b337dee27383ab676f3421c4230f640d79e1c5719aa85ece52ab636aa6",
+    "e2e/workflow.spec.cjs": "ff95b369c8c1905adcb5a777296284fd39a642375fffcbc5201b552cea42c9b1",
+    "giftlink-frontend/src/App.js": "fb2e7abb826b560bbd4bd7445f023e63a86fe19626ee37fb05876f8088a3cfc9",
+    "giftlink-frontend/src/api/client.js": "695591e09da046ead7f75b6b9947ca1430a51ebc463de67e912530a4036c19ab",
+    "giftlink-frontend/src/api/client.test.js": "d3ebeae6a68a33ea1e60964076c644ef50da276175eb0496d3829528044da67d",
+    "giftlink-frontend/src/api/ownerListings.js": "7cd9d89c21a0a3bb884dbee0ac1c2d33eab98f428a365deed21f6465c3a4f27c",
+    "giftlink-frontend/src/api/ownerListings.test.js": "557b2c2be92434d57b7d5db408b5cdbd2bb21d74986e2b430e83b22e1ae4fd00",
+    "giftlink-frontend/src/components/AccountFlows.test.js": "a19981d0502a65067739d01f7a750bed6d184b9a55fc12bd0bcf6cb584e8897b",
+    "giftlink-frontend/src/components/Inventory/PublicItems.js": "4d0cc84534786d55ca045ad6cc47ca67bf630ddfbea90c51814a2441e4e4bbb5",
+    "giftlink-frontend/src/components/Inventory/PublicItems.test.js": "af40282af4c4d58065399f966f779a8855bb121920aaeb42ebb90f13e8b4a17d",
+    "giftlink-frontend/src/components/Journeys/Home.js": "08a37063e10709fb338ae4a0e565a56120ab26228288ecd92bcb1a98b9610661",
+    "giftlink-frontend/src/components/Journeys/Journeys.test.js": "21e3dee16b9292f69d791dee9681899139c3bb924530c7518f76aed8f2b4ca91",
+    "giftlink-frontend/src/components/Listings/ListingForm.css": "8442c8f110f4ede16741d171a5a67dcf7ffc12dda85bb83a9e2f2950cb61421e",
+    "giftlink-frontend/src/components/Listings/ListingForm.js": "8266c33e7ff31808f18a28c8a456072e8b042cf5c92ed97748aab7aafa4e7d4d",
+    "giftlink-frontend/src/components/Listings/ListingForm.test.js": "c03ee1a6d3c7142d32bafc5c240dccd444086afc32b722d57d0324567fc576f1",
+    "giftlink-frontend/src/components/Listings/ListingIsolation.test.js": "64c6cd686db04b3b79bea9449be0245142ad8ba9a3425c396533ceff71fa4811",
+    "giftlink-frontend/src/components/Listings/ListingLifecycle.test.js": "f2c46e7641acebc158593e7151ce22c99d3c2c9bccbc2ebcc17e9484b6370f38",
+    "giftlink-frontend/src/components/Listings/Listings.css": "c9b8e93586010529aafaab75bb9808fe7c7100b9a90771964020f4af2e3a909e",
+    "giftlink-frontend/src/components/Listings/Listings.js": "2d79016ebe4264329b910cd40e1e26ff740e10166316679a9e017b601fcc12f4",
+    "giftlink-frontend/src/components/Listings/OwnerInventory.test.js": "360cb386dd1b45a193abce4f58ce2dc81ff319ae4588f3f1277732659d52991e",
+    "giftlink-frontend/src/components/Navbar/Navbar.js": "13fc416c1dd1a7a4e1505b1f6d0c36b30ea99aae6adb783f45344845d89a4735",
+    "giftlink-frontend/src/context/AuthContext.js": "8388d5ffae301de7af17ffa0956990f6d37ca81cf1bffc6d2eeb9d86c492411e",
+    "giftlink-frontend/src/context/AuthContext.test.js": "07564d91a5e3df77a51300f79d6583ba30099857f79d49076b8221b9b322a0ba"
+  },
+  "boundaries": {
+    "remote_atlas_or_r2_access": false,
+    "hosted_e2e": false,
+    "deployment_command": false,
+    "production_feature_activation": false,
+    "backend_or_schema_change": false,
+    "legacy_conversion": false
+  },
+  "intermediate_runs": {
+    "superseded_partial": {
+      "passed": 38,
+      "failed": 5,
+      "interrupted": 1,
+      "not_run": 47
+    },
+    "complete_before_harness_corrections": {
+      "passed": 88,
+      "failed": 3,
+      "c1_passed": 10
+    },
+    "focused_final_fixes": {
+      "passed": 3,
+      "additional_unique_cases": 0
+    }
+  }
+}

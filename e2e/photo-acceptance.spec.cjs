@@ -137,7 +137,16 @@ test('the same real photo batch survives compression, uncertain publish, managem
     const cleanup = await deployment.reconcilePhotos(); expect(cleanup.results).toEqual([{ status: 'deleted', category: null }]);
     expect((await deployment.db.collection('itemImages').findOne({ _id: ready[2]._id })).state).toBe('deleted');
     const quota = (await deployment.db.collection('users').findOne({ _id: saved.ownerId })).itemImageQuota;
-    expect(quota.retainedBytes).toBeLessThan(originalQuota.retainedBytes); expect(quota.operationCount).toBe(3); expect(quota.successful).toBe(3); expect(quota.attempts).toBe(3);
+    expect(quota.retainedBytes).toBeLessThan(originalQuota.retainedBytes); expect(quota.operationCount).toBe(3);
+    // Actual MongoDB UTC midnight may occur during this long journey. Lifetime
+    // operations/charges remain intact; daily counters belong only to quota.utcDay.
+    const ledger = await deployment.db.collection('itemImages').find({ ownerId: saved.ownerId }).toArray();
+    expect(ledger.map(row => row._id.toString()).sort()).toEqual(ready.map(row => row._id.toString()).sort());
+    expect(ledger.every(row => row.charge.dailySuccessCharged && row.charge.quotaDay === row.createdAt.toISOString().slice(0, 10))).toBe(true);
+    expect(quota.utcDay).toBe(quota.updatedAt.toISOString().slice(0, 10));
+    const chargedToday = ledger.filter(row => row.charge.quotaDay === quota.utcDay);
+    expect(quota.successful).toBe(chargedToday.length); expect(quota.attempts).toBe(chargedToday.length);
+    expect(quota.reservedBytes).toBe(0); expect(quota.activeUploads).toBe(0); expect(quota.heldSuccess).toBe(0);
     expect(await deployment.db.collection('itemImages').countDocuments({ state: 'ready' })).toBe(2);
     expect((await owner.request.get('/api/item-images/' + ready[2]._id + '/thumbnail')).status()).toBe(404);
     expect(await page.evaluate(() => !/blob:|data:image|private-source-name/.test(JSON.stringify(localStorage)))).toBe(true);
