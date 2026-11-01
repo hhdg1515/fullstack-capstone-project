@@ -1,40 +1,16 @@
-// DIAGNOSTIC ONLY (throwaway branch, never merged). Does a host Docker network or
-// container change abort Chromium navigations that open new connections shortly
-// afterwards on the CI runner? Chromium flushes connecting sockets with
-// net::ERR_NETWORK_CHANGED and delays its network-change signal by up to ~2 s,
-// so each trial performs the Docker operation, then opens fresh connections
-// (new context, Connection: close) for 4 s and records only sanitized error classes.
+// DIAGNOSTIC ONLY (throwaway branch, never merged). Timing of Chromium
+// net::ERR_NETWORK_CHANGED after a container starts on the default Docker bridge,
+// and whether waiting for host IPv6 duplicate-address detection (no tentative
+// addresses left) before navigating removes it. Records sanitized classes only.
 const https = require('node:https');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { test, expect } = require('@playwright/test');
-const docker = args => { try { execFileSync('docker', args, { stdio: 'ignore', timeout: 60000 }); } catch (_) { /* cleanup best effort */ } };
-const photoNetwork = name => ['network', 'create', '--opt', 'com.docker.network.bridge.enable_ip_masquerade=false', '--opt', 'com.docker.network.bridge.enable_icc=false', name];
-const operations = {
-  control: () => {},
-  bridge_network_create: name => docker(photoNetwork(name)),
-  bridge_network_remove: name => docker(['network', 'rm', name]),
-  default_bridge_container_start: name => docker(['run', '-d', '--name', name, '--publish', '127.0.0.1::8080', 'busybox:1.36', 'sleep', '600']),
-  default_bridge_container_remove: name => docker(['rm', '-f', name]),
-  // The CI order: previous photo test tears down its container + private network,
-  // then the next test starts its MongoDB-style container on the default bridge.
-  photo_teardown_then_next_setup: name => {
-    docker(['rm', '-f', name + '-photo']); docker(['network', 'rm', name + '-net']); docker(['rm', '-f', name + '-db']);
-    docker(['run', '-d', '--name', name + '-next', '--publish', '127.0.0.1::27017', 'busybox:1.36', 'sleep', '600']);
-  }
-};
-const prepare = {
-  bridge_network_remove: name => docker(photoNetwork(name)),
-  default_bridge_container_remove: name => docker(['run', '-d', '--name', name, '--publish', '127.0.0.1::8080', 'busybox:1.36', 'sleep', '600']),
-  photo_teardown_then_next_setup: name => {
-    docker(photoNetwork(name + '-net'));
-    docker(['run', '-d', '--name', name + '-photo', '--network', name + '-net', '--publish', '127.0.0.1::8333', 'busybox:1.36', 'sleep', '600']);
-    docker(['run', '-d', '--name', name + '-db', '--publish', '127.0.0.1::27017', 'busybox:1.36', 'sleep', '600']);
-  }
-};
-test('classify fresh-connection navigation outcomes after Docker host-network changes', async ({ browser }) => {
+const docker = args => { try { return execFileSync('docker', args, { encoding: 'utf8', timeout: 60000 }); } catch (_) { return ''; } };
+const tentative = () => { try { return execFileSync('ip', ['-o', '-6', 'addr', 'show', 'tentative'], { encoding: 'utf8' }).trim(); } catch (_) { return 'ip-unavailable'; } };
+test('time ERR_NETWORK_CHANGED after container start and test the DAD-settle mitigation', async ({ browser }) => {
   test.setTimeout(1500000);
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'diag-'));
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-keyout', path.join(directory, 'k.pem'), '-out', path.join(directory, 'c.pem'), '-subj', '/CN=127.0.0.1'], { stdio: 'ignore' });
@@ -42,29 +18,34 @@ test('classify fresh-connection navigation outcomes after Docker host-network ch
     (req, res) => { res.setHeader('Connection', 'close'); res.end('<!doctype html><title>diag</title><h1>ok</h1>'); }).listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   execFileSync('docker', ['pull', '-q', 'busybox:1.36']);
-  const results = {};
+  const summary = {};
   try {
-    for (const [name, operation] of Object.entries(operations)) {
-      const counts = results[name] = { trialsWithFailure: 0 };
-      for (let trial = 0; trial < 8; trial++) {
-        const resource = 'diag-' + name.replace(/_/g, '-') + '-' + trial;
-        if (prepare[name]) prepare[name](resource);
-        await new Promise(resolve => setTimeout(resolve, 3000)); // let preparation's own signal pass
-        operation(resource);
-        let failed = false; const until = Date.now() + 4000;
-        while (Date.now() < until) {
+    for (const mode of ['immediate', 'after_dad_settle']) {
+      const s = summary[mode] = { trials: 0, trialsWithFailure: 0, navigations: 0, failures: 0, failureOffsetsMs: [], settleMs: [], tentativeSeenMs: [] };
+      for (let trial = 0; trial < 30; trial++) {
+        const name = 'diag-' + mode.replace(/_/g, '-') + '-' + trial;
+        await new Promise(resolve => setTimeout(resolve, 2500));
+        const t0 = Date.now();
+        docker(['run', '-d', '--name', name, '--publish', '127.0.0.1::27017', 'busybox:1.36', 'sleep', '600']);
+        if (mode === 'after_dad_settle') {
+          // Deterministic quiescence: wait until the host has no tentative IPv6 addresses.
+          let seen = false; while (Date.now() - t0 < 10000) { const t = tentative(); if (t) seen = true; else break; await new Promise(resolve => setTimeout(resolve, 50)); }
+          s.settleMs.push(Date.now() - t0); if (seen) s.tentativeSeenMs.push(Date.now() - t0);
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        let failed = false; const start = Date.now();
+        while (Date.now() - start < 4000) {
           const context = await browser.newContext({ ignoreHTTPSErrors: true }); const page = await context.newPage();
           const outcome = await page.goto('https://127.0.0.1:' + server.address().port + '/n').then(() => 'ok', error => (String(error.message).match(/net::ERR_[A-Z_]+|Timeout|crash/i) || ['other'])[0]);
-          counts[outcome] = (counts[outcome] || 0) + 1; if (outcome !== 'ok') failed = true;
+          s.navigations++; if (outcome !== 'ok') { s.failures++; failed = true; s.failureOffsetsMs.push(outcome + '@' + (Date.now() - t0)); }
           await context.close();
         }
-        if (failed) counts.trialsWithFailure++;
-        for (const suffix of ['', '-photo', '-db', '-next']) docker(['rm', '-f', resource + suffix]);
-        for (const suffix of ['', '-net']) docker(['network', 'rm', resource + suffix]);
+        s.trials++; if (failed) s.trialsWithFailure++;
+        docker(['rm', '-f', name]);
       }
-      console.log(JSON.stringify({ diagnostic: name, outcomes: counts }));
+      console.log(JSON.stringify({ diagnostic: mode, result: s }));
     }
   } finally { server.close(); fs.rmSync(directory, { recursive: true, force: true }); }
-  console.log(JSON.stringify({ diagnosticSummary: results }));
-  expect(Object.keys(results)).toHaveLength(6);
+  console.log(JSON.stringify({ diagnosticSummary: summary, tentativeProbe: tentative() === 'ip-unavailable' ? 'unavailable' : 'available' }));
+  expect(Object.keys(summary)).toHaveLength(2);
 });
