@@ -154,6 +154,15 @@ function RequestDetail({ requestId }) {
       if (failure.status === 401) window.dispatchEvent(new Event('giftlink:unauthorized'));
     } finally { if (alive.current) { flight.current = false; setBusy(false); } }
   };
+  const [outcomeClock, setOutcomeClock] = useState(0);
+  useEffect(() => {
+    const remaining = Date.parse(request?.proposedAt) - Date.now();
+    if (request?.role !== 'giver' || request?.status !== 'accepted' || !Number.isFinite(remaining) || remaining < 0) return;
+    // Wake only the local affordance at the appointment boundary. This never
+    // records a handoff or replaces the backend's identity/time/version checks.
+    const timer = setTimeout(() => setOutcomeClock(value => value + 1), Math.min(remaining + 1, 2147483647));
+    return () => clearTimeout(timer);
+  }, [request?.proposedAt, request?.role, request?.status, outcomeClock]);
   const outcomeReady = Number.isFinite(Date.parse(request?.proposedAt)) && Date.parse(request.proposedAt) <= Date.now();
   const conversationPrimary = !actions.includes('accept') && !(actions.includes('complete') && outcomeReady);
   const conversationLink = request && conversationAvailable(request) ? <Link className={`ui-button${conversationPrimary ? '' : ' ui-button--secondary'}`} to={{ hash: '#conversation', search: location.search }} state={location.state}>Open conversation</Link> : null;

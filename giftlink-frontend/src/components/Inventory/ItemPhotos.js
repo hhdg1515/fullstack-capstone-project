@@ -2,7 +2,7 @@ import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } f
 import { useAppContext } from '../../context/AuthContext';
 import { photoDraftWarning, useUnsavedForm } from '../../forms/UnsavedChanges';
 import { Feedback, Surface } from '../../design-system/primitives';
-import { deletePhoto, fileDigest, photoError, photoUrl, readPhotos, readUpload, reservePhoto, securePhotoBrowser, uploadId, uploadPhoto, validReady } from '../../api/itemImages';
+import { deletePhoto, reorderPhotos, fileDigest, photoError, photoUrl, readPhotos, readUpload, reservePhoto, securePhotoBrowser, uploadId, uploadPhoto, validReady } from '../../api/itemImages';
 import { preparePhoto, sourcePhotoError } from '../../api/photoPreparation';
 import PhotoDeleteDialog from './PhotoDeleteDialog';
 import './ItemPhotos.css';
@@ -234,6 +234,11 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item = {}, onClo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uploadIntent, item.id, draft, saving, loading, data, metadataStale, claimUploadIntent]);
   const reviewChange = async intent => {
+    if (intent.kind === 'order') {
+      const latest = await load(); if (!current()) return;
+      setMessage(latest.images.map(image => image.id).join(',') === intent.imageIds.join(',') ? 'Photo order saved.' : 'Photo order changed. Review the current photos before trying again.');
+      managementFocus.current = intent.imageId; setChange(null); return;
+    }
     // Status + a full canonical list are reads, never an automatic mutation retry.
     const status = await readUpload(planId, item.id, intent.imageId);
     if (status.upload.id !== intent.imageId) throw photoError({ status: 503 });
@@ -246,14 +251,18 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item = {}, onClo
     managementFocus.current = latest.images[Math.min(intent.position, latest.images.length - 1)]?.id || 'heading';
     setChange(null);
   };
-  const manage = async imageId => {
+  const manage = async (imageId, targetPosition) => {
     const latest = dataRef.current;
     if (!latest?.capabilities.imageRead || inFlight.current || batch.current || saving || loading || metadataStale || changeRef.current || uploadIntent) return;
     const position = latest.images.findIndex(image => image.id === imageId); if (position < 0) return;
-    const intent = { kind: 'delete', imageId, position, imageRevision: latest.imageRevision };
+    const ordering = Number.isInteger(targetPosition);
+    const imageIds = latest.images.map(image => image.id);
+    if (ordering) imageIds.splice(targetPosition, 0, imageIds.splice(position, 1)[0]);
+    const intent = { kind: ordering ? 'order' : 'delete', imageId, position, imageIds, imageRevision: latest.imageRevision };
     inFlight.current = true; setBusy(true); onBusyChange?.(true); setChange(intent); setError(null); setMessage(''); setMetadataStale(true);
     try {
-      await deletePhoto(planId, item.id, imageId, intent.imageRevision);
+      if (ordering) await reorderPhotos(planId, item.id, intent.imageRevision, imageIds);
+      else await deletePhoto(planId, item.id, imageId, intent.imageRevision);
       if (current()) await reviewChange(intent);
     } catch (failure) {
       if (current()) failed({ ...failure, message: failure.status === 401 ? failure.message : failure.status === 429 ? failure.message : 'Photo change not confirmed. Check changes before continuing.' });
@@ -308,6 +317,11 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item = {}, onClo
       {(!embedded || !recovery) && data?.capabilities.imageRead && data.images.map((image, index) => <ReadyPhoto key={image.id + ':' + refresh} image={image} position={index} cover={index === 0} managing={embedded}>
         {embedded && <button type="button" className="item-photos-icon item-photo-remove item-photo-delete" aria-label={`Delete photo ${index + 1}`} title="Delete photo"
           disabled={managementDisabled} onClick={() => setDeleting({ id: image.id, position: index })}>×</button>}
+        {embedded && planId === null && data.images.length > 1 && <div className="item-photo-order-actions">
+          {index > 0 && <button type="button" className="item-photos-link" disabled={managementDisabled} aria-label={`Use photo ${index + 1} as cover`} onClick={() => manage(image.id, 0)}>Make cover</button>}
+          <button type="button" className="item-photos-link" disabled={managementDisabled || index === 0} aria-label={`Move photo ${index + 1} earlier`} onClick={() => manage(image.id, index - 1)}>Up</button>
+          <button type="button" className="item-photos-link" disabled={managementDisabled || index === data.images.length - 1} aria-label={`Move photo ${index + 1} later`} onClick={() => manage(image.id, index + 1)}>Down</button>
+        </div>}
 
       </ReadyPhoto>)}
       {entries.map((entry, index) => {

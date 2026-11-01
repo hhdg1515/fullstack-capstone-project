@@ -1,3 +1,5 @@
+/* jshint esversion: 9 */
+const { independentVisibilityPipeline } = require('./independent-visibility');
 const { legacyMatch } = require('./listing-model');
 const { createHash } = require('crypto');
 const { ObjectId } = require('mongodb');
@@ -14,7 +16,7 @@ const invalid = message => new InventoryError(400, 'INVALID_DISCOVERY_QUERY', me
 const invalidCursor = () => new InventoryError(400, 'INVALID_CURSOR', 'This pagination link is invalid for the selected filters. Refresh results.');
 const staleCursor = () => new InventoryError(409, 'STALE_CURSOR', 'These results have changed or the pagination link expired. Refresh results to start again.');
 const cursorLifetime = 15 * 60 * 1000;
-function parseQuery(raw, today, requireRegion = true) {
+function parseQuery(raw, today, requireRegion = true, mixed = false) {
     const allowed = ['q', 'city', 'neighborhood', 'stateId', 'metroId', 'categoryId', 'itemTypeId', 'condition', 'availability', 'date', 'sort', 'limit', 'cursor'];
     if (Object.keys(raw).some(key => !allowed.includes(key) || typeof raw[key] !== 'string')) {
         throw invalid('Use only supported, single-value discovery parameters.');
@@ -40,7 +42,7 @@ function parseQuery(raw, today, requireRegion = true) {
     }
     if (raw.limit !== undefined && !/^(?:[1-9]|[1-4]\d|50)$/.test(raw.limit)) throw invalid('Page size must be an integer from 1 to 50.');
     if (query.availability === 'date') {
-        if (!isCalendarDate(query.date) || query.date < today) throw invalid('Choose a valid pickup date of today or later (UTC).');
+        if (!isCalendarDate(query.date) || query.date < (mixed ? todayUTC(new Date(Date.parse(today + 'T00:00:00Z') - 86400000)) : today)) throw invalid('Choose a valid pickup date of today or later (UTC).');
     } else if (query.date) throw invalid('A pickup date requires the date availability filter.');
     return query;
 }
@@ -49,7 +51,7 @@ function fingerprint(query) {
         q: query.q.toLowerCase(), city: query.city.toLowerCase(), neighborhood: query.neighborhood.toLowerCase()
     }))).digest('hex');
 }
-function readCursor(token, query, now) {
+function readCursor(token, query, now, mixed = false) {
     if (!token) return null;
     let value;
     try {
@@ -58,18 +60,19 @@ function readCursor(token, query, now) {
         if (decoded.toString('base64url') !== token) throw invalidCursor();
         value = JSON.parse(decoded.toString('utf8'));
         if (!value || Array.isArray(value) || Object.keys(value).sort().join(',') !== 'at,filter,id,sort,v,value' ||
-            value.v !== 1 || value.filter !== fingerprint(query) || value.sort !== query.sort ||
+            ![1, 2].includes(value.v) || value.filter !== fingerprint(query) || value.sort !== query.sort ||
             !Number.isSafeInteger(value.at) || value.at > now.getTime() + 5000 ||
             typeof value.id !== 'string' || !/^[a-f0-9]{24}$/.test(value.id) || typeof value.value !== 'string') throw invalidCursor();
         if (query.sort === 'newest') {
             const date = new Date(value.value);
             if (Number.isNaN(date.getTime()) || date.toISOString() !== value.value || date.getTime() > value.at) throw invalidCursor();
-        } else if (!isCalendarDate(value.value)) throw invalidCursor();
+        } else if (value.v === 1 ? !isCalendarDate(value.value) : !Number.isFinite(Date.parse(value.value)) || new Date(value.value).toISOString() !== value.value) throw invalidCursor();
     } catch (error) { throw invalidCursor(); }
+    if (value.v !== (mixed ? 2 : 1)) throw staleCursor();
     if (now.getTime() - value.at > cursorLifetime || todayUTC(new Date(value.at)) !== todayUTC(now)) throw staleCursor();
     return value;
 }
-const projection = { planId: 1, name: 1, description: 1, category: 1, categoryId: 1, itemTypeId: 1, customItemType: 1, condition: 1, status: 1, availableFrom: 1, availableUntil: 1,
+const projection = { listingSchemaVersion: 1, deadlineSortAt: 1, stateId: 1, metroId: 1, city: 1, neighborhood: 1, pickupTimeZone: 1, expiresAt: 1, localToday: 1, readNow: 1, planId: 1, name: 1, description: 1, category: 1, categoryId: 1, itemTypeId: 1, customItemType: 1, condition: 1, status: 1, availableFrom: 1, availableUntil: 1,
     publishedAt: 1, effectiveAvailableUntil: 1, isReserved: 1, ownerId: 1, 'plan.stateId': 1, 'plan.metroId': 1, 'plan.city': 1, 'plan.neighborhood': 1, 'plan.moveOutDeadline': 1, 'plan.pickupTimeZone': 1 };
 function publicItem(row, today, viewerId) {
     return Object.assign({ id: row._id.toString(), name: row.name, description: row.description, category: row.category, classification: classificationResponse(row),
@@ -92,9 +95,9 @@ function eligibilityStages(today) {
             { $lte: [{ $ifNull: ['$availableFrom', '0000-01-01'] }, '$effectiveAvailableUntil'] }
         ] } } }];
 }
-function visibilityPipeline(match, today) {
+function visibilityPipeline(match, today, { independent = false } = {}) {
     return [{ $match: match }, { $lookup: { from: 'moveOutPlans', localField: 'planId', foreignField: '_id', as: 'plan' } },
-        { $unwind: '$plan' }].concat(eligibilityStages(today));
+        { $unwind: '$plan' }].concat(eligibilityStages(today), independent ? [{ $unionWith: { coll: 'items', pipeline: independentVisibilityPipeline(match) } }] : []);
 }
 function regionalPipeline(query, terms, today) {
     return [{ $match: { metroId: query.metroId, stateId: { $in: metro(query.metroId).stateIds }, status: 'active', pickupTimeZone: { $type: 'string', $ne: '' },
@@ -129,14 +132,14 @@ const normalizedField = input => ({ $reduce: {
 // (UX-2C3 owns v2 discovery). V2 public media stays withheld.
 function independentPublicItem(row, window, viewerId, current) {
     return Object.assign({ id: row._id.toString(), name: row.name, description: row.description, category: row.category || '', classification: classificationResponse(row),
-        status: 'available', isReserved: row.isReserved, availability: window.startsAt && current < window.startsAt ? 'later' : 'now',
+        status: 'available', isReserved: row.isReserved, availability: row.availableFrom && row.availableFrom > row.localToday ? 'later' : 'now',
         availableFrom: row.availableFrom || null, availableUntil: row.availableUntil, effectiveAvailableUntil: row.availableUntil,
         city: normalizeLabel(row.city || ''), neighborhood: normalizeLabel(row.neighborhood || ''), moveOutDeadline: row.availableUntil,
         publishedAt: row.publishedAt.toISOString(), pickupTimeZone: row.pickupTimeZone, isOwner: Boolean(viewerId && row.ownerId.equals(viewerId)),
         listingModel: 2, datePolicy: 'pickup-local', imageAvailability: 'unavailable', coverImage: null, images: [] }, regionResponse(row));
 }
-function createDiscoveryService({ connectToDatabase, now = () => new Date(), imageMetadata = null, imageRead = false, independentPickups = false }) {
-    const media = imageMetadata && imageRead ? require('./public-item-media').createPublicItemMedia({ connectToDatabase, configuration: imageMetadata, visibilityPipeline, initialMatch }) : null;
+function createDiscoveryService({ connectToDatabase, now = () => new Date(), imageMetadata = null, imageRead = false, independentPickups = false, independentPublication = false, independentMedia = false }) {
+    const media = imageMetadata && imageRead ? require('./public-item-media').createPublicItemMedia({ connectToDatabase, configuration: imageMetadata, visibilityPipeline: (match, today) => visibilityPipeline(match, today, { independent: independentPublication && independentMedia }), initialMatch }) : null;
     async function aggregate(pipeline, options = {}, collection = 'items') {
         try {
             const db = await connectToDatabase();
@@ -147,17 +150,32 @@ function createDiscoveryService({ connectToDatabase, now = () => new Date(), ima
             throw error;
         }
     }
+    async function currentTime() {
+        return independentPublication ? require('./item-fence').databaseNow(await connectToDatabase()) : now();
+    }
     async function browse(raw, viewerId) {
-        const current = now(); const today = todayUTC(current);
-        const query = parseQuery(raw, today); const cursor = readCursor(raw.cursor, query, current);
+        const current = await currentTime(); const today = todayUTC(current);
+        const query = parseQuery(raw, today, true, independentPublication); const cursor = readCursor(raw.cursor, query, current, independentPublication);
         const at = cursor ? cursor.at : current.getTime();
         const terms = [initialMatch(at)];
         if (query.q) terms.push(textMatch(query.q));
         for (const field of ['categoryId', 'itemTypeId', 'condition']) if (query[field]) terms.push({ [field]: query[field] });
+        const independentTerms = terms.slice();
         const start = query.availability === 'date' ? query.date : today;
         if (['now', 'date'].includes(query.availability)) terms.push({ $or: [{ availableFrom: null }, { availableFrom: { $lte: start } }] });
         if (query.availability === 'later') terms.push({ availableFrom: { $gt: today } });
+        if (query.availability === 'date' && query.date < today) terms.push({ _id: { $exists: false } });
         const pipeline = regionalPipeline(query, terms, today);
+        if (independentPublication) {
+            const v2 = independentVisibilityPipeline({ $and: independentTerms, metroId: query.metroId, stateId: { $in: metro(query.metroId).stateIds } }, current);
+            if (['now', 'date', 'later'].includes(query.availability)) v2.push({ $match: { $expr: query.availability === 'later' ?
+                { $gt: ['$availableFrom', '$localToday'] } : { $lte: [{ $ifNull: ['$availableFrom', '0000-01-01'] }, query.availability === 'date' ? query.date : '$localToday'] } } });
+            if (query.availability === 'date') v2.push({ $match: { $expr: { $gte: [query.date, '$localToday'] } } });
+            pipeline.push({ $unionWith: { coll: 'items', pipeline: v2 } });
+            pipeline.push({ $set: { deadlineSortAt: { $cond: [{ $eq: ['$listingSchemaVersion', 2] }, '$expiresAt',
+                { $dateAdd: { startDate: { $dateFromString: { dateString: '$effectiveAvailableUntil', format: '%Y-%m-%d', timezone: 'UTC', onError: null, onNull: null } }, unit: 'day', amount: 1 } }] } } });
+            pipeline.push({ $match: { deadlineSortAt: { $type: 'date' } } });
+        }
         for (const key of ['city', 'neighborhood']) {
             if (query[key]) pipeline.push({ $match: { ['plan.' + key]: { $regex: '(*UCP)^\\s*' + phrase(query[key]) + '\\s*$', $options: 'i' } } });
         }
@@ -166,46 +184,50 @@ function createDiscoveryService({ connectToDatabase, now = () => new Date(), ima
         pipeline.push({ $match: { isReserved: false } });
         const page = [];
         if (cursor) {
-            const newest = query.sort === 'newest', field = newest ? 'publishedAt' : 'effectiveAvailableUntil';
-            const value = newest ? new Date(cursor.value) : cursor.value, comparison = newest ? '$lt' : '$gt';
+            const newest = query.sort === 'newest', field = newest ? 'publishedAt' : independentPublication ? 'deadlineSortAt' : 'effectiveAvailableUntil';
+            const value = newest || independentPublication ? new Date(cursor.value) : cursor.value, comparison = newest ? '$lt' : '$gt';
             page.push({ $match: { $or: [{ [field]: { [comparison]: value } }, { [field]: value, _id: { [comparison]: new ObjectId(cursor.id) } }] } });
         }
-        page.push({ $sort: query.sort === 'newest' ? { publishedAt: -1, _id: -1 } : { effectiveAvailableUntil: 1, _id: 1 } },
+        page.push({ $sort: query.sort === 'newest' ? { publishedAt: -1, _id: -1 } : independentPublication ? { deadlineSortAt: 1, _id: 1 } : { effectiveAvailableUntil: 1, _id: 1 } },
             { $limit: query.limit + 1 }, { $project: projection });
         pipeline.push({ $facet: { rows: page, total: [{ $count: 'value' }] } });
         const [result] = await aggregate(pipeline, {}, 'moveOutPlans');
         const rows = result.rows;
         const hasMore = rows.length > query.limit; const selected = rows.slice(0, query.limit);
         const last = selected[selected.length - 1];
-        const nextCursor = hasMore ? Buffer.from(JSON.stringify({ v: 1, at, filter: fingerprint(query), sort: query.sort,
-            id: last._id.toString(), value: query.sort === 'newest' ? last.publishedAt.toISOString() : last.effectiveAvailableUntil })).toString('base64url') : null;
+        const nextCursor = hasMore ? Buffer.from(JSON.stringify({ v: independentPublication ? 2 : 1, at, filter: fingerprint(query), sort: query.sort,
+            id: last._id.toString(), value: query.sort === 'newest' ? last.publishedAt.toISOString() : independentPublication ? last.deadlineSortAt.toISOString() : last.effectiveAvailableUntil })).toString('base64url') : null;
         const summaries = media ? await media(selected, false, current) : [];
-        return { items: selected.map((row, index) => Object.assign(publicItem(row, today, viewerId), summaries[index])), total: result.total.length ? result.total[0].value : 0, today,
-            page: { limit: query.limit, hasMore, nextCursor } };
+        return { items: selected.map((row, index) => Object.assign(row.listingSchemaVersion === 2 ? independentPublicItem(row, null, viewerId, row.readNow) : publicItem(row, today, viewerId), summaries[index])), total: result.total.length ? result.total[0].value : 0, today,
+            ...(independentPublication ? { dateMinimum: todayUTC(new Date(current.getTime() - 86400000)) } : {}), page: { limit: query.limit, hasMore, nextCursor } };
     }
     async function detail(id, viewerId) {
         if (!/^[a-fA-F0-9]{24}$/.test(id)) throw new InventoryError(404, 'ITEM_NOT_FOUND', 'Listing unavailable');
-        const current = now(); const today = todayUTC(current);
+        const current = await currentTime(); const today = todayUTC(current);
         const rows = await aggregate(visibilityPipeline(Object.assign(initialMatch(current.getTime()), { _id: new ObjectId(id) }), today)
             .concat(pickupReservationStages(), [{ $project: Object.assign({}, projection, { ownerId: 1 }) }]));
         if (!rows.length) {
             if (!independentPickups) throw new InventoryError(404, 'ITEM_NOT_FOUND', 'Listing unavailable');
             const { independentWindow, eligible } = require('./pickup-policy');
-            const [row] = await aggregate([{ $match: { _id: new ObjectId(id), listingSchemaVersion: 2, planId: { $exists: false }, status: 'available' } }]
-                .concat(pickupReservationStages(), [{ $set: { readNow: '$$NOW' } }]));
+            const [row] = await aggregate((independentPublication ? independentVisibilityPipeline({ _id: new ObjectId(id) }, current) : [{ $match: { _id: new ObjectId(id), listingSchemaVersion: 2, planId: { $exists: false }, status: 'available' } }])
+                .concat(pickupReservationStages(), [{ $set: { readNow: '$$NOW', localToday: { $dateToString: { date: '$$NOW', format: '%Y-%m-%d', timezone: '$pickupTimeZone' } } } }]));
             // Evaluate against the same snapshot's database clock, not this server's.
             const window = row && eligible(row, null, row.readNow) && independentWindow(row, row.readNow);
             if (!window) throw new InventoryError(404, 'ITEM_NOT_FOUND', 'Listing unavailable');
-            return { item: independentPublicItem(row, window, viewerId, row.readNow), today };
+            const summaries = independentPublication && media ? await media([row], true, row.readNow) : [];
+            return { item: Object.assign(independentPublicItem(row, window, viewerId, row.readNow), summaries[0]), today };
         }
         const summaries = media ? await media(rows, true, current) : [];
         return { item: Object.assign(publicItem(rows[0], today, viewerId), summaries[0]), today };
     }
     async function locations(raw) {
         if (Object.keys(raw).some(key => !['stateId', 'metroId'].includes(key))) throw invalid('Location options accept only state and metro IDs.');
-        const current = now(), today = todayUTC(current), query = parseQuery(raw, today, false);
+        const current = await currentTime(), today = todayUTC(current), query = parseQuery(raw, today, false);
         const regional = Boolean(query.metroId);
         const pipeline = regional ? regionalPipeline(query, [initialMatch(current.getTime())], today) : visibilityPipeline(initialMatch(current.getTime()), today);
+        if (independentPublication) pipeline.push({ $unionWith: { coll: 'items', pipeline: independentVisibilityPipeline(Object.assign(initialMatch(current.getTime()), regional ? {
+            metroId: query.metroId, stateId: { $in: metro(query.metroId).stateIds }
+        } : {})) } });
         if (regional) pipeline.push(...pickupReservationStages(), { $match: { isReserved: false } });
         pipeline.push({ $project: { city: normalizedField('$plan.city'), neighborhood: normalizedField('$plan.neighborhood') } },
             { $sort: { city: 1, neighborhood: 1, _id: 1 } }, { $group: { _id: { city: '$city', neighborhood: '$neighborhood' } } },
@@ -219,4 +241,4 @@ function createDiscoveryService({ connectToDatabase, now = () => new Date(), ima
     }
     return { browse, detail, locations };
 }
-module.exports = { createDiscoveryService, normalizeLabel, visibilityPipeline, initialMatch };
+module.exports = { createDiscoveryService, normalizeLabel, visibilityPipeline, initialMatch, parseQuery, readCursor };

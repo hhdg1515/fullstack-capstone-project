@@ -504,3 +504,18 @@ test.each([200,401])('initial session resolution reissues anonymous public reads
   await screen.findByRole('link',{name:b.name});await act(async()=>old.resolve(status===200?feed([{...a,isOwner:true}]):reply(401,{error:{message:'Old unauthorized result'}})));
   expect(screen.getByRole('link',{name:b.name})).toBeInTheDocument();expect(screen.queryByText('Your listing')).not.toBeInTheDocument();expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
+
+test('mixed discovery uses the server date lower bound and truthful listing-timezone labels', async () => {
+ handler = async () => reply(200, {items:[{...a,listingModel:2,datePolicy:'pickup-local',pickupTimeZone:'America/Los_Angeles'}],total:1,dateMinimum:day(-1),page:{limit:12,hasMore:false,nextCursor:null}});
+ mount(); await ready(); fireEvent.change(screen.getByLabelText('Pickup availability'),{target:{value:'date'}});
+ expect(screen.getByLabelText('Pickup date (listing timezone)')).toHaveAttribute('min',day(-1));
+ fireEvent.change(screen.getByLabelText('Pickup date (listing timezone)'),{target:{value:day(-1)}}); await submit();
+ await waitFor(()=>expect(apiCalls().some(([url])=>new URL(url,'http://localhost').searchParams.get('date')===day(-1))).toBe(true));
+ expect(screen.queryByText('(UTC)',{exact:true})).not.toBeInTheDocument();
+});
+
+test('optional v2 city and neighborhood fields do not create blank filter options', async () => {
+ locationHandler = async () => reply(200,{locations:[{city:'',neighborhoods:['','Synthetic area']}],truncated:false}); mount(); await ready();
+ expect(within(screen.getByLabelText('City')).getAllByRole('option')).toHaveLength(1);
+ expect(within(screen.getByLabelText('Neighborhood')).getAllByRole('option').map(option=>option.textContent)).toEqual(['All neighborhoods','Synthetic area']);
+});

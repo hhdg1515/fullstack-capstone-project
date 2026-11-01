@@ -8,7 +8,7 @@ const test = base.extend({ deployment: [async ({}, use) => {
 }, { scope: 'worker', timeout: 180000 }] });
 test.skip(Boolean(process.env.E2E_APP_ORIGIN), 'Scheduling fixtures never use hosted resources');
 
-test('participants negotiate confirmed pickup times without losing chat or bypassing conflicts', async ({ browser, deployment }, testInfo) => {
+test('participants negotiate confirmed pickup times without losing chat or bypassing conflicts', async ({ isolatedBrowser: browser, deployment }, testInfo) => {
   const options = { ...testInfo.project.use, baseURL: deployment.origin, ignoreHTTPSErrors: true,
     extraHTTPHeaders: { 'X-Deployment-Target': deployment.fingerprint } };
   delete options.launchOptions; delete options.trace; delete options.screenshot; delete options.video;

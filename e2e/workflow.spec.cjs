@@ -10,7 +10,7 @@ const { health: httpsPreflight } = require('./https-preflight.cjs');
 const { bootstrapBypassCookie } = require('./vercel-bypass.cjs');
 const day = value => new Date(value).toISOString().slice(0, 10);
 
-test('two real accounts complete discovery, pickup coordination and secure sessions', async ({ browser, deployment }, testInfo) => {
+test('two real accounts complete discovery, pickup coordination and secure sessions', async ({ isolatedBrowser: browser, deployment }, testInfo) => {
   const project = testInfo.project.name; const runId = deployment.runId; const prefix = `E2E ${runId} ${project}`;
   const password = randomUUID() + '-E2e!'; const emails = expectedEmails(runId).filter(email => email.includes('.' + project + '.'));
   const emailA = emails.find(email => email.includes('.giver@')); const emailB = emails.find(email => email.includes('.receiver@'));

@@ -8,7 +8,7 @@ const test = base.extend({ deployment: [async ({}, use) => {
 }, { scope: 'worker', timeout: 180000 }] });
 test.skip(Boolean(process.env.E2E_APP_ORIGIN), 'Scheduling UX uses disposable local resources only');
 
-test('formal time changes survive stale and uncertain responses, expiry and completed handoff with independent drafts', async ({ browser, deployment }, testInfo) => {
+test('formal time changes survive stale and uncertain responses, expiry and completed handoff with independent drafts', async ({ isolatedBrowser: browser, deployment }, testInfo) => {
   const options = { ...testInfo.project.use, baseURL: deployment.origin, ignoreHTTPSErrors: true, extraHTTPHeaders: { 'X-Deployment-Target': deployment.fingerprint } };
   delete options.launchOptions; delete options.trace; delete options.screenshot; delete options.video;
   const contexts = [];

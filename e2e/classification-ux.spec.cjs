@@ -8,7 +8,7 @@ const test = base.extend({ deployment: [async ({}, use) => {
   const local = await localEnvironment(); try { await use(local); } finally { await local.close(); }
 }, { scope: 'worker', timeout: 180000 }] });
 test.skip(Boolean(process.env.E2E_APP_ORIGIN), 'Classification fixtures never use hosted resources');
-test('searchable types, explicit fallback, existing edits and category discovery stay compatible', async ({ browser, deployment }, info) => {
+test('searchable types, explicit fallback, existing edits and category discovery stay compatible', async ({ isolatedBrowser: browser, deployment }, info) => {
   const mobile = info.project.name === 'mobile';
   const context = await browser.newContext({ viewport: { width: mobile ? 320 : 1440, height: mobile ? 740 : 1000 }, baseURL: deployment.origin,
     ignoreHTTPSErrors: true, extraHTTPHeaders: { 'X-Deployment-Target': deployment.fingerprint } });

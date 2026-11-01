@@ -2,7 +2,7 @@ const { randomUUID } = require('node:crypto');
 const { test, expect } = require('./fixtures.cjs');
 test.skip(Boolean(process.env.E2E_APP_ORIGIN), 'Inventory UX fixtures are confined to disposable local data');
 
-test('owner configures pickup explicitly and manages items before entering a repeated-add flow', async ({ browser, deployment }, testInfo) => {
+test('owner configures pickup explicitly and manages items before entering a repeated-add flow', async ({ isolatedBrowser: browser, deployment }, testInfo) => {
   const options = { ...testInfo.project.use, baseURL: deployment.origin, ignoreHTTPSErrors: true,
     extraHTTPHeaders: { 'X-Deployment-Target': deployment.fingerprint } };
   delete options.launchOptions; delete options.trace; delete options.screenshot; delete options.video;

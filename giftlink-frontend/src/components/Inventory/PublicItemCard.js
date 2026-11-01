@@ -15,12 +15,12 @@ export default function PublicItemCard({ item, search, stateCode }) {
       </Link>
       {(type || category) && <p className="discovery-listing-type">{[type, category].filter((value, index, all) => value && all.indexOf(value) === index).join(' · ')}</p>}
     </div>
-    <p className="discovery-listing-place">{[item.neighborhood, item.city, stateCode].filter(Boolean).join(', ')}</p>
+    <p className="discovery-listing-place">{[item.neighborhood, item.city || item.metroLabel, item.city ? stateCode : null].filter(Boolean).join(', ')}</p>
     {condition && <p>Condition: {condition}</p>}
     <div className="discovery-listing-pickup">
       <div className="discovery-listing-status"><span className="ui-status">Free</span><span className="ui-status">{item.availability === 'later' ? 'Available Later' : 'Available Now'}</span>
         {item.isOwner === true && <span className="ui-status">Your listing</span>}</div>
-      <p>{item.availability === 'later' && <>From <time dateTime={item.availableFrom}>{formatDeadline(item.availableFrom)}</time> · </>}Pickup until <time dateTime={item.effectiveAvailableUntil}>{formatDeadline(item.effectiveAvailableUntil)}</time> <span className="discovery-listing-utc">(UTC)</span></p>
+      <p>{item.availability === 'later' && <>From <time dateTime={item.availableFrom}>{formatDeadline(item.availableFrom)}</time> · </>}Pickup until <time dateTime={item.effectiveAvailableUntil}>{formatDeadline(item.effectiveAvailableUntil)}</time> <span className="discovery-listing-utc">{item.datePolicy === 'pickup-local' ? '(' + item.pickupTimeZone + ')' : '(UTC)'}</span></p>
     </div>
   </Surface>;
 }

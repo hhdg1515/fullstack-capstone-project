@@ -34,6 +34,9 @@ function readServerConfig(env = process.env) {
     if (env.OWNER_LISTING_PICKUPS_ENABLED !== undefined && !['true', 'false'].includes(env.OWNER_LISTING_PICKUPS_ENABLED)) throw new Error('OWNER_LISTING_PICKUPS_ENABLED must be true or false');
     const ownerListingPickupsEnabled = env.OWNER_LISTING_PICKUPS_ENABLED === 'true';
     if (ownerListingPickupsEnabled && !ownerListingsEnabled) throw new Error('OWNER_LISTING_PICKUPS_ENABLED requires OWNER_LISTINGS_ENABLED=true');
+    if (env.OWNER_LISTING_PUBLICATION_ENABLED !== undefined && !['true', 'false'].includes(env.OWNER_LISTING_PUBLICATION_ENABLED)) throw new Error('OWNER_LISTING_PUBLICATION_ENABLED must be true or false');
+    const ownerListingPublicationEnabled = env.OWNER_LISTING_PUBLICATION_ENABLED === 'true';
+    if (ownerListingPublicationEnabled && (!ownerListingsEnabled || !ownerListingPickupsEnabled)) throw new Error('OWNER_LISTING_PUBLICATION_ENABLED requires owner listings and pickups');
     const database = readDatabaseConfig(env);
     const secureCookies = env.NODE_ENV === 'production';
     const appOrigin = env.APP_ORIGIN || (secureCookies ? '' : 'http://localhost:3000');
@@ -51,7 +54,7 @@ function readServerConfig(env = process.env) {
     if (env.PORT === '' || !Number.isInteger(port) || port < 0 || port > 65535) {
         throw new Error('PORT must be an integer from 0 to 65535');
     }
-    const config = { mongoUrl: database.mongoUrl, dbName: database.dbName, appOrigin, secureCookies, sessionTtlSeconds, port, ownerListingsEnabled, ownerListingPhotosEnabled, ownerListingPickupsEnabled };
+    const config = { mongoUrl: database.mongoUrl, dbName: database.dbName, appOrigin, secureCookies, sessionTtlSeconds, port, ownerListingsEnabled, ownerListingPhotosEnabled, ownerListingPickupsEnabled, ownerListingPublicationEnabled };
     const imageMetadata = require('./services/item-image-policy').readImageMetadataConfig(env);
     if (imageMetadata) config.imageMetadata = imageMetadata;
     return config;

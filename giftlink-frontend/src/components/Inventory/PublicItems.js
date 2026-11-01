@@ -92,7 +92,7 @@ function Discovery() {
     const refreshedAvailability = changedAvailability.current === scope; changedAvailability.current = null;
     setResult({ key: scope, loading: Boolean(selected), items: [] });
     if (selected) apiRequest(`/api/items?${query}`, { validate: data => validFeed(data) && data.items.every(item => item.metroId === metroId && selected.stateIds.includes(item.stateId)) }).then(data => {
-      if (current.active) setResult({ key: scope, items: data.items, total: data.total, page: data.page, refreshedAvailability });
+      if (current.active) setResult({ key: scope, items: data.items, total: data.total, page: data.page, dateMinimum: data.dateMinimum, refreshedAvailability });
     }).catch(error => { if (current.active) setResult({ key: scope, items: [], error }); });
     return () => { current.active = false; };
   }, [scope, query, metroId, selected, attempt]);
@@ -109,11 +109,13 @@ function Discovery() {
     window.addEventListener('focus', refresh); return () => window.removeEventListener('focus', refresh);
   }, []);
   const visible = result.key === scope ? result : { loading: Boolean(selected), items: [] };
+  const mixedDates = isCalendarDate(visible.dateMinimum);
+  const dateMinimum = mixedDates ? visible.dateMinimum : utcToday();
   const city = places.locations.find(place => key(place.city) === key(fields.city))?.city || normalize(fields.city);
   const neighborhoods = Array.from(new Map(places.locations.filter(place => !city || key(place.city) === key(city))
-    .flatMap(place => place.neighborhoods).map(value => [key(value), value])).values()).sort((a, b) => a.localeCompare(b));
+    .flatMap(place => place.neighborhoods).filter(Boolean).map(value => [key(value), value])).values()).sort((a, b) => a.localeCompare(b));
   const neighborhood = neighborhoods.find(value => key(value) === key(fields.neighborhood)) || normalize(fields.neighborhood);
-  const cities = places.locations.map(place => place.city);
+  const cities = places.locations.map(place => place.city).filter(Boolean);
   if (city && !cities.includes(city)) cities.unshift(city);
   if (neighborhood && !neighborhoods.includes(neighborhood)) neighborhoods.unshift(neighborhood);
   const category = catalog.data?.categories.find(entry => entry.id === fields.categoryId);
@@ -141,8 +143,8 @@ function Discovery() {
   };
   const submit = event => {
     event.preventDefault(); if (!selected) return;
-    if (fields.availability === 'date' && (!isCalendarDate(fields.date) || fields.date < utcToday())) {
-      setFilterError('Choose today or a later pickup date (UTC).'); return;
+    if (fields.availability === 'date' && (!isCalendarDate(fields.date) || fields.date < dateMinimum)) {
+      setFilterError(mixedDates ? 'Choose today or a later date in the listing timezone.' : 'Choose today or a later pickup date (UTC).'); return;
     }
     setFilterError('');
     const next = new URLSearchParams({ stateId, metroId });
@@ -208,8 +210,8 @@ function Discovery() {
         </select></div>
         <div className="ui-field discovery-extra-option"><label htmlFor="browse-availability">Pickup availability</label><select id="browse-availability" name="availability" value={fields.availability} onChange={change}>
           <option value="all">Any pickup window</option><option value="now">Available Now</option><option value="later">Available Later</option><option value="date">On a selected date</option></select></div>
-        {fields.availability === 'date' && <div className="ui-field discovery-extra-option"><label htmlFor="browse-date">Pickup date (UTC)</label>
-          <input id="browse-date" ref={dateInput} type="date" name="date" required min={utcToday()} value={fields.date} onChange={change}
+        {fields.availability === 'date' && <div className="ui-field discovery-extra-option"><label htmlFor="browse-date">{mixedDates ? 'Pickup date (listing timezone)' : 'Pickup date (UTC)'}</label>
+          <input id="browse-date" ref={dateInput} type="date" name="date" required min={dateMinimum} value={fields.date} onChange={change}
             aria-invalid={Boolean(filterError)} aria-describedby={filterError ? 'browse-date-error' : undefined} />
           {filterError && <p id="browse-date-error" role="alert" className="ui-field-error">{filterError}</p>}</div>}
         <div className="ui-field discovery-extra-option"><label htmlFor="browse-sort">Sort items</label><select id="browse-sort" name="sort" value={fields.sort} onChange={change}>
@@ -224,7 +226,7 @@ function Discovery() {
         <div className="ui-field"><label htmlFor="browse-neighborhood">Neighborhood</label><select id="browse-neighborhood" name="neighborhood" value={neighborhood} onChange={change}><option value="">All neighborhoods</option>
           {neighborhoods.map(value => <option key={key(value)} value={value}>{value}</option>)}</select></div>
       </div>
-      <p className="discovery-help">Pickup dates use UTC.</p>
+      <p className="discovery-help">Pickup dates use the timezone shown on each listing; legacy plan dates use UTC.</p>
       <div className="discovery-search-actions"><button className="ui-button">Find free items</button>{canClear && <button type="button" className="ui-button ui-button--secondary" onClick={clear}>Clear filters</button>}</div>
     </Surface>
     <p className="discovery-summary" aria-label="Applied filters">{applied.length ? applied.join(' · ') : 'No account needed to browse.'}</p>

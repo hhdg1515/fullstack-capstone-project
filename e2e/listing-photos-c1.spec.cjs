@@ -6,7 +6,7 @@ const { randomUUID } = require('node:crypto');
 const sharp = require('../giftlink-backend/node_modules/sharp');
 const { ObjectId } = require('../giftlink-backend/node_modules/mongodb');
 const AxeBuilder = require('@axe-core/playwright').default;
-const { test: base, expect } = require('@playwright/test');
+const { test: base, expect } = require('./local-browser.cjs');
 const { localEnvironment } = require('./local.cjs');
 const test = base.extend({ deployment: [async ({}, use) => {
   if (process.env.E2E_APP_ORIGIN) throw Error('C1 fixtures are isolated local only');
@@ -24,7 +24,7 @@ async function audit(page, name) {
   }
 }
 const day = offset => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
-test('independent draft photos: one save, private owner delivery, no plan, recovery-safe deletion', async ({ browser, deployment }, info) => {
+test('independent draft photos: one save, private owner delivery, no plan, recovery-safe deletion', async ({ isolatedBrowser: browser, deployment }, info) => {
   const width = info.project.name === 'mobile' ? 375 : 1440;
   const options = { baseURL: deployment.origin, ignoreHTTPSErrors: true, viewport: { width, height: 1000 } };
   const owner = await browser.newContext(options), other = await browser.newContext(options);

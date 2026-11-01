@@ -3,7 +3,7 @@ const { ObjectId } = require('mongodb');
 const { assertOperation, unavailable } = require('./item-image-policy');
 const { visibilityPipeline, initialMatch } = require('./discovery');
 function createImageAuthorization({ connectToDatabase, configuration }) {
-    return async function authorize(imageId, variant, viewerId, { independentPhotos = false } = {}) {
+    return async function authorize(imageId, variant, viewerId, { independentPhotos = false, independentPublic = false } = {}) {
         if (!/^[a-fA-F0-9]{24}$/.test(imageId) || !['thumbnail', 'display'].includes(variant)) throw unavailable();
         const db = await connectToDatabase(), session = db.client.startSession();
         try { return await session.withTransaction(async () => {
@@ -16,9 +16,18 @@ function createImageAuthorization({ connectToDatabase, configuration }) {
             if (row.schemaVersion === 2) {
                 // UX-2C1: independent-listing media is private to its live owner.
                 // Public/requester delivery waits for the C3 publication contract.
-                if (!independentPhotos || !account || !(viewerId instanceof ObjectId) || !viewerId.equals(row.ownerId)) throw unavailable();
+                if (!independentPhotos || !account) throw unavailable();
                 const owned = await db.collection('items').findOne({ _id: row.itemId, ownerId: row.ownerId, listingSchemaVersion: 2, planId: { $exists: false } }, options);
                 if (!owned || !['draft', 'available', 'unlisted', 'expired', 'cleared'].includes(owned.status) || !(owned.ownerId instanceof ObjectId) || !owned.ownerId.equals(row.ownerId)) throw unavailable();
+                if (!(viewerId instanceof ObjectId && viewerId.equals(row.ownerId))) {
+                    if (!independentPublic) throw unavailable();
+                    const visible = await db.collection('items').aggregate(require('./independent-visibility').independentVisibilityPipeline({ _id: row.itemId, ownerId: row.ownerId }, account.now), options).next();
+                    if (!visible) throw unavailable();
+                    // Same strict tuple verification as pickup admission, after the
+                    // DB-side visibility checks and before returning any bytes.
+                    const context = require('./listing-context').resolveListingContext(owned, null, row.ownerId, account.now);
+                    if (!context.policyEligible) throw unavailable();
+                }
                 return { row, variant: Object.assign({}, row.variants[variant]) };
             }
             const plan = await db.collection('moveOutPlans').findOne({ _id: row.planId, ownerId: row.ownerId }, options);

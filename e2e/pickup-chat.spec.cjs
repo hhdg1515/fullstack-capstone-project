@@ -12,7 +12,7 @@ const test = base.extend({ deployment: [async ({}, use) => {
 }, { scope: 'worker', timeout: 180000 }] });
 test.skip(Boolean(process.env.E2E_APP_ORIGIN), 'Chat fixtures and evidence use only disposable local data');
 
-test('participants exchange private text, retain reading position and drafts, then read closed history', async ({ browser, deployment }, testInfo) => {
+test('participants exchange private text, retain reading position and drafts, then read closed history', async ({ isolatedBrowser: browser, deployment }, testInfo) => {
   const options = { ...testInfo.project.use, baseURL: deployment.origin, ignoreHTTPSErrors: true,
     extraHTTPHeaders: { 'X-Deployment-Target': deployment.fingerprint } };
   delete options.launchOptions; delete options.trace; delete options.screenshot; delete options.video;

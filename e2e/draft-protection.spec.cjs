@@ -1,7 +1,7 @@
 const { randomUUID } = require('node:crypto');
 const { test, expect } = require('./fixtures.cjs');
 test.skip(Boolean(process.env.E2E_APP_ORIGIN), 'Draft scenarios use only disposable local fixtures');
-test('dirty forms survive declined navigation, native reload and local editor cancellation', async ({ browser, deployment }, testInfo) => {
+test('dirty forms survive declined navigation, native reload and local editor cancellation', async ({ isolatedBrowser: browser, deployment }, testInfo) => {
   const options = { ...testInfo.project.use, baseURL: deployment.origin, ignoreHTTPSErrors: true,
     extraHTTPHeaders: { 'X-Deployment-Target': deployment.fingerprint } };
   delete options.launchOptions; delete options.trace; delete options.screenshot; delete options.video;

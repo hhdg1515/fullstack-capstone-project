@@ -2,9 +2,9 @@ const express = require('express');
 const { rateLimit } = require('express-rate-limit');
 const { errorResponse } = require('../middleware/identity');
 const { createOwnerListingService } = require('../services/owner-listings');
-function createOwnerListingRoutes({ connectToDatabase, auth, ownerListingsEnabled, ownerListingPhotosEnabled = false, independentPickups = false, imageMetadata, imageControlLimit = 20, pipeline }) {
+function createOwnerListingRoutes({ connectToDatabase, auth, ownerListingsEnabled, ownerListingPhotosEnabled = false, independentPickups = false, independentPublication = false, imageMetadata, imageControlLimit = 20, pipeline }) {
     const photos = ownerListingPhotosEnabled === true && Boolean(imageMetadata);
-    const service = createOwnerListingService({ connectToDatabase, imageMetadata, imageRead: Boolean(imageMetadata && pipeline), independentPhotos: photos, independentPickups });
+    const service = createOwnerListingService({ connectToDatabase, imageMetadata, imageRead: Boolean(imageMetadata && pipeline), independentPhotos: photos, independentPickups, independentPublication });
     const enabled = (req, res, next) => ownerListingsEnabled === true ? next() : errorResponse(res, 503, 'OWNER_LISTINGS_DISABLED', 'Independent owner listings are not enabled.');
     const limit = rateLimit({ windowMs: 60000, limit: 120, standardHeaders: 'draft-7', legacyHeaders: false,
         handler: (req, res) => errorResponse(res, 429, 'OWNER_LISTINGS_BUSY', 'Too many listing requests. Wait a minute and retry.') });
@@ -17,6 +17,7 @@ function createOwnerListingRoutes({ connectToDatabase, auth, ownerListingsEnable
                 for (const item of result.items || [result.item]) item.photoPreview = { availability: 'unavailable', images: [] };
             }
             // Independent photo controls are a server capability, not a client guess.
+            result.publicationEnabled = independentPublication;
             result.photoCapabilities = { metadata: photos, binaryUpload: photos && caps.binaryUpload === true, imageRead: photos && caps.imageRead === true };
             res.status(req.method === 'POST' && !req.params.itemId ? 201 : 200).json(result);
         } catch (error) { next(error); }
