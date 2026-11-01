@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { apiRequest } from '../api/client';
+import { apiRequest, advanceSessionGeneration } from '../api/client';
 
 const AppContext = createContext();
 const userResponse = data => data && data.user && !Array.isArray(data.user) &&
@@ -12,6 +12,7 @@ export const AuthProvider = ({ children }) => {
   const [sessionMessage, setSessionMessage] = useState('');
   const revision = useRef(0);
   const hasSession = useRef(false);
+  const userId = useRef(null);
   const invalidate = useCallback(() => { ++revision.current; }, []);
 
   const refreshSession = useCallback(async () => {
@@ -21,6 +22,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const data = await apiRequest('/api/me', { notifyUnauthorized: false, validate: userResponse });
       if (current !== revision.current) return;
+      if (userId.current !== data.user.id) { advanceSessionGeneration(); userId.current = data.user.id; }
       setUser(data.user);
       hasSession.current = true;
       setStatus('authenticated');
@@ -28,6 +30,10 @@ export const AuthProvider = ({ children }) => {
       return data.user;
     } catch (failure) {
       if (current !== revision.current) return;
+      // Reconfirming an already anonymous visitor does not change identity.
+      // Otherwise every anonymous focus check invalidates concurrent public GETs.
+      if (hasSession.current || userId.current !== null) advanceSessionGeneration();
+      userId.current = null;
       setUser(null);
       hasSession.current = false;
       if (failure.status === 401) {
@@ -49,6 +55,7 @@ export const AuthProvider = ({ children }) => {
     refreshSession().catch(() => {});
     const unauthorized = () => {
       invalidate();
+      advanceSessionGeneration(); userId.current = null;
       setUser(null);
       hasSession.current = false;
       setStatus('anonymous');
@@ -57,16 +64,25 @@ export const AuthProvider = ({ children }) => {
     window.addEventListener('giftlink:unauthorized', unauthorized);
     const checkSession = () => { refreshSession().catch(() => {}); };
     window.addEventListener('focus', checkSession);
+    const restored = event => { if (event.persisted) {
+      invalidate(); advanceSessionGeneration(); userId.current = null; hasSession.current = false;
+      setUser(null); setStatus('loading'); checkSession();
+    } };
+    window.addEventListener('pageshow', restored);
     return () => {
       invalidate();
       window.removeEventListener('giftlink:unauthorized', unauthorized);
       window.removeEventListener('focus', checkSession);
+      window.removeEventListener('pageshow', restored);
     };
   }, [refreshSession, invalidate]);
 
   const authenticate = async (path, details) => {
-    ++revision.current;
-    await apiRequest(path, { method: 'POST', body: details, notifyUnauthorized: false });
+    const current = ++revision.current;
+    advanceSessionGeneration(); userId.current = null; hasSession.current = false; setUser(null); setStatus('loading');
+    try { await apiRequest(path, { method: 'POST', body: details, notifyUnauthorized: false }); }
+    catch (failure) { if (current === revision.current) setStatus('anonymous'); throw failure; }
+    if (current !== revision.current) throw new Error('Sign-in was superseded.');
     // Confirm the browser accepted the cookie instead of trusting the form response.
     const confirmed = await refreshSession();
     if (!confirmed) throw new Error('Could not confirm your session. Check cookies and try again.');
@@ -74,14 +90,17 @@ export const AuthProvider = ({ children }) => {
   const login = details => authenticate('/api/auth/login', details);
   const register = details => authenticate('/api/auth/register', details);
   const logout = async () => {
+    const current = ++revision.current;
+    advanceSessionGeneration(); userId.current = null;
+    setUser(null); hasSession.current = false; setStatus('loading');
+    try { await apiRequest('/api/auth/logout', { method: 'POST', body: {}, notifyUnauthorized: false }); }
+    catch (failure) {
+      if (current === revision.current) await refreshSession().catch(() => {});
+      throw failure;
+    }
+    if (current !== revision.current) return;
     ++revision.current;
-    await apiRequest('/api/auth/logout', { method: 'POST', body: {}, notifyUnauthorized: false });
-    ++revision.current;
-    setUser(null);
-    hasSession.current = false;
-    setStatus('anonymous');
-    setError('');
-    setSessionMessage('');
+    setStatus('anonymous'); setError(''); setSessionMessage('');
   };
   const updateProfile = async details => {
     const current = ++revision.current;

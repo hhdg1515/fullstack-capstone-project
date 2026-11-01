@@ -1,6 +1,7 @@
 import React from 'react';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { AuthProvider, useAppContext } from './AuthContext';
+import { apiRequest } from '../api/client';
 
 const user = { id: 'server-user', firstName: 'Server', lastName: 'User', email: 'own@example.test' };
 const reply = (status, data) => ({ status, ok: status >= 200 && status < 300, json: async () => data });
@@ -15,6 +16,24 @@ function Consumer() {
 }
 const renderAuth = () => render(<AuthProvider><Consumer /></AuthProvider>);
 beforeEach(() => { global.fetch = jest.fn(); sessionStorage.clear(); });
+
+test.each(['initial', 'focus'])('confirming anonymous %s state does not invalidate concurrent public reads', async phase => {
+  let session, complete; const me = new Promise(resolve => { session = resolve; });
+  fetch.mockImplementation(url => url === '/api/me' ? phase === 'initial' ? me : Promise.resolve(reply(401, { error: { code: 'UNAUTHENTICATED' } })) : new Promise(resolve => { complete = resolve; }));
+  renderAuth(); if (phase === 'focus') await screen.findByText('anonymous:');
+  const reading = apiRequest('/api/items?stateId=06&metroId=41860');
+  if (phase === 'initial') await act(async () => session(reply(401, { error: { code: 'UNAUTHENTICATED' } })));
+  else { fireEvent(window, new Event('focus')); await waitFor(() => expect(fetch.mock.calls.filter(([url]) => url === '/api/me')).toHaveLength(2)); }
+  await screen.findByText('anonymous:'); complete(reply(200, { items: [], total: 0 }));
+  await expect(reading).resolves.toEqual({ items: [], total: 0 }); expect(screen.getByText('anonymous:')).toBeInTheDocument();
+});
+test('losing a known authenticated session still fences a concurrent owner-aware read', async () => {
+  let complete; let checks = 0;
+  fetch.mockImplementation(url => url === '/api/me' ? Promise.resolve(++checks === 1 ? reply(200, { user }) : reply(401, { error: { code: 'SESSION_EXPIRED' } })) : new Promise(resolve => { complete = resolve; }));
+  renderAuth(); await screen.findByText('authenticated:Server'); const reading = apiRequest('/api/items?stateId=06&metroId=41860').catch(error => error);
+  fireEvent(window, new Event('focus')); await screen.findByText('anonymous:'); complete(reply(200, { items: [{ isOwner: true }] }));
+  expect((await reading).code).toBe('SESSION_CHANGED');
+});
 
 test('checks the server and clears legacy browser identity instead of trusting it', async () => {
   sessionStorage.setItem('auth-token', 'old-bearer'); sessionStorage.setItem('name', 'Forged');
@@ -42,10 +61,12 @@ test('confirms the cookie with /me after login and revokes the server session be
   expect(fetch.mock.calls[3][0]).toMatch(/\/api\/auth\/logout$/);
 });
 test('does not claim logout succeeded when the server cannot be reached', async () => {
-  fetch.mockResolvedValueOnce(reply(200, { user })).mockRejectedValueOnce(new Error('offline'));
+  fetch.mockResolvedValueOnce(reply(200, { user })).mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(reply(200, { user }));
   renderAuth(); await screen.findByText('authenticated:Server');
   fireEvent.click(screen.getByText('Sign out'));
-  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+  await screen.findByText('authenticated:Server');
+  expect(fetch.mock.calls[2][0]).toMatch(/\/api\/me$/);
   expect(screen.getByText('authenticated:Server')).toBeInTheDocument();
 });
 test('handles expired sessions and server recovery separately', async () => {

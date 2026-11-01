@@ -1,0 +1,5 @@
+.owner-listing-grid { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: var(--ui-space-6); }
+.owner-listing-grid > li { overflow-wrap: anywhere; min-width: 0; }
+.owner-listing-grid h2 { margin-block: var(--ui-space-4); }
+.owner-listing-preview { min-height: 90px; display: flex; align-items: center; color: var(--ui-muted); }
+.owner-listing-preview img { max-width: 100%; object-fit: cover; }

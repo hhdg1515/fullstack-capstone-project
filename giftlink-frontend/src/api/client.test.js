@@ -87,3 +87,45 @@ test.each([0, -1, 3601, '60', {}, null])('does not trust invalid quota delay %s'
   fetch.mockResolvedValue(reply(429, { error: { code: 'MESSAGE_QUOTA_EXCEEDED', message: 'Try later.', retryAfterSeconds } }));
   await expect(apiRequest('/api/me')).rejects.toMatchObject({ status: 429, retryAfterSeconds: undefined });
 });
+
+test('a stale unauthorized response cannot expire a newer session', async () => {
+  const { apiRequest, advanceSessionGeneration } = require('./client');
+  let resolve;
+  global.fetch = jest.fn(() => new Promise(done => { resolve = done; }));
+  const listener = jest.fn(); window.addEventListener('giftlink:unauthorized', listener);
+  const pending = apiRequest('/api/me/items').catch(error => error);
+  advanceSessionGeneration();
+  resolve({ status: 401, ok: false, headers: { get: () => 'application/json' }, json: async () => ({ error: { code: 'SESSION_EXPIRED' } }) });
+  await pending;
+  expect(listener).not.toHaveBeenCalled();
+  window.removeEventListener('giftlink:unauthorized', listener);
+});
+
+test.each([200, 401, 503])('discards delayed account A HTTP %s after the session changes', async status => {
+  const { apiRequest, advanceSessionGeneration } = require('./client');
+  let resolve; global.fetch = jest.fn(() => new Promise(done => { resolve = done; }));
+  const pending = apiRequest('/api/me/items').catch(error => error);
+  advanceSessionGeneration();
+  resolve({ status, ok: status === 200, headers: { get: () => 'application/json' }, json: async () => ({ items: [{ name: 'Private A' }] }) });
+  expect((await pending).code).toBe('SESSION_CHANGED');
+});
+
+test('discards an A mutation body whose JSON resolves only after the account transition', async () => {
+  const { apiRequest, advanceSessionGeneration } = require('./client');
+  let release, entered;
+  const parsing = new Promise(resolve => { entered = resolve; });
+  global.fetch = jest.fn(async () => ({ status: 200, ok: true, headers: { get: () => 'application/json' },
+    json: () => { entered(); return new Promise(resolve => { release = resolve; }); } }));
+  const pending = apiRequest('/api/items', { method: 'POST', body: { name: 'Private A draft' } }).catch(error => error);
+  await parsing; advanceSessionGeneration(); release({ item: { name: 'Private A draft' } });
+  expect((await pending).code).toBe('SESSION_CHANGED');
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+test('identity-free region catalogs remain usable during session checks', async () => {
+  const { apiRequest, advanceSessionGeneration } = require('./client');
+  let release; global.fetch = jest.fn(() => new Promise(resolve => { release = resolve; }));
+  const pending = apiRequest('/api/regions'); advanceSessionGeneration();
+  release({ status: 200, ok: true, headers: { get: () => 'application/json' }, json: async () => ({ states: [], metros: [] }) });
+  expect(await pending).toEqual({ states: [], metros: [] });
+});

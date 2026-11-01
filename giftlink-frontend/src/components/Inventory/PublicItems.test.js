@@ -482,3 +482,25 @@ test('session changes clear owner-aware cards immediately and ignore an old acco
   expect(screen.queryByRole('link', { name: 'Stale owner listing' })).not.toBeInTheDocument();
   expect(screen.queryByText('Your listing')).not.toBeInTheDocument();
 });
+test('session changes reload location options and discard late old-session options', async () => {
+  const old = pending(); let calls = 0;
+  mockAuth = { status: 'authenticated', user: { id: 'account-a' } };
+  locationHandler = async () => ++calls === 1 ? old.promise : reply(200, { locations: [{ city: 'Current city', neighborhoods: ['Current neighborhood'] }], truncated: false });
+  mount(); await ready();
+  mockAuth = { status: 'authenticated', user: { id: 'account-b' } };
+  const { advanceSessionGeneration } = require('../../api/client'); advanceSessionGeneration();
+  fireEvent.change(screen.getByLabelText('Search items'), { target: { value: 'New session' } });
+  await screen.findByRole('option', { name: 'Current neighborhood' });
+  await act(async () => old.resolve(reply(200, { locations: [{ city: 'Old city', neighborhoods: ['Old neighborhood'] }], truncated: false })));
+  expect(calls).toBe(2); expect(screen.getByRole('option', { name: 'Current neighborhood' })).toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: 'Old neighborhood' })).not.toBeInTheDocument();
+  expect(screen.queryByText(/Location options are unavailable/)).not.toBeInTheDocument();
+});
+test.each([200,401])('initial session resolution reissues anonymous public reads and discards the old %s result',async status=>{
+  const old=pending();let calls=0;mockAuth={status:'loading',user:null};
+  handler=async()=>++calls===1?old.promise:feed([b]);mount();
+  await waitFor(()=>expect(calls).toBe(1));mockAuth={status:'anonymous',user:null};
+  fireEvent.change(screen.getByLabelText('Search items'),{target:{value:'Current anonymous search'}});
+  await screen.findByRole('link',{name:b.name});await act(async()=>old.resolve(status===200?feed([{...a,isOwner:true}]):reply(401,{error:{message:'Old unauthorized result'}})));
+  expect(screen.getByRole('link',{name:b.name})).toBeInTheDocument();expect(screen.queryByText('Your listing')).not.toBeInTheDocument();expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});

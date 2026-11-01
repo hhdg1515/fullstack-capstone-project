@@ -54,7 +54,7 @@ const validFeed = data => Array.isArray(data.items) && Number.isSafeInteger(data
 const sameQuery = (a, b) => { const x = new URLSearchParams(a), y = new URLSearchParams(b); x.sort(); y.sort(); return x.toString() === y.toString(); };
 function Discovery() {
   const [params, setParams] = useSearchParams(); const query = params.toString();
-  const auth = useAppContext(); const viewer = auth?.status === 'authenticated' ? auth.user.id : 'anonymous';
+  const auth = useAppContext(); const viewer = auth?.status === 'authenticated' ? auth.user.id : auth?.status || 'anonymous';
   const directory = usePublicCatalog('/api/regions'), catalog = usePublicCatalog('/api/item-taxonomy');
   const stateId = params.get('stateId') || '', metroId = params.get('metroId') || '';
   const selected = selectedMetro(directory.data, stateId, metroId);
@@ -101,7 +101,7 @@ function Discovery() {
     }).then(data => { if (active) setPlaces({ ...data, loading: false }); })
       .catch(error => { if (active) setPlaces({ loading: false, locations: [], error }); });
     return () => { active = false; };
-  }, [stateId, metroId, selected, locationAttempt]);
+  }, [stateId, metroId, selected, locationAttempt, viewer]);
   useEffect(() => {
     const refresh = () => { setAttempt(value => value + 1); setLocationAttempt(value => value + 1); };
     window.addEventListener('focus', refresh); return () => window.removeEventListener('focus', refresh);
@@ -246,7 +246,7 @@ function Discovery() {
 }
 function PublicItemDetail({ itemId }) {
   const auth = useAppContext();
-  const viewer = auth?.status === 'authenticated' ? auth.user.id : 'anonymous';
+  const viewer = auth?.status === 'authenticated' ? auth.user.id : auth?.status || 'anonymous';
   const scope = `${viewer}:${itemId}`;
   const location = useLocation();
   const [attempt, setAttempt] = useState(0);

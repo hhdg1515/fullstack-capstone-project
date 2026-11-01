@@ -33,6 +33,7 @@ beforeEach(() => {
   jest.spyOn(window, 'scrollTo').mockImplementation(() => {});
   global.fetch = jest.fn(async (url, options = {}) => {
     const path = new URL(url, 'http://localhost').pathname;
+    if (path === '/api/me/items') return reply({ items: [], nextCursor: null });
     if (path === '/api/me') return sessionUser ? reply({ user: sessionUser }) : reply({ error: { code: 'UNAUTHENTICATED' } }, 401);
     if (path === '/api/auth/login' || path === '/api/auth/register') { sessionUser = user; return reply({ user }, path.endsWith('register') ? 201 : 200); }
     if (path === '/api/auth/logout') { sessionUser = null; return reply(null, 204); }
@@ -56,7 +57,7 @@ afterEach(() => jest.restoreAllMocks());
 test('anonymous homepage exposes both intentions immediately while the session check is still pending', async () => {
   fetch.mockReturnValue(new Promise(() => {})); mount();
   expect(screen.getByRole('heading', { name: /Move lighter.*Settle smarter/ , level: 1 })).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Start Giving' })).toHaveAttribute('href', '/app/plans');
+  expect(screen.getByRole('link', { name: 'Start Giving' })).toHaveAttribute('href', '/app/listings');
   expect(screen.getByRole('link', { name: 'Explore Free Items' })).toHaveAttribute('href', '/app/items');
   expect(screen.getByText(/Everything is free/)).toBeInTheDocument();
   expect(fetch).toHaveBeenCalledTimes(1); expect(fetch.mock.calls[0][0]).toMatch(/\/api\/me$/);
@@ -71,7 +72,7 @@ test('Find Free Items opens anonymously without a plan and asks for a browsing r
   expect(fetch.mock.calls.some(([url]) => url.includes('/api/move-out-plans'))).toBe(false);
   expect(screen.queryByLabelText(/account type|role/i)).not.toBeInTheDocument();
 });
-test('Start Giving requires login, preserves intent through registration and returns to the existing plans dashboard', async () => {
+test('Start Giving requires login, preserves intent through registration and returns to My Listings', async () => {
   mount(); await click(screen.getByRole('link', { name: 'Start Giving' }));
   expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument();
   await click(screen.getByRole('link', { name: 'Register Here' }));
@@ -79,7 +80,7 @@ test('Start Giving requires login, preserves intent through registration and ret
   expect(screen.queryByLabelText(/role|giver|receiver|buyer|seller|account type/i)).not.toBeInTheDocument();
   for (const [label, value] of [['First name', 'Neighbor'], ['Last name', 'Member'], ['Email', user.email], ['Password', 'isolated-long-password']]) fireEvent.change(screen.getByLabelText(label), { target: { value } });
   await act(async () => { fireEvent.submit(screen.getByRole('button', { name: 'Register', exact: true }).closest('form')); });
-  expect(await screen.findByRole('heading', { name: 'My move-out plans' })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'My Listings' })).toBeInTheDocument();
   const [, options] = fetch.mock.calls.find(([url]) => url.endsWith('/api/auth/register'));
   expect(Object.keys(JSON.parse(options.body)).sort()).toEqual(['email', 'firstName', 'lastName', 'password']);
   expect(screen.getByText('Signed in as Neighbor')).toBeInTheDocument();
@@ -110,7 +111,7 @@ test('one account gives in Pasadena and searches Irvine without copying or enfor
   fireEvent.change(screen.getByLabelText('City', { exact: true }), { target: { value: 'Irvine' } });
   await click(screen.getByRole('button', { name: 'Find free items' }));
   await waitFor(() => expect(screen.getByTestId('route')).toHaveTextContent('/app/items?stateId=06&metroId=31080&city=Irvine'));
-  await click(primary().getByRole('link', { name: 'Give Away' })); await screen.findByRole('link', { name: 'Pasadena move' });
+  await click(primary().getByRole('link', { name: 'My Listings' })); await screen.findByRole('heading', { name: 'My Listings' });
   await click(screen.getByRole('button', { name: 'Browser Back' }));
   expect(await screen.findByLabelText('City', { exact: true })).toHaveValue('Irvine');
   expect(screen.getByText('Signed in as Neighbor')).toBeInTheDocument();
@@ -126,7 +127,7 @@ test('Give Away provides consolidated incoming requests and per-plan inventory/c
   expect(fetch.mock.calls.some(([url]) => url.includes('/api/pickup-requests/received'))).toBe(true);
   detailRole = 'giver'; await click(await screen.findByRole('link', { name: /^View request from/ }));
   expect(await screen.findByRole('button', { name: 'Accept pickup' })).toBeInTheDocument();
-  expect(primary().getByRole('link', { name: 'Give Away' })).toHaveAttribute('aria-current', 'location');
+  expect(primary().getByRole('link', { name: 'My Listings' })).toHaveAttribute('aria-current', 'location');
   await click(primary().getByRole('link', { name: 'Find Free Items' }));
   await click(context('Find Free Items').getByRole('link', { name: 'My pickup requests' }));
   expect(await screen.findByRole('heading', { name: 'My pickup requests' })).toBeInTheDocument();
@@ -155,11 +156,17 @@ test('mobile menu exposes its state, supports Escape/focus return, and closes af
   sessionUser = user; mount(); await screen.findByText('Signed in as Neighbor');
   const button = screen.getByRole('button', { name: 'Menu' }); expect(button).toHaveAttribute('aria-expanded', 'false');
   await click(button); expect(button).toHaveAttribute('aria-expanded', 'true'); expect(button).toHaveAttribute('aria-controls', 'primary-navigation');
-  fireEvent.keyDown(primary().getByRole('link', { name: 'Give Away' }), { key: 'Escape' });
+  fireEvent.keyDown(primary().getByRole('link', { name: 'My Listings' }), { key: 'Escape' });
   expect(button).toHaveAttribute('aria-expanded', 'false'); expect(button).toHaveFocus();
-  await click(button); await click(primary().getByRole('link', { name: 'Give Away' }));
-  expect(await screen.findByRole('heading', { name: 'My move-out plans' })).toBeInTheDocument();
+  await click(button); await click(primary().getByRole('link', { name: 'My Listings' }));
+  expect(await screen.findByRole('heading', { name: 'My Listings' })).toBeInTheDocument();
   expect(button).toHaveAttribute('aria-expanded', 'false'); expect(document.getElementById('main-content')).toHaveFocus();
+});
+test('private item editors keep My Listings active instead of public discovery', async () => {
+  sessionUser = user; mount('/app/items/' + item.id + '/edit');
+  await screen.findByText('Signed in as Neighbor');
+  expect(primary().getByRole('link', { name: 'My Listings' })).toHaveAttribute('aria-current', 'location');
+  expect(primary().getByRole('link', { name: 'Find Free Items' })).not.toHaveAttribute('aria-current');
 });
 test('brand and default account/logout navigation return to the two-path homepage', async () => {
   sessionUser = user; mount('/app/profile'); await screen.findByRole('heading', { name: 'Your account' });

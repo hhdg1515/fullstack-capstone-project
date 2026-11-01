@@ -11,10 +11,16 @@ export class ApiError extends Error {
   }
 }
 
+let sessionGeneration = 0;
+export const advanceSessionGeneration = () => { sessionGeneration += 1; };
+
 const unavailable = () => new ApiError('The service is temporarily unavailable. Please try again later.', 503, 'SERVICE_UNAVAILABLE');
 const timedOut = () => new ApiError('The request timed out. Refresh to check the latest state before trying again.', 0, 'REQUEST_TIMEOUT');
 
 export async function apiRequest(path, { method = 'GET', body, notifyUnauthorized = true, validate } = {}) {
+  const requestGeneration = sessionGeneration;
+  const identityFreeCatalog = method === 'GET' && ['/api/regions', '/api/item-taxonomy'].includes(path);
+  const currentSession = () => { if (!identityFreeCatalog && requestGeneration !== sessionGeneration) throw new ApiError('Session changed. Reload this page.', 0, 'SESSION_CHANGED'); };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
   try {
@@ -26,9 +32,11 @@ export async function apiRequest(path, { method = 'GET', body, notifyUnauthorize
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
     } catch {
+      currentSession();
       if (controller.signal.aborted) throw timedOut();
       throw new ApiError('Unable to reach the server. Please try again.', 0, 'NETWORK_ERROR');
     }
+    currentSession();
     let data = null;
     if (response.status !== 204) {
       const contentType = response.headers?.get('content-type');
@@ -38,8 +46,9 @@ export async function apiRequest(path, { method = 'GET', body, notifyUnauthorize
       catch { if (controller.signal.aborted) throw timedOut(); throw unavailable(); }
       if (!data || typeof data !== 'object') throw unavailable();
     }
+    currentSession();
     if (!response.ok) {
-      if (response.status === 401 && notifyUnauthorized) window.dispatchEvent(new Event('giftlink:unauthorized'));
+      if (response.status === 401 && notifyUnauthorized && requestGeneration === sessionGeneration) window.dispatchEvent(new Event('giftlink:unauthorized'));
       throw new ApiError(typeof data?.error?.message === 'string' ? data.error.message : 'Request failed. Please try again.', response.status,
         data?.error?.code, data?.error?.fields, data?.error?.conflicts, response.status === 429 ? data?.error?.retryAfterSeconds : undefined);
     }

@@ -15,6 +15,8 @@ import Inventory from './components/Inventory/Inventory';
 import PublicItems from './components/Inventory/PublicItems';
 import { RequestPickup, PickupDashboard, PickupDetail } from './components/Pickups/Pickups';
 import Home from './components/Journeys/Home';
+import { useAppContext } from './context/AuthContext';
+import { MyListings, ListingDetail, ListingForm, ListingEditor } from './components/Listings/Listings';
 
 function RouteFocus() {
   const { pathname } = useLocation(); const previous = useRef(pathname);
@@ -26,6 +28,9 @@ function RouteFocus() {
 }
 
 function App() {
+  const { user, status } = useAppContext();
+  const location = useLocation();
+  const listingScope = (status === 'authenticated' ? user?.id : status) + ':' + location.pathname;
   return (
     <>
       <a className="skip-link" href="#main-content">Skip to main content</a>
@@ -41,6 +46,9 @@ function App() {
         <Route path="/app/login" element={<LoginPage />} />
         <Route path="/app/profile" element={<RequireAuth><Profile /></RequireAuth>} />
         <Route path="/app/register" element={<RegisterPage />} />
+        <Route path="/app/listings" element={<RequireAuth><MyListings key={listingScope} /></RequireAuth>} />
+        <Route path="/app/listings/new" element={<RequireAuth><ListingForm key={listingScope} /></RequireAuth>} />
+        <Route path="/app/listings/:itemId" element={<RequireAuth><ListingDetail key={listingScope} /></RequireAuth>} />
         <Route path="/app/plans" element={<RequireAuth><MyPlans /></RequireAuth>} />
         <Route path="/app/plans/new" element={<RequireAuth><CreatePlan /></RequireAuth>} />
         <Route path="/app/plans/:planId" element={<RequireAuth><PlanDetail /></RequireAuth>} />
@@ -48,7 +56,7 @@ function App() {
         <Route path="/app/plans/:planId/items" element={<RequireAuth><Inventory /></RequireAuth>} />
         <Route path="/app/items" element={<PublicItems />} />
         <Route path="/app/items/:itemId" element={<PublicItems />} />
-        <Route path="/app/items/:itemId/edit" element={<RequireAuth><Inventory /></RequireAuth>} />
+        <Route path="/app/items/:itemId/edit" element={<RequireAuth><ListingEditor key={listingScope} /></RequireAuth>} />
         <Route path="/app/items/:itemId/request" element={<RequireAuth><RequestPickup /></RequireAuth>} />
         <Route path="/app/pickups" element={<RequireAuth><PickupDashboard key="sent" /></RequireAuth>} />
         <Route path="/app/pickups/incoming" element={<RequireAuth><PickupDashboard key="incoming" incoming /></RequireAuth>} />

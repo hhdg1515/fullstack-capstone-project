@@ -1,0 +1,8 @@
+.listing-editor { min-width: 0; }
+.listing-editor form, .listing-editor fieldset, .listing-editor .ui-field { min-width: 0; }
+.listing-editor fieldset { margin-block: var(--space-5, 1.5rem); }
+.listing-editor input:not([type=checkbox]), .listing-editor textarea, .listing-editor select { width: 100%; max-width: 100%; box-sizing: border-box; }
+.listing-editor textarea { min-height: 7rem; }
+.listing-editor p, .listing-editor a { overflow-wrap: anywhere; }
+.listing-form-actions { display: flex; flex-wrap: wrap; gap: var(--space-3, .75rem); margin-block: var(--space-3, .75rem); }
+.listing-editor button, .listing-editor select { min-height: 44px; }
