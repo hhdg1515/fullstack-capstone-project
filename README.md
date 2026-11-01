@@ -1009,4 +1009,15 @@ existing `items_owner_created` index. This milestone does not authorize remote
 preparation or activation. V2 publication, photos, pickups and messaging remain off.
 
 See the [implementation, verification evidence and rollback report](docs/milestone-6.6-ux2b3-item-first-frontend.md).
-Public v2 publishing, photos and pickup requests remain unavailable.
+Public v2 publishing and pickup requests remain unavailable.
+
+## Milestone 6.6 UX-2C1: private photos for independent drafts
+
+Owners can add up to five private photos to an independent draft with one
+**Save draft with N photos** submit, through the existing quota, lease,
+sanitization, private storage and verified-cleanup pipeline. Photo rows for
+independent items use a separate `schemaVersion: 2` format without `planId`;
+legacy rows are never rewritten. Intake requires the item's own confirmed
+timezone and future pickup deadline. The new `OWNER_LISTING_PHOTOS_ENABLED`
+gate is **false by default**; public, requester and production v2 media remain
+off. See the [contract, verification and rollback report](docs/milestone-6.6-ux2c1-independent-listing-photos.md).

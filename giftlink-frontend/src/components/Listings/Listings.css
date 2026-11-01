@@ -3,3 +3,5 @@
 .owner-listing-grid h2 { margin-block: var(--ui-space-4); }
 .owner-listing-preview { min-height: 90px; display: flex; align-items: center; color: var(--ui-muted); }
 .owner-listing-preview img { max-width: 100%; object-fit: cover; }
+.owner-listing-photos { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: var(--ui-space-4); }
+.owner-listing-photos img { display: block; max-width: 100%; height: auto; object-fit: cover; border-radius: var(--ui-radius-control); }

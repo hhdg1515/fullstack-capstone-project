@@ -39,10 +39,15 @@ function readImageMetadataConfig(env = process.env) {
     return validateImageConfig({ storageBinding: { fingerprint: env.ITEM_IMAGE_STORAGE_TARGET, namespace: env.ITEM_IMAGE_NAMESPACE }, limits });
 }
 function variantKey(row, variant) { return row.storageBinding.namespace + '/' + row._id.toHexString() + '/' + row.generation + '/' + variant + '.webp'; }
+// Schema 1 rows belong to a legacy plan item and keep their immutable planId.
+// Schema 2 rows belong to an independent (listingSchemaVersion 2) item and have
+// no planId field at all. Neither format is ever rewritten into the other.
+const operationFields = ['schemaVersion', '_id', 'itemId', 'ownerId', 'clientUploadId', 'intent', 'state', 'sortPosition', 'generation',
+    'storageBinding', 'variants', 'lease', 'version', 'charge', 'cleanup', 'needsMaintenance', 'maintenanceDueAt', 'createdAt', 'updatedAt', 'readyAt', 'deleteRequestedAt', 'deletedAt'];
+const operationSchemas = Object.freeze({ 1: Object.freeze(operationFields.concat('planId')), 2: Object.freeze(operationFields) });
 function validOperation(row) {
-    if (!fields(row, ['schemaVersion', '_id', 'itemId', 'planId', 'ownerId', 'clientUploadId', 'intent', 'state', 'sortPosition', 'generation',
-        'storageBinding', 'variants', 'lease', 'version', 'charge', 'cleanup', 'needsMaintenance', 'maintenanceDueAt', 'createdAt', 'updatedAt', 'readyAt', 'deleteRequestedAt', 'deletedAt']) ||
-        row.schemaVersion !== 1 || !['_id', 'itemId', 'planId', 'ownerId'].every(key => row[key] instanceof ObjectId) ||
+    const names = row && typeof row === 'object' && (row.schemaVersion === 1 || row.schemaVersion === 2) ? operationSchemas[row.schemaVersion] : null;
+    if (!names || !fields(row, names) || !names.filter(key => ['_id', 'itemId', 'planId', 'ownerId'].includes(key)).every(key => row[key] instanceof ObjectId) ||
         !uuid(row.clientUploadId) || !uuid(row.generation) || !states.includes(row.state) ||
         !fields(row.intent, ['byteLength', 'sha256']) || !integer(row.intent.byteLength) || row.intent.byteLength < 1 || row.intent.byteLength > ceiling.inputBytes || !hash(row.intent.sha256) ||
         !fields(row.storageBinding, ['fingerprint', 'namespace']) || !hash(row.storageBinding.fingerprint) || !namespace(row.storageBinding.namespace) ||
@@ -96,6 +101,10 @@ function validOperation(row) {
     return true;
 }
 function assertOperation(row) { if (!validOperation(row)) throw damaged(); return row; }
+// Plan-scoped consumers (public/pickup media, plan inventory previews and legacy
+// delivery) must never interpret an independent-listing operation.
+function assertLegacyOperation(row) { if (!validOperation(row) || row.schemaVersion !== 1) throw damaged(); return row; }
+const isIndependentOperation = row => validOperation(row) && row.schemaVersion === 2;
 function validQuota(q) {
     return fields(q, ['schemaVersion', 'utcDay', 'attempts', 'successful', 'heldSuccess', 'reservedBytes', 'retainedBytes', 'activeUploads', 'operationCount', 'updatedAt']) &&
         q.schemaVersion === 1 && isCalendarDate(q.utcDay) && date(q.updatedAt) &&
@@ -112,4 +121,4 @@ function quotaFor(q, now) {
     return next;
 }
 module.exports = { ceiling, uuid, hash, integer, states, unavailable, damaged, variantKey,
-    validOperation, assertOperation, validQuota, quotaFor, validateImageConfig, readImageMetadataConfig };
+    validOperation, assertOperation, assertLegacyOperation, isIndependentOperation, validQuota, quotaFor, validateImageConfig, readImageMetadataConfig };

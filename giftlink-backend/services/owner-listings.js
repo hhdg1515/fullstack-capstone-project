@@ -65,7 +65,7 @@ function feedPipeline(ownerId, params, imageRead) {
     ], as: 'ownerPhotos' } });
     return stages;
 }
-function createOwnerListingService({ connectToDatabase, imageMetadata = null, imageRead = false }) {
+function createOwnerListingService({ connectToDatabase, imageMetadata = null, imageRead = false, independentPhotos = false }) {
     const legacy = createInventoryService({ connectToDatabase, imageMetadata, imageRead });
     function response(item, plan, now) {
         const ctx = resolveListingContext(item, plan, item.ownerId, now, { operation: 'ownerDraft' });
@@ -73,7 +73,8 @@ function createOwnerListingService({ connectToDatabase, imageMetadata = null, im
             throw new InventoryError(409, 'LISTING_CONTEXT_INVALID', 'Listing context is unavailable.');
         }
         const v2 = ctx.modelVersion === 2;
-        const preview = v2 ? { availability: 'disabled', images: [] } : legacy.ownerPhotoPreview(item, plan);
+        // V2 previews use only the item's own schema 2 rows, never a plan join.
+        const preview = v2 && !independentPhotos ? { availability: 'disabled', images: [] } : legacy.ownerPhotoPreview(item, v2 ? null : plan);
         return { id: item._id.toHexString(), name: item.name, description: item.description || '', classification: classificationResponse(item),
             status: item.status === 'available' && ctx.expired ? 'expired' : item.status, version: item.version,
             location: Object.assign(regionResponse(v2 ? item : plan), { city: ctx.region.city || '', neighborhood: ctx.region.neighborhood || '' }),
@@ -82,7 +83,7 @@ function createOwnerListingService({ connectToDatabase, imageMetadata = null, im
                 datePolicy: v2 ? 'pickup-local' : 'utc-calendar', expiresAt: v2 && ctx.expiresAt ? ctx.expiresAt.toISOString() : null },
             photoPreview: { availability: preview.availability, images: preview.images },
             pickupSummary: v2 ? { supported: false, reserved: false } : { supported: true, reserved: Boolean(item.isReserved) },
-            capabilities: { editDraft: v2 && item.status === 'draft', legacyEditor: !v2, publish: false, withdraw: false, photos: false },
+            capabilities: { editDraft: v2 && item.status === 'draft', legacyEditor: !v2, publish: false, withdraw: false, photos: v2 && independentPhotos && item.status === 'draft' },
             createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() };
     }
     async function owned(db, ownerId, itemId, session) {

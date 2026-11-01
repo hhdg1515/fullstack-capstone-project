@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import ListingForm from './ListingForm';
+import ListingFormView from './ListingForm';
 import { listOwnerListings, getOwnerListing } from '../../api/ownerListings';
 import Inventory from '../Inventory/Inventory';
 import { PageHeader, Surface, Feedback } from '../../design-system/primitives';
@@ -64,7 +64,7 @@ export function ListingDetail() {
     <p>Pickup deadline: {item.pickup.availableUntil || 'Not selected'}{item.pickup.datePolicy === 'utc-calendar' ? ' (UTC)' : ''}</p>
     <p>Pickup timezone: {item.pickup.timeZone || 'Not selected'}{item.pickup.datePolicy !== 'utc-calendar' && item.pickup.timeZone ? item.pickup.timeZoneConfirmed ? ' · Confirmed' : ' · Confirmation needed' : ''}</p>
     {(item.capabilities.editDraft || item.capabilities.legacyEditor) && <Link className="ui-button" to={'/app/items/' + item.id + '/edit'}>Edit listing</Link>}
-    {!item.capabilities.legacyEditor && <><p>Private draft. Public publishing is not available yet.</p><h2>Photos</h2><p>Photos are not available for independent drafts yet.</p></>}
+    {!item.capabilities.legacyEditor && <><p>Private draft. Public publishing is not available yet.</p><h2>Photos</h2><ListingPhotos item={item} /></>}
   </>}</main>;
 }
 export function ListingEditor() {
@@ -73,6 +73,23 @@ export function ListingEditor() {
   if (state.item?.capabilities.legacyEditor || state.error?.code === 'OWNER_LISTINGS_DISABLED') return <Inventory />;
   if (state.error) return <main className="ui-page"><Failure error={state.error} /></main>;
   if (!state.item) return <p role="status">Loading listing…</p>;
-  return <ListingForm key={itemId} item={state.item} />;
+  return <ListingFormView key={itemId} item={state.item} photoCapabilities={state.photoCapabilities || null} />;
 }
-export { default as ListingForm } from './ListingForm';
+// Owner-only private thumbnails of an independent draft (UX-2C1); no public URL.
+function ListingPhotos({ item }) {
+  const [failed, setFailed] = useState({});
+  const preview = item.photoPreview || {};
+  if (preview.availability === 'ready') return <ul className="owner-listing-photos" aria-label="Saved photos">{preview.images.filter(image => /^[a-f0-9]{24}$/.test(image.id)).map((image, index) =>
+    <li key={image.id}>{failed[image.id] ? <span>Photo unavailable</span> : <img width="120" height="90" alt={'Saved photo ' + (index + 1) + (index === 0 ? ', cover' : '')} crossOrigin="use-credentials" loading="lazy" decoding="async"
+      src={`${urlConfig.backendUrl}/api/item-images/${image.id}/thumbnail`} onError={() => setFailed(old => ({ ...old, [image.id]: true }))} />}</li>)}</ul>;
+  if (preview.availability === 'unavailable') return <p>Photos are temporarily unavailable.</p>;
+  if (item.capabilities.photos) return <p>No photos yet. Edit the listing to add up to 5 photos.</p>;
+  return <p>Photos are not available for independent drafts yet.</p>;
+}
+// Create Listing learns the server's independent-photo capability; the form
+// renders immediately and photos appear only if the server allows them.
+export function ListingForm() {
+  const [photoCapabilities, setPhotoCapabilities] = useState(null);
+  useEffect(() => { let active = true; listOwnerListings({ limit: 1 }).then(result => active && setPhotoCapabilities(result.photoCapabilities || null)).catch(() => {}); return () => { active = false; }; }, []);
+  return <ListingFormView photoCapabilities={photoCapabilities} />;
+}

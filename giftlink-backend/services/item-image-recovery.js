@@ -93,6 +93,13 @@ function createRecovery({ db, verifyDatabase, identity, receipts, control = null
         }
         if (Object.keys(total).some(key => total[key] !== q[key])) throw failure('accounting');
         // Missing parents are supported orphans; conflicting live ownership is not.
+        // Schema 2 rows have no plan: a surviving item must be the same owner's v2 item.
+        if (row.schemaVersion === 2) {
+            const item = await db.collection('items').findOne({ _id: row.itemId }, opts(session));
+            if (item && (isLegacyItem(item) || item.listingSchemaVersion !== 2 || Object.prototype.hasOwnProperty.call(item, 'planId') ||
+                !(item.ownerId instanceof ObjectId) || !item.ownerId.equals(row.ownerId))) throw failure('integrity');
+            return policy.quotaFor(q, time);
+        }
         const plan = await db.collection('moveOutPlans').findOne({ _id: row.planId }, opts(session));
         const item = await db.collection('items').findOne({ _id: row.itemId }, opts(session));
         if (plan && (!(plan.ownerId instanceof ObjectId) || !plan.ownerId.equals(row.ownerId)) ||
@@ -182,7 +189,8 @@ function createRecovery({ db, verifyDatabase, identity, receipts, control = null
     async function transition(ticket, callback) {
         return transaction(async (session, time) => {
             const row = await db.collection('itemImages').findOne({ _id: ticket._id }, opts(session)); validate(row);
-            if (row.generation !== ticket.generation || !row.ownerId.equals(ticket.ownerId) || !row.planId.equals(ticket.planId) ||
+            if (row.generation !== ticket.generation || row.schemaVersion !== ticket.schemaVersion || !row.ownerId.equals(ticket.ownerId) ||
+                (row.schemaVersion === 1 && !row.planId.equals(ticket.planId)) ||
                 !row.itemId.equals(ticket.itemId) || digest(row.intent) !== digest(ticket.intent)) throw failure('integrity');
             const r = row.cleanup.recovery;
             if (row.state !== 'delete_pending' || !r || r.status !== 'leased' || r.fenceToken !== ticket.cleanup.recovery.fenceToken || r.expiresAt <= time) throw failure('changed');
