@@ -46,7 +46,8 @@ describe('durable local physical image recovery on real MongoDB and SeaweedFS', 
     const row = id => db.collection('itemImages').findOne({ _id: new ObjectId(id) });
     const quota = async () => (await db.collection('users').findOne({ _id: owner })).itemImageQuota;
     const storedInput = v => ({ key: v.key, byteLength: v.byteLength, sha256: v.sha256 });
-    const ids = () => [owner, plan._id.toHexString(), item._id.toHexString()];
+    let independent = false; // UX-2C1 cases switch the fixture to a v2 item with schema 2 rows.
+    const ids = () => [owner, independent ? null : plan._id.toHexString(), item._id.toHexString()];
     const confirmations = manifest => Object.assign({}, context.identity, { manifest: manifest.digest });
     async function preview() { const r = createLocalImageRecovery(context); try { return await r.preview(); } finally { r.close(); } }
     async function apply(manifest) { const r = createLocalImageRecovery(context); try { return await r.apply(manifest, confirmations(manifest)); } finally { r.close(); } }
@@ -107,6 +108,7 @@ describe('durable local physical image recovery on real MongoDB and SeaweedFS', 
         temp = fs.mkdtempSync(path.join(os.tmpdir(), 'moveout-recovery-tests-'));
     });
     beforeEach(async function () {
+        independent = false;
         for (const name of ['itemImages', 'items', 'moveOutPlans', 'users', 'sessions']) await db.collection(name).deleteMany({});
         owner = new ObjectId(); await db.collection('users').insertOne({ _id: owner, email: owner.toHexString() + '@example.test' });
         const now = new Date();
@@ -533,6 +535,32 @@ describe('durable local physical image recovery on real MongoDB and SeaweedFS', 
         const manifest = await preview(); assert.equal(manifest.operations[0].action, 'ineligible_state');
         const result = await apply(manifest); assert.equal(result.results[0].status, 'unresolved');
         assert.equal((await row(r._id)).state, 'ready'); assert.deepEqual(await quota(), q);
+        for (const name of ['thumbnail', 'display']) await storage.getVariant(storedInput(r.variants[name]));
+    });
+    async function useIndependentItem() {
+        // A real confirmed v2 draft: no plan anywhere in its reference graph.
+        const { applyDraft } = require('../services/listing-draft'), now = new Date();
+        item = applyDraft({ _id: new ObjectId(), ownerId: owner, listingSchemaVersion: 2, status: 'draft', version: 1, coordinationRevision: 0, imageRevision: 0,
+            createdAt: now, updatedAt: now, publishedAt: null, name: '', description: '', categoryId: null, itemTypeId: null, customItemType: null, condition: null,
+            stateId: null, metroId: null, city: '', neighborhood: '', pickupTimeZone: null, timeZoneConfirmedAt: null, availableFrom: null, availableUntil: null },
+            { name: 'Independent lamp', pickupTimeZone: 'America/Los_Angeles', pickupTimeZoneConfirmed: true,
+                availableUntil: new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10) }, new Date(now.getTime() - 1000));
+        await db.collection('items').insertOne(item); independent = true;
+    }
+    it('physically cleans an independent schema 2 photo exactly once with no plan reference', async function () {
+        await useIndependentItem(); const r = await ready();
+        assert.equal(r.schemaVersion, 2); assert.ok(!('planId' in r)); await remove(r._id);
+        assert.equal((await apply(await preview())).results[0].status, 'deleted');
+        for (const name of ['thumbnail', 'display']) await absent(r, name);
+        await assertSettled(r._id, true);
+        assert.equal((await db.collection('items').findOne({ _id: item._id })).listingSchemaVersion, 2);
+    });
+    it('refuses to clean a schema 2 photo whose live item became another owner or a legacy item', async function () {
+        await useIndependentItem(); const r = await ready(); await remove(r._id);
+        await db.collection('items').updateOne({ _id: item._id }, { $set: { ownerId: new ObjectId() } });
+        await assert.rejects(preview(), /integrity/);
+        await db.collection('items').replaceOne({ _id: item._id }, { _id: item._id, ownerId: owner, planId: plan._id, status: 'draft', version: 1, createdAt: new Date(), updatedAt: new Date() });
+        await assert.rejects(preview(), /integrity/);
         for (const name of ['thumbnail', 'display']) await storage.getVariant(storedInput(r.variants[name]));
     });
 });

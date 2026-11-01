@@ -1,5 +1,5 @@
 const { ObjectId } = require('mongodb');
-const { assertOperation, integer, validateImageConfig } = require('./item-image-policy');
+const { assertLegacyOperation: assertOperation, integer, validateImageConfig } = require('./item-image-policy');
 
 const variant = (image, name) => ({ url: '/api/item-images/' + image._id.toHexString() + '/' + name,
     width: image.variants[name].width, height: image.variants[name].height });

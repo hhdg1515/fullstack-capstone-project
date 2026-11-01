@@ -143,7 +143,7 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item = {}, onClo
           }
         }
       }
-      if (current()) { setMessage(''); setAnnouncement(preparedCount ? `${preparedCount} photos prepared. Save or publish to include them.` : 'No photos prepared. Check the photo errors.'); }
+      if (current()) { setMessage(''); setAnnouncement(preparedCount ? `${preparedCount} photos prepared. ${planId === null ? 'Save the draft' : 'Save or publish'} to include them.` : 'No photos prepared. Check the photo errors.'); }
     } catch (failure) { failed(photoError(failure)); }
     finally { if (current()) { inFlight.current = false; setBusy(false); } }
   };
@@ -302,7 +302,7 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item = {}, onClo
     {message && <p role="status" className="item-photo-note">{message}</p>}
     {embedded && !draft && capabilities?.metadata !== true && <p role="status">Photo uploads are unavailable.</p>}
     {(draft ? capabilities && !capabilities.binaryUpload : data && !data.capabilities.binaryUpload) && <p role="status">Photo uploads are unavailable.</p>}
-    {data && data.capabilities.binaryUpload && !data.allowance.newUploadsAllowed && <p role="status">Update the plan and pickup dates to add photos.</p>}
+    {data && data.capabilities.binaryUpload && !data.allowance.newUploadsAllowed && <p role="status">{planId === null ? 'Confirm the pickup timezone and set a future pickup deadline to add photos.' : 'Update the plan and pickup dates to add photos.'}</p>}
     {!securePhotoBrowser() && <p role="status">Use a current browser over HTTPS or localhost.</p>}
     {(entries.length > 0 || data?.images.length > 0) && <ul className="item-photos-grid" aria-label="Photos and selections">
       {(!embedded || !recovery) && data?.capabilities.imageRead && data.images.map((image, index) => <ReadyPhoto key={image.id + ':' + refresh} image={image} position={index} cover={index === 0} managing={embedded}>

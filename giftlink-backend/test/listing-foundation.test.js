@@ -42,6 +42,15 @@ describe('versioned listing context and local deadlines (internal only)', functi
             assert.throws(() => resolveDeadline(independent(change), now));
         });
     }
+    it('accepts a tuple recorded by another tz build only while the current rules reproduce its exact expiry', function () {
+        // A Node patch upgrade changes process.versions.tz; the saved instant stays authoritative.
+        const recorded = independent({ timeZoneRulesVersion: 'temporal-0.5.1/tz-2019a' });
+        assert.equal(resolveDeadline(recorded, now).expiresAt.getTime(), independent().expiresAt.getTime());
+        assert.throws(() => resolveDeadline(independent({ timeZoneRulesVersion: 'temporal-0.5.1/tz-2019a', expiresAt: new Date('2027-03-15T08:00:00Z') }), now));
+        for (const label of ['temporal-0.5.1/tz-', 'temporal/tz-2025a', 'temporal-0.5.1/tz-2025a ' , 'x'.repeat(80), 42]) {
+            assert.throws(() => resolveDeadline(independent({ timeZoneRulesVersion: label }), now));
+        }
+    });
     it('resolves a complete v2 context without a plan but never enables public v2', function () {
         const ctx = resolveListingContext(independent(), null, owner, now);
         assert.equal(ctx.modelVersion, 2); assert.equal(ctx.fence, 'item'); assert.equal(ctx.publicEnabled, false);

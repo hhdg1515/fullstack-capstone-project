@@ -10,7 +10,9 @@ const intake = require('./item-image-intake');
 const pipelines = new WeakMap();
 let nativeActive = false, readsActive = 0;
 const busy = () => new InventoryError(429, 'IMAGE_PROCESSOR_BUSY', 'Photo processing is busy. Check the operation status and try again shortly.', { retryAfterSeconds: 5 });
-const isContentRequest = req => req.method === 'PUT' && /^\/api\/move-out-plans\/[a-f0-9]{24}\/items\/[a-f0-9]{24}\/images\/[a-f0-9]{24}\/content$/i.test((req.baseUrl || '') + req.path);
+// Legacy plan-scoped and independent item-scoped content PUTs; nothing else.
+const isContentRequest = req => req.method === 'PUT' && (/^\/api\/move-out-plans\/[a-f0-9]{24}\/items\/[a-f0-9]{24}\/images\/[a-f0-9]{24}\/content$/i.test((req.baseUrl || '') + req.path) ||
+    /^\/api\/items\/[a-f0-9]{24}\/images\/[a-f0-9]{24}\/content$/i.test((req.baseUrl || '') + req.path));
 
 // Local factory retains the opaque live-Docker binding; no environment URL swap.
 function createLocalItemImagePipeline({ connectToDatabase, configuration, storageConfig, uploadsEnabled = true }) {
@@ -59,7 +61,8 @@ function createPipeline({ connectToDatabase, configuration: config, storage, cre
         };
         try {
             check();
-            const ids = [req.user._id, req.params.planId, req.params.itemId, req.params.imageId];
+            // The independent router sets no planId; metadata scoping then admits only schema 2 rows of a v2 item.
+            const ids = [req.user._id, req.independentListing === true ? null : req.params.planId, req.params.itemId, req.params.imageId];
             const inspected = await metadata.inspectUpload(...ids);
             if (inspected.row.state !== 'reserved') return duplicate(res, inspected.body);
             if (!admitting) throw new InventoryError(503, 'IMAGE_UPLOADS_PAUSED', 'Photo uploads are paused. Your saved photos remain available.');
@@ -101,20 +104,20 @@ function createPipeline({ connectToDatabase, configuration: config, storage, cre
             if (uploadStorage) { closeStorage(uploadStorage); uploadClients.delete(uploadStorage); }
             if (inputBytes) inputBytes.fill(0); if (admitted) nativeActive = false; res.removeListener('close', onClose); }
     }
-    async function deliver(req, res, next, currentViewer) {
+    async function deliver(req, res, next, currentViewer, { independentPhotos = false } = {}) {
         let admitted = false;
         try {
             checkAvailable();
             if (Object.keys(req.query).length) throw unavailable();
             if (readsActive >= 8) throw new InventoryError(429, 'IMAGE_READ_BUSY', 'Photo service is busy. Try again shortly.', { retryAfterSeconds: 5 });
             readsActive++; admitted = true;
-            const initial = await authorize(req.params.imageId, req.params.variant, req.user && req.user._id), v = initial.variant;
+            const initial = await authorize(req.params.imageId, req.params.variant, req.user && req.user._id, { independentPhotos }), v = initial.variant;
             let body;
             if (req.method === 'HEAD') {
                 const head = await storageCall(storage, 'headVariant', { key: v.key });
                 if (head.byteLength !== v.byteLength || head.sha256 !== v.sha256) throw new Error('Photo metadata mismatch');
             } else body = (await storageCall(storage, 'getVariant', { key: v.key, byteLength: v.byteLength, sha256: v.sha256 })).body;
-            const latest = await authorize(req.params.imageId, req.params.variant, await currentViewer());
+            const latest = await authorize(req.params.imageId, req.params.variant, await currentViewer(), { independentPhotos });
             if (latest.row.generation !== initial.row.generation || JSON.stringify(latest.variant) !== JSON.stringify(v)) throw unavailable();
             checkAvailable();
             res.set({ 'Content-Type': 'image/webp', 'Content-Length': String(v.byteLength), 'X-Content-Type-Options': 'nosniff',

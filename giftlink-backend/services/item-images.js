@@ -6,6 +6,9 @@ const policy = require('./item-image-policy');
 const { ceiling, unavailable, damaged, assertOperation, quotaFor, variantKey } = policy;
 const isId = value => typeof value === 'string' && /^[a-fA-F0-9]{24}$/.test(value);
 const changed = () => new InventoryError(409, 'IMAGE_CHANGED', 'Photos changed. Reload their metadata before trying again.');
+const listingDeadlineRequired = () => new InventoryError(409, 'IMAGE_LISTING_DEADLINE_REQUIRED',
+    'Photos need a confirmed pickup timezone and a pickup deadline that has not passed. Your selected photos were not uploaded.');
+const { resolveListingContext } = require('./listing-context');
 const options = session => ({ session, maxTimeMS: 5000, collation: { locale: 'simple' } });
 
 function operationResponse(row, now) {
@@ -22,10 +25,15 @@ function readyResponse(row, now) {
     }
     return result;
 }
+// The model is chosen by the route: a plan ID selects legacy schema 1 rows bound
+// to that plan; null selects an independent v2 item and schema 2 rows that have
+// no planId. Neither path falls back to the other.
+const independentItem = (ownerId, itemId) => ({ _id: itemId, ownerId, listingSchemaVersion: 2, planId: { $exists: false } });
+const parentOf = row => row.schemaVersion === 2 ? null : row.planId.toHexString();
 function reservationRow(ownerId, plan, item, input, identity, now, binding) {
     const day = now.toISOString().slice(0, 10);
     const expiry = new Date(Math.min(now.getTime() + ceiling.leaseMs, Date.parse(day + 'T00:00:00.000Z') + 86400000));
-    const row = { schemaVersion: 1, _id: identity.id, itemId: item._id, planId: plan._id, ownerId,
+    const row = { schemaVersion: plan ? 1 : 2, _id: identity.id, itemId: item._id, ownerId,
         clientUploadId: input.clientUploadId, intent: { byteLength: input.byteLength, sha256: input.sha256 },
         state: 'reserved', sortPosition: null, generation: identity.generation, storageBinding: Object.assign({}, binding), variants: {},
         lease: { fenceToken: null, claimedAt: null, expiresAt: expiry }, version: 1,
@@ -35,6 +43,7 @@ function reservationRow(ownerId, plan, item, input, identity, now, binding) {
         createdAt: now, updatedAt: now, readyAt: null, deleteRequestedAt: null, deletedAt: null };
     for (const name of ['thumbnail', 'display']) row.variants[name] = { key: variantKey(row, name), outcome: 'not_started',
         byteLength: null, sha256: null, width: null, height: null, contentType: 'image/webp' };
+    if (plan) row.planId = plan._id;
     return assertOperation(row);
 }
 
@@ -54,13 +63,44 @@ function createItemImagesService({ connectToDatabase, configuration, control = n
         return db;
     }
     function inputIds(ownerId, planId, itemId, imageId) {
-        if (!(ownerId instanceof ObjectId) || !isId(planId) || !isId(itemId) || imageId !== undefined && !isId(imageId)) throw unavailable();
+        if (!(ownerId instanceof ObjectId) || !(planId === null || isId(planId)) || !isId(itemId) || imageId !== undefined && !isId(imageId)) throw unavailable();
     }
     function scope(ownerId, planId, itemId) {
-        return { ownerId, planId: new ObjectId(planId), itemId: new ObjectId(itemId),
-            'storageBinding.fingerprint': config.storageBinding.fingerprint, 'storageBinding.namespace': config.storageBinding.namespace };
+        const binding = { 'storageBinding.fingerprint': config.storageBinding.fingerprint, 'storageBinding.namespace': config.storageBinding.namespace };
+        if (planId === null) return Object.assign({ ownerId, itemId: new ObjectId(itemId), schemaVersion: 2, planId: { $exists: false } }, binding);
+        return Object.assign({ ownerId, planId: new ObjectId(planId), itemId: new ObjectId(itemId) }, binding);
+    }
+    // V2 binary admission follows the item's own explicitly confirmed local
+    // deadline (policy 2), evaluated at the transaction's database time. Missing,
+    // unconfirmed or unverifiable context blocks intake; it never borrows a plan.
+    function independentAdmission(item, ownerId, now) {
+        if (item.status === 'cleared') return false;
+        try {
+            const listing = resolveListingContext(item, null, ownerId, now, { operation: item.status === 'draft' ? 'ownerDraft' : 'strict' });
+            return listing.modelVersion === 2 && listing.expiresAt instanceof Date && now < listing.expiresAt && !listing.expired;
+        } catch (_) { return false; }
+    }
+    async function independentContext(db, ownerId, itemId, session) {
+        const account = await db.collection('users').aggregate([{ $match: { _id: ownerId } },
+            { $project: { itemImageQuota: 1, serverNow: '$$NOW' } }], options(session)).next();
+        if (!account) throw unavailable();
+        const item = await db.collection('items').findOne(independentItem(ownerId, new ObjectId(itemId)), options(session));
+        if (!item || !['draft', 'available', 'unlisted', 'expired', 'cleared'].includes(item.status) || !(item.ownerId instanceof ObjectId) || !item.ownerId.equals(ownerId)) throw unavailable();
+        const inconsistent = await db.collection('itemImages').findOne({ itemId: item._id, $or: [
+            { ownerId: { $ne: ownerId } }, { schemaVersion: { $ne: 2 } }, { planId: { $exists: true } },
+            { 'storageBinding.fingerprint': { $ne: config.storageBinding.fingerprint } },
+            { 'storageBinding.namespace': { $ne: config.storageBinding.namespace } }
+        ] }, options(session));
+        if (inconsistent) {
+            if (!(inconsistent.ownerId instanceof ObjectId) || !inconsistent.ownerId.equals(ownerId)) throw unavailable();
+            throw damaged();
+        }
+        const revision = item.imageRevision === undefined ? 0 : item.imageRevision;
+        if (!policy.integer(revision) || !(account.serverNow instanceof Date)) throw damaged();
+        return { account, item, revision, now: account.serverNow, admission: independentAdmission(item, ownerId, account.serverNow) };
     }
     async function context(db, ownerId, plan, itemId, session) {
+        if (plan === null) return independentContext(db, ownerId, itemId, session);
         const account = await db.collection('users').aggregate([{ $match: { _id: ownerId } },
             { $project: { itemImageQuota: 1, serverNow: '$$NOW' } }], options(session)).next();
         if (!account) throw unavailable();
@@ -84,11 +124,31 @@ function createItemImagesService({ connectToDatabase, configuration, control = n
         if (!policy.integer(revision) || !(account.serverNow instanceof Date)) throw damaged();
         return { account, item, revision, now: account.serverNow };
     }
+    // Independent items serialize photo writes on their own coordinationRevision,
+    // the same fence used by v2 draft edits, instead of a parent plan revision.
+    async function itemTransaction(db, ownerId, itemId, operation) {
+        const session = db.client.startSession();
+        try {
+            return await session.withTransaction(async () => {
+                const filter = independentItem(ownerId, new ObjectId(itemId));
+                const item = await db.collection('items').findOne(filter, { session });
+                if (!item || !Number.isSafeInteger(item.coordinationRevision) || item.coordinationRevision < 0 || item.coordinationRevision >= Number.MAX_SAFE_INTEGER) throw unavailable();
+                const fenced = await db.collection('items').updateOne(Object.assign({}, filter, { coordinationRevision: item.coordinationRevision }),
+                    { $inc: { coordinationRevision: 1 } }, { session });
+                if (fenced.modifiedCount !== 1) throw changed();
+                return operation(null, session);
+            }, { readConcern: { level: 'snapshot' }, writeConcern: { w: 'majority' }, readPreference: 'primary' });
+        } catch (error) {
+            if (error.code === 20) throw new InventoryError(503, 'TRANSACTIONS_REQUIRED', 'Inventory updates require a MongoDB replica set. Check the documented local setup.');
+            throw error;
+        } finally { await session.endSession(); }
+    }
     async function write(ownerId, planId, itemId, operation, admission = false) {
         inputIds(ownerId, planId, itemId);
         const db = await connect();
         try {
-            return await planTransaction(db, ownerId, planId, async (plan, session) => {
+            const transaction = planId === null ? (callback => itemTransaction(db, ownerId, itemId, callback)) : (callback => planTransaction(db, ownerId, planId, callback));
+            return await transaction(async (plan, session) => {
                 if (control) await control.fence(session, admission);
                 return operation(db, plan, await context(db, ownerId, plan, itemId, session), session);
             });
@@ -100,8 +160,8 @@ function createItemImagesService({ connectToDatabase, configuration, control = n
         try {
             return await session.withTransaction(async () => {
                 if (control) await control.check(session);
-                const plan = await db.collection('moveOutPlans').findOne({ _id: new ObjectId(planId), ownerId }, options(session));
-                if (!plan) throw unavailable();
+                const plan = planId === null ? null : await db.collection('moveOutPlans').findOne({ _id: new ObjectId(planId), ownerId }, options(session));
+                if (planId !== null && !plan) throw unavailable();
                 return operation(db, plan, await context(db, ownerId, plan, itemId, session), session);
             }, { readConcern: { level: 'snapshot' }, readPreference: 'primary' });
         } finally { await session.endSession(); }
@@ -121,8 +181,9 @@ function createItemImagesService({ connectToDatabase, configuration, control = n
     function checkRevision(actual, expected) { if (!policy.integer(expected) || expected !== actual) throw changed(); }
     async function bumpRevision(db, ownerId, planId, item, revision, session) {
         if (!Number.isSafeInteger(revision + 1)) throw changed();
-        await db.collection('items').updateOne({ _id: item._id, ownerId, planId: new ObjectId(planId) },
+        const result = await db.collection('items').updateOne(planId === null ? independentItem(ownerId, item._id) : { _id: item._id, ownerId, planId: new ObjectId(planId) },
             { $set: { imageRevision: revision + 1 } }, { session });
+        if (planId === null && result.matchedCount !== 1) throw changed();
         return revision + 1;
     }
     async function saveQuota(db, userId, quota, session) {
@@ -148,8 +209,10 @@ function createItemImagesService({ connectToDatabase, configuration, control = n
             'storageBinding.namespace': config.storageBinding.namespace }, options(session)).sort({ _id: 1 }).limit(2).toArray();
         for (const row of rows) {
             assertOperation(row);
-            const parent = await db.collection('moveOutPlans').findOne({ _id: row.planId, ownerId }, options(session));
-            const item = await db.collection('items').findOne(Object.assign(legacyMatch(), { _id: row.itemId, planId: row.planId, ownerId }), options(session));
+            const independent = row.schemaVersion === 2;
+            const parent = independent || await db.collection('moveOutPlans').findOne({ _id: row.planId, ownerId }, options(session));
+            const item = await db.collection('items').findOne(independent ? independentItem(ownerId, row.itemId) :
+                Object.assign(legacyMatch(), { _id: row.itemId, planId: row.planId, ownerId }), options(session));
             if (!parent || !item) continue; // Orphan/corrupt references require operator review, never a blind refund.
             settleNeverClaimed(row, quota, now);
             settled.push(row._id.toHexString());
@@ -189,12 +252,12 @@ function createItemImagesService({ connectToDatabase, configuration, control = n
             const quota = quotaFor(ctx.account.itemImageQuota, ctx.now);
             const unused = await reap(db, ownerId, quota, ctx.now, new Map(), session, true);
             const calendar = require('./calendar'), day = ctx.now.toISOString().slice(0, 10);
-            const end = ctx.item.availableUntil || plan.moveOutDeadline;
+            const end = plan === null ? null : ctx.item.availableUntil || plan.moveOutDeadline;
             const allowance = { itemSlots: Math.max(0, ceiling.photos - ready.length - active.filter(row => !unused.includes(row._id.toHexString())).length),
                 attempts: Math.max(0, limits.attempts - quota.attempts), successes: Math.max(0, limits.successes - quota.successful - quota.heldSuccess),
                 storageBytes: Math.max(0, limits.accountBytes - quota.reservedBytes - quota.retainedBytes),
                 concurrent: Math.max(0, limits.concurrent - quota.activeUploads), records: Math.max(0, limits.records - quota.operationCount),
-                newUploadsAllowed: plan.status === 'active' && ctx.item.status !== 'cleared' && calendar.isCalendarDate(plan.moveOutDeadline) &&
+                newUploadsAllowed: plan === null ? ctx.admission : plan.status === 'active' && ctx.item.status !== 'cleared' && calendar.isCalendarDate(plan.moveOutDeadline) &&
                     calendar.isCalendarDate(end) && end >= day && end <= plan.moveOutDeadline && plan.moveOutDeadline >= day };
             return { imageRevision: ctx.revision, images: ready.map(row => readyResponse(row, ctx.now)),
                 uploads: active.concat(recent).map(row => operationResponse(row, ctx.now)), limits, allowance, binaryUploadsEnabled: false };
@@ -230,7 +293,8 @@ function createItemImagesService({ connectToDatabase, configuration, control = n
                 return { created: false, body: { imageRevision: ctx.revision, upload: operationResponse(existing, ctx.now), limits, binaryUploadsEnabled: false } };
             }
             checkRevision(ctx.revision, input.imageRevision);
-            if (plan.status !== 'active' || ctx.item.status === 'cleared') throw new InventoryError(409, 'IMAGE_UPLOAD_UNAVAILABLE', 'New photo reservations require an active plan and an uncleared item.');
+            if (plan === null && !ctx.admission) throw listingDeadlineRequired();
+            if (plan !== null && (plan.status !== 'active' || ctx.item.status === 'cleared')) throw new InventoryError(409, 'IMAGE_UPLOAD_UNAVAILABLE', 'New photo reservations require an active plan and an uncleared item.');
             if (ctx.account.itemImageQuota === undefined && await db.collection('itemImages').findOne({ ownerId }, options(session))) throw damaged();
             const quota = quotaFor(ctx.account.itemImageQuota, ctx.now);
             await reap(db, ownerId, quota, ctx.now, tokens, session);
@@ -304,6 +368,12 @@ function createItemImagesService({ connectToDatabase, configuration, control = n
     }
     function contentEligible(plan, ctx, row) {
         const day = ctx.now.toISOString().slice(0, 10);
+        if (plan === null) {
+            if (!ctx.admission || row.lease.expiresAt <= ctx.now || row.charge.quotaDay !== day) {
+                throw new InventoryError(409, 'IMAGE_UPLOAD_UNAVAILABLE', 'This reservation is no longer eligible. Review its status.');
+            }
+            return;
+        }
         if (plan.status !== 'active' || ctx.item.status === 'cleared' ||
             !require('./calendar').isCalendarDate(plan.moveOutDeadline) || plan.moveOutDeadline < day ||
             !require('./calendar').isCalendarDate(ctx.item.availableUntil || plan.moveOutDeadline) ||
@@ -340,8 +410,8 @@ function createItemImagesService({ connectToDatabase, configuration, control = n
         }, true);
     }
     async function processingWrite(ticket, operation, eligible = true) {
-        return write(ticket.ownerId, ticket.planId.toHexString(), ticket.itemId.toHexString(), async (db, plan, ctx, session) => {
-            const row = await ownedRow(db, scope(ticket.ownerId, ticket.planId.toHexString(), ticket.itemId.toHexString()), ticket._id.toHexString(), session);
+        return write(ticket.ownerId, parentOf(ticket), ticket.itemId.toHexString(), async (db, plan, ctx, session) => {
+            const row = await ownedRow(db, scope(ticket.ownerId, parentOf(ticket), ticket.itemId.toHexString()), ticket._id.toHexString(), session);
             if (row.state !== 'processing' || row.generation !== ticket.generation || row.lease.fenceToken !== ticket.lease.fenceToken) throw changed();
             if (eligible) contentEligible(plan, ctx, row);
             const result = await operation(db, ctx, row, session);
@@ -399,7 +469,7 @@ function createItemImagesService({ connectToDatabase, configuration, control = n
             if (!Object.values(row.variants).every(v => v.outcome === 'stored') || ctx.account.itemImageQuota === undefined) throw damaged();
             const quota = quotaFor(ctx.account.itemImageQuota, ctx.now), c = row.charge;
             if (quota.activeUploads < 1 || quota.heldSuccess < 1 || quota.reservedBytes < c.reservedBytes || c.holdsSettled) throw damaged();
-            const ready = await readyRows(db, scope(ticket.ownerId, ticket.planId.toHexString(), ticket.itemId.toHexString()), session);
+            const ready = await readyRows(db, scope(ticket.ownerId, parentOf(ticket), ticket.itemId.toHexString()), session);
             if (ready.length >= ceiling.photos) throw damaged();
             const size = row.variants.thumbnail.byteLength + row.variants.display.byteLength;
             quota.activeUploads--; quota.heldSuccess--; quota.successful++; quota.reservedBytes -= c.reservedBytes; quota.retainedBytes += size;
@@ -408,7 +478,7 @@ function createItemImagesService({ connectToDatabase, configuration, control = n
             row.state = 'ready'; row.sortPosition = ready.length; row.readyAt = ctx.now; row.needsMaintenance = false; row.maintenanceDueAt = null;
             row.updatedAt = ctx.now;
             await saveQuota(db, ticket.ownerId, quota, session);
-            const revision = await bumpRevision(db, ticket.ownerId, ticket.planId.toHexString(), ctx.item, ctx.revision, session);
+            const revision = await bumpRevision(db, ticket.ownerId, parentOf(ticket), ctx.item, ctx.revision, session);
             return { imageRevision: revision, image: readyResponse(row, ctx.now), binaryUploadsEnabled: false };
         });
     }

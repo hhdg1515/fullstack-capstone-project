@@ -90,8 +90,10 @@ function createInventoryService({ connectToDatabase, imageMetadata = null, image
             const photos = item.ownerPhotos || [];
             if (photos.length > 5) throw media.damaged();
             const images = photos.map((row, index) => {
+                // A null plan means an independent item: only its own schema 2 rows qualify.
                 media.assertOperation(row);
-                if (!row.ownerId.equals(plan.ownerId) || !row.planId.equals(plan._id) || !row.itemId.equals(item._id) || row.sortPosition !== index ||
+                if (row.schemaVersion !== (plan ? 1 : 2) || !row.ownerId.equals(plan ? plan.ownerId : item.ownerId) ||
+                    (plan && !row.planId.equals(plan._id)) || !row.itemId.equals(item._id) || row.sortPosition !== index ||
                     row.storageBinding.fingerprint !== binding.fingerprint || row.storageBinding.namespace !== binding.namespace) throw media.damaged();
                 return { id: row._id.toHexString(), thumbnail: { width: row.variants.thumbnail.width, height: row.variants.thumbnail.height } };
             });

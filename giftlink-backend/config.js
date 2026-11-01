@@ -21,6 +21,13 @@ function readServerConfig(env = process.env) {
     }
     if (env.OWNER_LISTINGS_ENABLED !== undefined && !['true', 'false'].includes(env.OWNER_LISTINGS_ENABLED)) throw new Error('OWNER_LISTINGS_ENABLED must be true or false');
     const ownerListingsEnabled = env.OWNER_LISTINGS_ENABLED === 'true';
+    // UX-2C1 private photos for independent drafts: separately gated, default off,
+    // and meaningful only with the private owner API and image metadata enabled.
+    if (env.OWNER_LISTING_PHOTOS_ENABLED !== undefined && !['true', 'false'].includes(env.OWNER_LISTING_PHOTOS_ENABLED)) throw new Error('OWNER_LISTING_PHOTOS_ENABLED must be true or false');
+    const ownerListingPhotosEnabled = env.OWNER_LISTING_PHOTOS_ENABLED === 'true';
+    if (ownerListingPhotosEnabled && (!ownerListingsEnabled || env.ITEM_IMAGE_METADATA_ENABLED !== 'true')) {
+        throw new Error('OWNER_LISTING_PHOTOS_ENABLED requires OWNER_LISTINGS_ENABLED=true and ITEM_IMAGE_METADATA_ENABLED=true');
+    }
     const database = readDatabaseConfig(env);
     const secureCookies = env.NODE_ENV === 'production';
     const appOrigin = env.APP_ORIGIN || (secureCookies ? '' : 'http://localhost:3000');
@@ -38,7 +45,7 @@ function readServerConfig(env = process.env) {
     if (env.PORT === '' || !Number.isInteger(port) || port < 0 || port > 65535) {
         throw new Error('PORT must be an integer from 0 to 65535');
     }
-    const config = { mongoUrl: database.mongoUrl, dbName: database.dbName, appOrigin, secureCookies, sessionTtlSeconds, port, ownerListingsEnabled };
+    const config = { mongoUrl: database.mongoUrl, dbName: database.dbName, appOrigin, secureCookies, sessionTtlSeconds, port, ownerListingsEnabled, ownerListingPhotosEnabled };
     const imageMetadata = require('./services/item-image-policy').readImageMetadataConfig(env);
     if (imageMetadata) config.imageMetadata = imageMetadata;
     return config;

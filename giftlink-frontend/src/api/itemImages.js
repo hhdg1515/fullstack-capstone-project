@@ -29,6 +29,8 @@ const messages = {
   IMAGE_INPUT_INVALID: "Couldn't upload this photo. Try another JPEG, PNG or WebP.",
   IMAGE_INTENT_MISMATCH: 'The file changed. Check status, then choose it again.',
   IMAGE_UPLOAD_UNAVAILABLE: 'Update the plan and pickup dates to add photos.',
+  IMAGE_LISTING_DEADLINE_REQUIRED: 'Confirm the pickup timezone and set a future pickup deadline to add photos.',
+  OWNER_LISTING_PHOTOS_DISABLED: 'Photo uploads are unavailable.',
   IMAGE_UPLOAD_UNCERTAIN: 'Upload not confirmed. Check status.',
   IMAGE_PIPELINE_TIMEOUT: 'Upload timed out. Check status before continuing.',
   IMAGE_METADATA_INVALID: 'Photo status needs review. Contact support; limits may still apply.',
@@ -51,9 +53,10 @@ export function photoError(error, writing = false) {
   return result;
 }
 const localError = code => photoError({ code, status: 400 });
+// planId null selects an independent (v2) listing's own item-scoped photo API.
 const root = (planId, itemId) => {
-  if (!id(planId) || !id(itemId)) throw localError('IMAGE_UNAVAILABLE');
-  return `/api/move-out-plans/${planId}/items/${itemId}/images`;
+  if (!(planId === null || id(planId)) || !id(itemId)) throw localError('IMAGE_UNAVAILABLE');
+  return planId === null ? `/api/items/${itemId}/images` : `/api/move-out-plans/${planId}/items/${itemId}/images`;
 };
 async function json(path, options = {}) {
   try { return await apiRequest(path, { ...options, notifyUnauthorized: false }); }

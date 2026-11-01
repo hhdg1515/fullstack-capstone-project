@@ -16,7 +16,7 @@ const { requestDiagnostics } = require('./middleware/diagnostics');
 
 function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', secureCookies = false,
     sessionTtlSeconds = 28800, authLimit = 30, discoveryLimit = 120, pickupNow, messageLimit,
-    ownerListingsEnabled = false, imageMetadata = null, imageControlLimit = 20, imagePipeline = null, logger = require('./logger') }) {
+    ownerListingsEnabled = false, ownerListingPhotosEnabled = false, imageMetadata = null, imageControlLimit = 20, imagePipeline = null, logger = require('./logger') }) {
     const app = express();
     const pipeline = imagePipeline ? require('./services/item-image-pipeline').pipelineBinding(imagePipeline, imageMetadata, connectToDatabase) : null;
     const identity = createIdentityService({ connectToDatabase, sessionTtlSeconds });
@@ -46,7 +46,8 @@ function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', sec
     app.use('/api/gifts', createGiftRoutes({ connectToDatabase, logger, auth }));
     app.use('/api/search', createSearchRoutes({ connectToDatabase }));
     app.use('/api/auth', createAuthRoutes({ identity, auth, authLimit }));
-    const ownerListings = require('./routes/ownerListingRoutes')({ connectToDatabase, auth, ownerListingsEnabled, imageMetadata, pipeline });
+    const ownerListings = require('./routes/ownerListingRoutes')({ connectToDatabase, auth, ownerListingsEnabled,
+        ownerListingPhotosEnabled: ownerListingsEnabled === true && ownerListingPhotosEnabled === true, imageMetadata, imageControlLimit, pipeline });
     app.use('/api/me/items', ownerListings.read);
     app.use('/api/items', ownerListings.write);
     app.use('/api/me', createMeRoutes({ identity, auth }));
@@ -59,7 +60,7 @@ function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', sec
             handler: (req, res) => res.status(429).json({ error: { code: 'IMAGE_READ_BUSY', message: 'Too many photo requests. Try again shortly.' } }) }));
         const deliver = (req, res, next) => pipeline.deliver(req, res, next, async () => {
             const current = await identity.authenticate(auth.readToken(req)); return current && current.user._id;
-        });
+        }, { independentPhotos: ownerListingsEnabled === true && ownerListingPhotosEnabled === true });
         app.head('/api/item-images/:imageId/:variant', auth.optionalAuth, deliver);
         app.get('/api/item-images/:imageId/:variant', auth.optionalAuth, deliver);
     }

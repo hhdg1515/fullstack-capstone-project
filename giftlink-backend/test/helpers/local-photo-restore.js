@@ -102,9 +102,11 @@ function assess(context, current, objects, checkpoint, ownerKey) {
     for (const row of now.itemImages) {
         if (!policy.validOperation(row)) { findings.add('invalid_operation'); continue; }
         if (!knownRows.has(String(row._id))) findings.add('unreviewed_operation');
-        const item = items.get(String(row.itemId)), plan = plans.get(String(row.planId));
-        if (row.state !== 'deleted' && (!users.has(String(row.ownerId)) || !item || !plan || String(item.ownerId) !== String(row.ownerId) ||
-            String(plan.ownerId) !== String(row.ownerId) || String(item.planId) !== String(plan._id))) findings.add('ownership_conflict');
+        const item = items.get(String(row.itemId)), plan = row.schemaVersion === 1 ? plans.get(String(row.planId)) : null;
+        // Schema 2 graph: owner -> independent v2 item, with no plan anywhere in the chain.
+        const independent = row.schemaVersion === 2 && item && item.listingSchemaVersion === 2 && !Object.prototype.hasOwnProperty.call(item, 'planId');
+        if (row.state !== 'deleted' && (!users.has(String(row.ownerId)) || !item || String(item.ownerId) !== String(row.ownerId) ||
+            (row.schemaVersion === 2 ? !independent : !plan || String(plan.ownerId) !== String(row.ownerId) || String(item.planId) !== String(plan._id)))) findings.add('ownership_conflict');
         for (const name of ['thumbnail', 'display']) {
             const v = row.variants[name]; if (!v.sha256) continue;
             const key = policy.variantKey(row, name).replace(row.storageBinding.namespace + '/', context.identity.namespace + '/');

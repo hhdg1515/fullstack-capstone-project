@@ -21,10 +21,15 @@ function deriveDeadline(date, zone) {
             expiresAt: new Date(next.epochMilliseconds) };
     } catch (_) { throw invalid(); }
 }
+// A Node patch release can ship newer tz data and so a different recorded rules
+// label. The stored tuple stays authoritative only while the current rules
+// reproduce exactly the same exclusive expiry (checked below); a real rules
+// change for that zone/date still fails closed instead of being reinterpreted.
+const recordedRules = value => typeof value === 'string' && value.length <= 64 && /^temporal-\d+\.\d+\.\d+\/tz-\d{4}[a-z]+$/.test(value);
 function resolveDeadline(item, now) {
     try {
         if (!(now instanceof Date) || !Number.isFinite(now.getTime()) || item.deadlinePolicyVersion !== 2 ||
-            typeof process.versions.tz !== 'string' || item.timeZoneRulesVersion !== rulesVersion || item.pickupTimeZone !== item.deadlineTimeZone ||
+            typeof process.versions.tz !== 'string' || !recordedRules(item.timeZoneRulesVersion) || item.pickupTimeZone !== item.deadlineTimeZone ||
             !(item.timeZoneConfirmedAt instanceof Date) || !Number.isFinite(item.timeZoneConfirmedAt.getTime()) || item.timeZoneConfirmedAt > now ||
             !(item.expiresAt instanceof Date)) throw invalid();
         const derived = deriveDeadline(item.availableUntil, item.pickupTimeZone);

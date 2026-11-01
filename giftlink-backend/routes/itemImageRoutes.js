@@ -7,17 +7,22 @@ const { createItemImagesService } = require('../services/item-images');
 const { ceiling } = require('../services/item-image-policy');
 
 const revision = () => body('imageRevision').custom(value => Number.isSafeInteger(value) && value >= 0).withMessage('Use the current photo revision.');
-function createItemImageRoutes({ connectToDatabase, configuration, controlLimit = 20, pipeline = null }) {
+// independent: mounted at /api/items/:itemId/images for v2 listings. The same
+// handlers, quotas and pipeline run with no plan; the service accepts only a
+// v2 item and schema 2 rows there, and plan routes accept only legacy rows.
+function createItemImageRoutes({ connectToDatabase, configuration, controlLimit = 20, pipeline = null, independent = false }) {
     const router = express.Router({ mergeParams: true });
     const service = createItemImagesService({ connectToDatabase: pipeline ? pipeline.connectToDatabase : connectToDatabase, configuration, control: pipeline && pipeline.control });
     router.use((req, res, next) => {
         if (Object.keys(req.query).length) return errorResponse(res, 400, 'VALIDATION_FAILED', 'This metadata endpoint has no query parameters.');
+        if (independent) req.independentListing = true;
+        else if (!/^[a-fA-F0-9]{24}$/.test(req.params.planId || '')) return errorResponse(res, 404, 'IMAGE_UNAVAILABLE', 'Photo or item unavailable.');
         next();
     });
     router.use(rateLimit({ windowMs: 60000, limit: controlLimit, standardHeaders: 'draft-7', legacyHeaders: false,
         handler: (req, res) => errorResponse(res, 429, 'IMAGE_CONTROL_LIMIT', 'Too many photo metadata requests. Wait a minute before retrying.') }));
     router.param('imageId', (req, res, next, value) => /^[a-fA-F0-9]{24}$/.test(value) ? next() : errorResponse(res, 404, 'IMAGE_UNAVAILABLE', 'Photo or item unavailable.'));
-    const actor = req => [req.user._id, req.params.planId, req.params.itemId];
+    const actor = req => [req.user._id, independent ? null : req.params.planId, req.params.itemId];
     if (pipeline) router.put('/:imageId/content', pipeline.upload);
     router.get('/', async (req, res, next) => {
         try { res.json(Object.assign(await service.list(...actor(req)), {

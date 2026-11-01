@@ -3,7 +3,7 @@ const { ObjectId } = require('mongodb');
 const { assertOperation, unavailable } = require('./item-image-policy');
 const { visibilityPipeline, initialMatch } = require('./discovery');
 function createImageAuthorization({ connectToDatabase, configuration }) {
-    return async function authorize(imageId, variant, viewerId) {
+    return async function authorize(imageId, variant, viewerId, { independentPhotos = false } = {}) {
         if (!/^[a-fA-F0-9]{24}$/.test(imageId) || !['thumbnail', 'display'].includes(variant)) throw unavailable();
         const db = await connectToDatabase(), session = db.client.startSession();
         try { return await session.withTransaction(async () => {
@@ -13,6 +13,14 @@ function createImageAuthorization({ connectToDatabase, configuration }) {
             if (!row) throw unavailable();
             try { assertOperation(row); } catch (error) { throw unavailable(); }
             const account = await db.collection('users').aggregate([{ $match: { _id: row.ownerId } }, { $project: { now: '$$NOW' } }], options).next();
+            if (row.schemaVersion === 2) {
+                // UX-2C1: independent-listing media is private to its live owner.
+                // Public/requester delivery waits for the C3 publication contract.
+                if (!independentPhotos || !account || !(viewerId instanceof ObjectId) || !viewerId.equals(row.ownerId)) throw unavailable();
+                const owned = await db.collection('items').findOne({ _id: row.itemId, ownerId: row.ownerId, listingSchemaVersion: 2, planId: { $exists: false } }, options);
+                if (!owned || !['draft', 'available', 'unlisted', 'expired', 'cleared'].includes(owned.status) || !(owned.ownerId instanceof ObjectId) || !owned.ownerId.equals(row.ownerId)) throw unavailable();
+                return { row, variant: Object.assign({}, row.variants[variant]) };
+            }
             const plan = await db.collection('moveOutPlans').findOne({ _id: row.planId, ownerId: row.ownerId }, options);
             const item = await db.collection('items').findOne(Object.assign(legacyMatch(), { _id: row.itemId, planId: row.planId, ownerId: row.ownerId }), options);
             if (!account || !plan || !item || !['draft', 'available', 'unlisted', 'expired', 'cleared'].includes(item.status)) throw unavailable();

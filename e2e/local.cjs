@@ -8,8 +8,9 @@ const { createHostedApp } = require(root + '/giftlink-backend/index');
 const { createIsolatedMongo } = require(root + '/giftlink-backend/test/helpers/isolated-mongo');
 const { prepareDatabaseIndexes } = require(root + '/giftlink-backend/services/database-indexes');
 const { readPreparationTarget, inspectTarget } = require(root + '/giftlink-backend/util/database-target');
-async function localEnvironment({ photos = false, ownerListings = false } = {}) {
-  if ((photos || ownerListings) && process.env.E2E_APP_ORIGIN) throw Error('Photo fixtures are local only');
+async function localEnvironment({ photos = false, ownerListings = false, ownerListingPhotos = false } = {}) {
+  if ((photos || ownerListings || ownerListingPhotos) && process.env.E2E_APP_ORIGIN) throw Error('Photo fixtures are local only');
+  if (ownerListingPhotos && (!photos || !ownerListings)) throw Error('Independent listing photos need the local photo pipeline and owner listings');
   let isolated, api, front, hosted, directory, storage, imagePipeline, imageMetadata;
   try {
     isolated = await createIsolatedMongo(); await prepareDatabaseIndexes(isolated.db);
@@ -50,6 +51,7 @@ async function localEnvironment({ photos = false, ownerListings = false } = {}) 
     await new Promise(resolve => front.once('listening', resolve)); const origin = 'https://127.0.0.1:' + front.address().port;
     const env = { NODE_ENV: 'production', DB_ENVIRONMENT: 'staging', MONGO_URL: isolated.mongoUrl, MONGO_DB_NAME: isolated.dbName, APP_ORIGIN: origin };
     if (ownerListings) env.OWNER_LISTINGS_ENABLED = 'true';
+    if (ownerListingPhotos) env.OWNER_LISTING_PHOTOS_ENABLED = 'true';
     if (photos) Object.assign(env, { ITEM_IMAGE_METADATA_ENABLED: 'true', ITEM_IMAGE_STORAGE_TARGET: imageMetadata.storageBinding.fingerprint,
       ITEM_IMAGE_NAMESPACE: imageMetadata.storageBinding.namespace });
     hosted = createHostedApp({ env, databaseFactory: () => ({ connect: async () => isolated.db, close: async () => {} }),
