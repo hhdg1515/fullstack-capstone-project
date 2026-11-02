@@ -4,6 +4,7 @@ const { readServerConfig } = require('./config');
 const { initializeApplication } = require('./runtime');
 const { readPreparationTarget, inspectTarget } = require('./util/database-target');
 const { requestDiagnostics, createFailureDiagnostics } = require('./middleware/diagnostics');
+const { hostedPhotoEnv } = require('./services/hosted-photo-config');
 
 function createHostedApp({ env = process.env, databaseFactory = createDatabase,
     logger = require('./logger'), appFactory, now = Date.now } = {}) {
@@ -15,24 +16,35 @@ function createHostedApp({ env = process.env, databaseFactory = createDatabase,
     const reportFailure = createFailureDiagnostics(logger, now);
     // One initialization/pool per warm function instance, shared by concurrent requests.
     async function initialize(id) {
-        let database;
+        let database, photos, pipeline;
         let phase = 'configuration';
         const started = now();
         try {
             if (env.NODE_ENV !== 'production' || !['staging', 'production'].includes(env.DB_ENVIRONMENT)) throw new Error('Hosted configuration required');
-            const config = readServerConfig(env);
+            const effective = hostedPhotoEnv(env);
+            const config = readServerConfig(effective, { hostedPhotos: true });
             phase = 'target_validation';
             const target = await readPreparationTarget(env, true);
             target.clientOptions = Object.assign({}, target.clientOptions, { maxPoolSize: 10, minPoolSize: 0, maxIdleTimeMS: 60000,
                 serverSelectionTimeoutMS: 5000, connectTimeoutMS: 5000, waitQueueTimeoutMS: 5000 });
             database = databaseFactory(target);
-            const api = await initializeApplication(config, { database, logger, appFactory, onPhase: value => { phase = value; } });
+            // Standing R2 photos: the app shares the photo context's guarded connection,
+            // as the pipeline requires; health checks keep using the hosted pool.
+            if (config.hostedR2Photos) {
+                phase = 'photo_target';
+                photos = await require('./util/r2-photo-context').openR2PhotoContext({ env: effective, allowRemote: true, standing: true });
+                pipeline = require('./services/item-image-pipeline').createR2ItemImagePipeline(photos);
+            }
+            const appDatabase = photos ? { connect: photos.applicationConnectToDatabase } : database;
+            const api = await initializeApplication(config, { database: appDatabase, logger, appFactory, imagePipeline: pipeline || null, onPhase: value => { phase = value; } });
             phase = 'target_verification';
             const inspected = await inspectTarget(await database.connect(), target);
             logger.info({ event: 'hosted_startup_ready', durationMs: Math.max(0, now() - started), requestId: id }, 'Hosted service ready');
-            return { api, database, target, health: { status: 'ready', environment: target.environment,
+            return { api, database, target, photos, pipeline, health: { status: 'ready', environment: target.environment,
                 databaseFingerprint: inspected.fingerprint } };
         } catch (error) {
+            if (pipeline) pipeline.close();
+            if (photos) await photos.close().catch(() => {});
             if (database) await database.close().catch(() => {});
             retryAfter = now() + 5000;
             reportFailure('hosted_startup_failed', phase, error, id);
@@ -75,7 +87,13 @@ function createHostedApp({ env = process.env, databaseFactory = createDatabase,
         }
     });
     // Explicit shutdown is useful for isolated tests; Vercel reuses warm pools.
-    app.close = async () => { if (ready) { const runtime = await ready; await runtime.database.close(); ready = undefined; } };
+    app.close = async () => {
+        if (!ready) return;
+        const runtime = await ready;
+        if (runtime.pipeline) runtime.pipeline.close();
+        if (runtime.photos) await runtime.photos.close();
+        await runtime.database.close(); ready = undefined;
+    };
     return app;
 }
 module.exports = createHostedApp();
