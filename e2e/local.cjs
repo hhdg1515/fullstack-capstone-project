@@ -1,6 +1,7 @@
 const fs = require('node:fs'); const os = require('node:os'); const path = require('node:path');
 const http = require('node:http'); const https = require('node:https'); const { execFileSync } = require('node:child_process');
 const { root } = require('./policy.cjs');
+const { hostNetworkSettled } = require('./host-network.cjs');
 const express = require(root + '/giftlink-backend/node_modules/express');
 const pino = require(root + '/giftlink-backend/node_modules/pino');
 const createApp = require(root + '/giftlink-backend/app');
@@ -80,6 +81,7 @@ async function localEnvironment({ photos = false, ownerListings = false, ownerLi
         pickupNow: () => new Date(clock === undefined ? Date.now() : clock) }) });
     api = hosted.listen(0, '127.0.0.1'); await new Promise(resolve => api.once('listening', resolve));
     const target = await inspectTarget(isolated.db, await readPreparationTarget(env, true));
+    await hostNetworkSettled(); // after every fixture container and network exists, before any browser use
     return { origin, certificatePath: certificate ? null : path.join(directory, 'cert.pem'), db: isolated.db, fingerprint: target.fingerprint, local: true, serverErrors,
       ...(photos ? { reconcilePhotos: async () => {
         if (process.env.E2E_APP_ORIGIN) throw Error('Photo maintenance is isolated local only');

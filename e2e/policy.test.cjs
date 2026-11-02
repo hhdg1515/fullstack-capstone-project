@@ -119,3 +119,17 @@ test('safe reporter suppresses secrets and raw Playwright error details', () => 
     const logged = output.join('\n'); assert.ok(!/private-password|cookie-token|private-connection-string/.test(logged)); assert.ok(logged.includes('workflow.spec.cjs:12:3'));
   } finally { console.log = original; console.error = originalError; }
 });
+test('browser hand-off waits for host IPv6 duplicate-address detection on Linux only, bounded and without retries', async () => {
+  const { hostNetworkSettled } = require('./host-network.cjs');
+  let calls = 0, args; const listings = ['5: veth1a2b inet6 fe80::1/64 scope link tentative', '7: br-c0ffee inet6 fe80::2/64 scope link tentative', ''];
+  assert.equal(await hostNetworkSettled({ platform: 'linux', run: (command, argv) => { args = [command, ...argv]; return listings[calls++]; }, pollMs: 1, marginMs: 1 }), 'settled');
+  assert.equal(calls, 3); assert.deepEqual(args, ['ip', '-o', '-6', 'addr', 'show', 'tentative']);
+  assert.equal(await hostNetworkSettled({ platform: 'win32', run: () => { throw Error('must not run'); } }), 'skipped');
+  assert.equal(await hostNetworkSettled({ platform: 'linux', run: () => { throw Object.assign(Error('spawn ip ENOENT'), { code: 'ENOENT' }); } }), 'skipped');
+  const logs = []; assert.equal(await hostNetworkSettled({ platform: 'linux', run: () => 'tentative', limitMs: 20, pollMs: 5, log: line => logs.push(line) }), 'unsettled');
+  assert.deepEqual(logs, ['Host IPv6 addresses still tentative after 20 ms; continuing.']);
+  // Every local deployment settles after its containers exist and before returning to a test.
+  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, 'local.cjs'), 'utf8');
+  const settle = source.indexOf('await hostNetworkSettled();'), handoff = source.indexOf('return { origin,');
+  assert.ok(settle > source.indexOf('await createIsolatedMongo()') && settle > source.indexOf('storage = await createIsolatedSeaweedFS()') && settle < handoff);
+});
