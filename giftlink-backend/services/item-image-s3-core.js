@@ -8,8 +8,16 @@ const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const md5 = bytes => createHash('md5').update(bytes).digest('base64');
 const uuid = '[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}';
 
+// Diagnostic only: the provider's enumerated error code (e.g. AccessDenied) and HTTP
+// status, never its message, request, response body, key or credential.
 function providerFailure(error, operation, aborted) {
-    error = error || {};
+    const failure = classifyProvider(error || {}, operation, aborted);
+    const code = error && typeof error.name === 'string' && /^[A-Za-z]{1,40}$/.test(error.name) ? error.name : null;
+    const status = error && error.$metadata && Number.isInteger(error.$metadata.httpStatusCode) ? error.$metadata.httpStatusCode : null;
+    failure.providerCode = code; failure.providerStatus = status;
+    return failure;
+}
+function classifyProvider(error, operation, aborted) {
     const outcome = operation === 'put' || operation === 'delete' ? 'indeterminate' : 'unknown';
     if (aborted || ['TimeoutError', 'AbortError'].includes(error.name) || error.code === 'ETIMEDOUT') {
         return storageError('timeout', operation, outcome);
