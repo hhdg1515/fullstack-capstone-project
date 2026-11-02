@@ -292,7 +292,7 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item = {}, onClo
   const fileErrorId = error?.clientUploadId ? 'selected-photo-error-' + entries.findIndex(entry => entry.clientUploadId === error.clientUploadId) : 'photo-error';
   const Wrapper = embedded ? 'section' : Surface;
   return <Wrapper id="owner-photo-manager" className="item-photos" aria-labelledby="item-photos-title">
-    <div className="item-photos-heading">
+    <div className={'item-photos-heading' + (embedded ? ' visually-hidden' : '')}>
       <h2 ref={heading} tabIndex={-1} id="item-photos-title">Photos{item.name && <span className="visually-hidden"> for {item.name}</span>}</h2>
       <span className="item-photos-count" aria-label={count === null ? 'Photo count unavailable' : `${count} photos and selections, maximum 5`}>{count ?? '—'} / 5</span>
       {!embedded && <button type="button" className="item-photos-icon" aria-label="Close photos" title="Close photos"
@@ -311,7 +311,7 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item = {}, onClo
     {message && <p role="status" className="item-photo-note">{message}</p>}
     {embedded && !draft && capabilities?.metadata !== true && <p role="status">Photo uploads are unavailable.</p>}
     {(draft ? capabilities && !capabilities.binaryUpload : data && !data.capabilities.binaryUpload) && <p role="status">Photo uploads are unavailable.</p>}
-    {data && data.capabilities.binaryUpload && !data.allowance.newUploadsAllowed && <p role="status">{planId === null ? 'Confirm the pickup timezone and set a future pickup deadline to add photos.' : 'Update the plan and pickup dates to add photos.'}</p>}
+    {data && data.capabilities.binaryUpload && !data.allowance.newUploadsAllowed && <p role="status">{planId === null ? 'Set a future pickup deadline to add photos.' : 'Update the plan and pickup dates to add photos.'}</p>}
     {!securePhotoBrowser() && <p role="status">Use a current browser over HTTPS or localhost.</p>}
     {(entries.length > 0 || data?.images.length > 0) && <ul className="item-photos-grid" aria-label="Photos and selections">
       {(!embedded || !recovery) && data?.capabilities.imageRead && data.images.map((image, index) => <ReadyPhoto key={image.id + ':' + refresh} image={image} position={index} cover={index === 0} managing={embedded}>
@@ -354,16 +354,11 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item = {}, onClo
     {data && data.images.length > 0 && !data.capabilities.imageRead && <p role="status">Saved photos are temporarily unavailable.</p>}
     <div className="item-photos-footer">
       <button ref={addButton} type="button" className={'ui-button' + (entries.length ? ' ui-button--secondary' : '')} disabled={selectionDisabled}
-        aria-describedby={'photo-format-help photo-privacy' + (error?.field === 'file' ? ' ' + fileErrorId : '')} onClick={() => fileInput.current?.click()}>Add photos</button>
+        aria-describedby={'photo-format-help' + (error?.field === 'file' ? ' ' + fileErrorId : '')} onClick={() => fileInput.current?.click()}>Add photos</button>
       <input ref={fileInput} id="item-photo-files" type="file" aria-label="Choose photos" hidden accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple disabled={selectionDisabled}
-        aria-invalid={error?.field === 'file' || undefined} aria-describedby={'photo-format-help photo-privacy' + (error?.field === 'file' ? ' ' + fileErrorId : '')} onChange={add} />
+        aria-invalid={error?.field === 'file' || undefined} aria-describedby={'photo-format-help' + (error?.field === 'file' ? ' ' + fileErrorId : '')} onChange={add} />
+      <p id="photo-format-help" className="item-photos-help">Up to 5 photos. JPEG, PNG or static WebP, up to 20 MiB each.</p>
       {needsRefresh && refreshButton}
-      <details className="item-photos-help"><summary>Photo tips</summary>
-        <p id="photo-format-help">Up to 5 photos. JPEG, PNG or static WebP, up to 20 MiB each. Photos are resized before upload; the server checks them again. Convert HEIC to JPEG.</p>
-        <p id="photo-privacy">Remove visible addresses, labels, documents and people. Get permission; removing metadata does not hide these details.</p>
-        <p>Source photos: at most 48 megapixels and 10,000 pixels per edge. Upload copies: at most 1280 pixels and 3 MiB.</p>
-        {!needsRefresh && refreshButton}
-      </details>
     </div>
     {pendingHistory.length > 0 && <details className="item-photo-history"><summary>Upload history</summary>
       <ul>{pendingHistory.map(operation => <li key={operation.id}>

@@ -17,11 +17,13 @@
 .home-find .journey-button:hover { background: #183c64; }
 .home-path small { display: block; margin-top: .8rem; color: #334b46; }
 .home-reassurance { margin: 1.75rem 0 0; color: #41534d; }
-.journey-nav { margin-bottom: 1.25rem; padding-bottom: 1rem; border-bottom: 1px solid #cdd6d2; }
+.journey-nav { margin-bottom: 1.25rem; }
 .journey-nav .journey-kicker { margin: 0 0 .25rem; }
 .journey-nav ul { display: flex; flex-wrap: wrap; gap: .2rem 1.25rem; list-style: none; padding: 0; margin: 0; }
-.journey-nav a { display: inline-flex; align-items: center; min-height: 44px; color: #245487; }
-.journey-nav a[aria-current] { color: #183e37; font-weight: 700; text-decoration-thickness: 2px; text-underline-offset: .25em; }
+.journey-nav a { display: inline-flex; align-items: center; min-height: 44px; color: #245487; text-decoration: none; }
+.journey-nav a[aria-current] { color: #183e37; font-weight: 700; }
+/* Back links at the top of a page read as breadcrumbs: no underline. */
+.ui-page > a, .pickup-back { text-decoration: none; }
 .journey-sign-in { display: inline-block; margin-left: .4rem; color: #41534d; }
 .site-footer { max-width: 72rem; margin: 2rem auto 0; padding: 1.5rem; border-top: 1px solid #cdd6d2; color: #41534d; font-size: .9rem; }
 .site-footer p { margin-bottom: .5rem; }

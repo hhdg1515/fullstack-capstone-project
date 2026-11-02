@@ -20,7 +20,7 @@ export default function PublicItemCard({ item, search, stateCode }) {
     <div className="discovery-listing-pickup">
       <div className="discovery-listing-status"><span className="ui-status">Free</span><span className="ui-status">{item.availability === 'later' ? 'Available Later' : 'Available Now'}</span>
         {item.isOwner === true && <span className="ui-status">Your listing</span>}</div>
-      <p>{item.availability === 'later' && <>From <time dateTime={item.availableFrom}>{formatDeadline(item.availableFrom)}</time> · </>}Pickup until <time dateTime={item.effectiveAvailableUntil}>{formatDeadline(item.effectiveAvailableUntil)}</time> <span className="discovery-listing-utc">{item.datePolicy === 'pickup-local' ? '(' + item.pickupTimeZone + ')' : '(UTC)'}</span></p>
+      <p>{item.availability === 'later' && <>From <time dateTime={item.availableFrom}>{formatDeadline(item.availableFrom)}</time> · </>}Pickup until <time dateTime={item.effectiveAvailableUntil}>{formatDeadline(item.effectiveAvailableUntil)}</time></p>
     </div>
   </Surface>;
 }

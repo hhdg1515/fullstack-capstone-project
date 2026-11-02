@@ -5,7 +5,7 @@ import './Navbar.css';
 import { useDiscardChanges } from '../../forms/UnsavedChanges';
 
 export default function Navbar() {
-  const { isLoggedIn, userName, logout, status } = useAppContext();
+  const { isLoggedIn, logout, status } = useAppContext();
   const drafts = useDiscardChanges();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
@@ -16,7 +16,6 @@ export default function Navbar() {
   const editingItem = /^\/app\/items\/[^/]+\/edit\/?$/.test(location.pathname);
   const give = editingItem || (location.pathname.startsWith('/app/plans') || location.pathname.startsWith('/app/listings')) || location.pathname === '/app/pickups/incoming' || location.state?.journey === 'give';
   const find = !editingItem && (location.pathname.startsWith('/app/items') || location.pathname === '/app/pickups' || location.state?.journey === 'find');
-  const account = ['/app/profile', '/app/login', '/app/register'].includes(location.pathname);
   const handleLogout = async () => {
     if (drafts && !await drafts.requestDiscard({ release: false })) return;
     setBusy(true); setError('');
@@ -34,12 +33,11 @@ export default function Navbar() {
         <ul onClick={() => setOpen(false)}>
           <li><Link to={location.pathname === '/app/items' ? location.pathname + location.search : '/app/items'} aria-current={find ? 'location' : undefined}>Find Free Items</Link></li>
           <li><Link to="/app/listings" aria-current={give ? 'location' : undefined}>My Listings</Link></li>
-          <li><Link to={isLoggedIn || status === 'loading' ? '/app/profile' : '/app/login'} aria-current={account ? 'location' : undefined}>Account</Link></li>
         </ul>
         <div className="site-session">
           {status === 'loading' ? <span role="status">Checking session…</span> : isLoggedIn ? <>
-            <span>Signed in as {userName}</span><button onClick={handleLogout} disabled={busy}>{busy ? 'Logging out…' : 'Logout'}</button>
-          </> : <span>Browse freely. To give or request,<br />log in or register under Account.</span>}
+            <button onClick={handleLogout} disabled={busy}>{busy ? 'Logging out…' : 'Logout'}</button>
+          </> : <><Link to="/app/login">Log in</Link><Link to="/app/register">Register</Link></>}
         </div>
       </nav>
     </div>

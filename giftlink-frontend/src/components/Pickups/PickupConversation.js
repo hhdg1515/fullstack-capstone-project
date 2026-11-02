@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
 import { apiRequest } from '../../api/client';
 import { useAppContext } from '../../context/AuthContext';
 import { useUnsavedForm } from '../../forms/UnsavedChanges';
@@ -34,14 +33,13 @@ export default function PickupConversation(props) {
   return <Conversation key={`${user.id}:${props.requestId}`} {...props} />;
 }
 
-function Conversation({ requestId, requestStatus, itemName, hasTimeProposal = false }) {
-  const location = useLocation();
+function Conversation({ requestId, requestStatus }) {
   const root = `/api/pickup-requests/${encodeURIComponent(requestId)}/conversation`;
   const [view, setView] = useState({ context: null, ranges: [] });
   const current = useRef(view);
   const update = useCallback(change => { current.current = change(current.current); setView(current.current); }, []);
   const [busy, setBusy] = useState('initial'); const inFlight = useRef(false);
-  const [error, setError] = useState(''); const [notice, setNotice] = useState('');
+  const [error, setError] = useState('');
   const [blocked, setBlocked] = useState(false); const [uncertain, setUncertain] = useState(false);
   const [draft, setDraft] = useState(''); const guard = useUnsavedForm({ text: draft }, { text: '' });
   const validation = useFormErrors(busy === 'send');
@@ -67,7 +65,7 @@ function Conversation({ requestId, requestStatus, itemName, hasTimeProposal = fa
     const index = current.current.ranges.findIndex(range => range.nextCursor);
     if (kind === 'earlier' && index < 0) return;
     inFlight.current = true; const ticket = ++generation.current;
-    setBusy(kind); setError(''); setNotice('');
+    setBusy(kind); setError('');
     try {
       const path = root + '/messages' + (kind === 'earlier' ? '?before=' + encodeURIComponent(current.current.ranges[index].nextCursor) : '');
       const context = kind === 'earlier' ? null : await apiRequest(root, { notifyUnauthorized: false, validate: data => data?.conversation?.id === requestId &&
@@ -84,7 +82,6 @@ function Conversation({ requestId, requestStatus, itemName, hasTimeProposal = fa
         return { context: context?.conversation || previous.context, ranges: mergeRanges(ranges) };
       });
       if (kind !== 'earlier') setBlocked(false);
-      setNotice(kind === 'earlier' ? 'Earlier messages loaded.' : kind === 'initial' ? 'Conversation loaded.' : 'Conversation refreshed.');
     } catch (failure) {
       if (!alive.current || ticket !== generation.current) return;
       if ([401, 403, 404].includes(failure.status)) { update(() => ({ context: null, ranges: [] })); setBlocked(true); }
@@ -113,14 +110,14 @@ function Conversation({ requestId, requestStatus, itemName, hasTimeProposal = fa
       validation.show({ text: 'Remove <, > and unsupported control characters.' }); return;
     }
     inFlight.current = true; const ticket = ++generation.current;
-    setBusy('send'); setError(''); setNotice('');
+    setBusy('send'); setError('');
     try {
       const result = await apiRequest(root + '/messages', { method: 'POST', body: { text }, notifyUnauthorized: false,
         validate: data => validMessage(data?.message) && data.message.sender === context.role });
       if (!alive.current || ticket !== generation.current) return;
       capture(true);
       update(previous => ({ ...previous, ranges: [{ ...previous.ranges[0], messages: mergeMessages(previous.ranges[0].messages, [result.message]) }, ...previous.ranges.slice(1)] }));
-      setDraft(''); guard.markSaved(); setUncertain(false); setNotice('Message sent.');
+      setDraft(''); guard.markSaved(); setUncertain(false);
       if (validation.formRef.current?.contains(document.activeElement)) composer.current?.focus({ preventScroll: true });
     } catch (failure) {
       if (!alive.current || ticket !== generation.current) return;
@@ -138,13 +135,9 @@ function Conversation({ requestId, requestStatus, itemName, hasTimeProposal = fa
   return <Surface id="conversation" className="pickup-conversation" aria-labelledby="conversation-heading">
     <div className="chat-header"><h2 id="conversation-heading" tabIndex={-1}>Pickup conversation</h2>
       <button type="button" className="ui-button ui-button--secondary" disabled={Boolean(busy)} onClick={() => { validation.reset(); load(); }}>{context ? 'Refresh conversation' : 'Retry conversation'}</button></div>
-    {itemName && <p className="chat-item">{itemName}</p>}
-    {hasTimeProposal && <p className="chat-arrangement"><Link to={{ hash: '#pickup-arrangement-heading', search: location.search }} state={location.state}>Review pickup time change</Link>. Chat does not change the confirmed time.</p>}
-    {context && <p className="chat-participant">With {context.counterpart.firstName} ({roleLabel(context.role === 'giver' ? 'receiver' : 'giver')}). Private to this request.</p>}
-    {(busy || notice) && <Feedback>{busy === 'send' ? 'Sending message…' : busy ? (busy === 'earlier' ? 'Loading earlier messages…' : 'Loading conversation…') : notice}</Feedback>}
     {error && <Feedback error>{error}</Feedback>}
-    {context && <>
-      {closed && <Feedback>This request is closed. You can read its messages, but cannot send new ones.</Feedback>}
+    {busy === 'initial' && <p role="status" className="chat-help">Loading…</p>}
+    {context && <div className="chat-box">
       <button type="button" className="ui-button ui-button--secondary" disabled={Boolean(busy)} hidden={!view.ranges.some(range => range.nextCursor)} onClick={() => load('earlier')}>Load earlier messages</button>
       <div ref={history} className="chat-history" role="region" aria-label="Message history" tabIndex={0}>
         {!messages.length ? <p>No messages yet.</p> : <ol>{view.ranges.slice().reverse().flatMap((range, index) => [
@@ -155,22 +148,20 @@ function Conversation({ requestId, requestStatus, itemName, hasTimeProposal = fa
           ...(index < view.ranges.length - 1 ? [<li key={`gap-${index}`} className="chat-gap">Some messages between these pages are not loaded yet. Use Load earlier messages to fill the gap.</li>] : [])
         ])}</ol>}
       </div>
-      <p className="chat-help">Message times use your device timezone ({Intl.DateTimeFormat().resolvedOptions().timeZone || 'device setting'}). Pickup times use the giver’s timezone. Use Refresh conversation to check for new messages.</p>
-    </>}
     {((!closed && context) || draft.length > 0) && <form ref={validation.formRef} className="chat-composer" noValidate onSubmit={send} aria-busy={busy === 'send'}>
-      <div className="ui-field"><label htmlFor="chat-text">{canSend ? 'Message' : 'Unsent message'}</label>
-        <textarea ref={composer} id="chat-text" name="text" rows={3} value={draft} readOnly={!canSend || busy === 'send'}
-          {...validation.fieldProps('text', 'chat-help chat-count')} onChange={event => { setDraft(event.target.value); validation.clear('text'); }} />
-        <small id="chat-count" className="chat-count">{Array.from(draft.trim()).length.toLocaleString('en')} / 2,000 characters</small>
-        {validation.errors.text && <p id="text-error" className="ui-field-error">{validation.errors.text}</p>}
-        <small id="chat-help">Plain text. Keep residential addresses and sensitive account details out of messages. Enter adds a new line.</small></div>
+      <div className="ui-field"><label htmlFor="chat-text" className="visually-hidden">{canSend ? 'Message' : 'Unsent message'}</label>
+        <textarea ref={composer} id="chat-text" name="text" rows={3} value={draft} readOnly={!canSend || busy === 'send'} maxLength={2000}
+          placeholder="Up to 2,000 characters. Plain text. Keep residential addresses and sensitive account details out of messages."
+          {...validation.fieldProps('text')} onChange={event => { setDraft(event.target.value); validation.clear('text'); }} />
+        {validation.errors.text && <p id="text-error" className="ui-field-error">{validation.errors.text}</p>}</div>
       {uncertain && !closed && <p>Check recent messages after refreshing before deciding whether to send this draft again.</p>}
       {!canSend && draft && <p>Your unsent text is kept here. Refresh to check access, or discard the draft.</p>}
-      <div className="chat-actions"><button type="submit" className="ui-button" disabled={!canSend || Boolean(busy)}>Send message</button>
+      <div className="chat-actions"><button type="submit" className="ui-button" disabled={!canSend || Boolean(busy)}>{busy === 'send' ? 'Sending…' : 'Send message'}</button>
         {!canSend && draft && <button type="button" className="ui-button ui-button--secondary" disabled={Boolean(busy)} onClick={() => {
           if (guard.confirmDiscard()) { setDraft(''); setUncertain(false); validation.reset(); }
         }}>Discard draft</button>}</div>
     </form>}
+    </div>}
     {validation.error && <Feedback error ref={validation.summaryRef} tabIndex={-1}>{validation.error}</Feedback>}
   </Surface>;
 }

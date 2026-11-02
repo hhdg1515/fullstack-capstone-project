@@ -18,6 +18,7 @@ const legacyWrite = () => new InventoryError(409, 'LEGACY_ITEM_ROUTE_REQUIRED', 
 const lifecycleDisabled = () => new InventoryError(409, 'V2_LIFECYCLE_DISABLED', 'This listing action is not available yet. Nothing was changed.');
 const id = value => typeof value === 'string' && /^[a-fA-F0-9]{24}$/.test(value);
 const integer = value => Number.isSafeInteger(value) && value >= 1;
+const pickupFields = ['stateId', 'metroId', 'city', 'neighborhood', 'pickupTimeZone', 'availableFrom', 'availableUntil'];
 function checkInput(input, editing = false, action = false) {
     const allowed = action ? ['action', 'version', 'confirmCancelRequests'] : editable.concat('publish', editing ? ['version'] : []);
     if (!input || Array.isArray(input) || typeof input !== 'object' || !Object.keys(input).length || Object.keys(input).some(key => !allowed.includes(key))) {
@@ -60,6 +61,9 @@ function feedPipeline(ownerId, params, imageRead) {
     stages.push({ $limit: params.limit + 1 });
     // Only this bounded page is enriched, in the same database snapshot.
     stages.push.apply(stages, pickupReservationStages());
+    stages.push({ $lookup: { from: 'pickupRequests', let: { item: '$_id' }, pipeline: [
+        { $match: { status: { $in: ['pending', 'accepted'] }, active: true, $expr: { $eq: ['$itemId', '$$item'] } } }, { $count: 'count' }
+    ], as: 'pendingRequestCount' } });
     if (imageRead) stages.push({ $lookup: { from: 'itemImages', let: { item: '$_id' }, pipeline: [
         { $match: { $expr: { $and: [{ $eq: ['$itemId', '$$item'] }, { $eq: ['$state', 'ready'] }] } } },
         { $sort: { sortPosition: 1, _id: 1 } }, { $limit: 6 }
@@ -84,7 +88,8 @@ function createOwnerListingService({ connectToDatabase, imageMetadata = null, im
                 datePolicy: v2 ? 'pickup-local' : 'utc-calendar', expiresAt: v2 && ctx.expiresAt ? ctx.expiresAt.toISOString() : null },
             photoPreview: { availability: preview.availability, images: preview.images },
             pickupSummary: v2 ? { supported: independentPickups, reserved: independentPickups && Boolean(item.isReserved) } : { supported: true, reserved: Boolean(item.isReserved) },
-            capabilities: { editDraft: v2 && (item.status === 'draft' || independentPublication && item.status === 'unlisted'), legacyEditor: !v2, publish: v2 && independentPublication && ['draft', 'unlisted'].includes(item.status), withdraw: v2 && independentPublication && item.status === 'available', photos: v2 && independentPhotos && !['expired', 'cleared'].includes(item.status) },
+            pendingRequests: (v2 ? independentPickups : true) && Array.isArray(item.pendingRequestCount) ? (item.pendingRequestCount.length ? item.pendingRequestCount[0].count : 0) : 0,
+            capabilities: { editDraft: v2 && (item.status === 'draft' || independentPublication && ['unlisted', 'available'].includes(item.status)), legacyEditor: !v2, publish: v2 && independentPublication && ['draft', 'unlisted'].includes(item.status), withdraw: v2 && independentPublication && item.status === 'available', photos: v2 && independentPhotos && !['expired', 'cleared'].includes(item.status) },
             createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() };
     }
     async function owned(db, ownerId, itemId, session) {
@@ -148,6 +153,13 @@ function createOwnerListingService({ connectToDatabase, imageMetadata = null, im
             if (['withdraw', 'unlist'].includes(transition)) {
                 if (ctx.item.status !== 'available') throw lifecycleDisabled();
                 saved = await require('./listing-publication').withdraw(db, session, ctx.item, ownerId, now, input.confirmCancelRequests);
+            } else if (ctx.item.status === 'available' && independentPublication && !action) {
+                saved = applyDraft(ctx.item, input, now);
+                if (pickupFields.some(field => saved[field] !== ctx.item[field]) &&
+                    await db.collection('pickupRequests').findOne({ itemId: ctx.item._id, active: true }, { session, projection: { _id: 1 } })) {
+                    throw new InventoryError(409, 'PICKUP_REQUESTS_OPEN', 'This listing has open pickup requests, so its pickup location and dates cannot change.');
+                }
+                saved = require('./listing-publication').publish(saved, now);
             } else {
                 if (!(ctx.item.status === 'draft' || independentPublication && ctx.item.status === 'unlisted') || transition && transition !== 'publish') throw lifecycleDisabled();
                 saved = action ? Object.assign({}, ctx.item) : applyDraft(ctx.item, input, now);

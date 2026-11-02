@@ -10,7 +10,6 @@ export default function JourneyNav({ journey, planId, discoverySearch = '' }) {
   const anonymous = useAppContext()?.status === 'anonymous';
   const browse = pathname === '/app/items' ? search : discoverySearch;
   const links = giving ? [
-    { to: '/app/plans', label: 'My plans', active: pathname === '/app/plans' },
     ...(planId ? [{ to: `/app/plans/${planId}/items`, label: 'Items & clearance progress', active: pathname.endsWith('/items') }] : []),
     { to: '/app/pickups/incoming', label: 'Incoming requests', active: pathname.startsWith('/app/pickups') }
   ] : [
