@@ -4,6 +4,7 @@ import { useAppContext } from '../../context/AuthContext';
 import './Navbar.css';
 import { useDiscardChanges } from '../../forms/UnsavedChanges';
 
+const hostedDemo = () => typeof window !== 'undefined' && !['localhost', '127.0.0.1', '[::1]', ''].includes(window.location.hostname);
 export default function Navbar() {
   const { isLoggedIn, logout, status } = useAppContext();
   const drafts = useDiscardChanges();
@@ -26,6 +27,7 @@ export default function Navbar() {
   return <header className="site-header" onKeyDown={event => {
     if (event.key === 'Escape' && open) { setOpen(false); menuButton.current?.focus(); }
   }}>
+    {hostedDemo() && <p className="site-demo-note">Demo site: please don't enter real personal information.</p>}
     <div className="site-header-inner">
       <Link className="site-brand" to="/" onClick={() => setOpen(false)}>Move-Out Marketplace</Link>
       <button className="site-menu-button" ref={menuButton} aria-expanded={open} aria-controls="primary-navigation" onClick={() => setOpen(value => !value)}>{open ? 'Close menu' : 'Menu'}</button>

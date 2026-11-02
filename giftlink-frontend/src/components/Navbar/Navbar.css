@@ -9,6 +9,7 @@
 .site-session { display: flex; gap: .75rem; align-items: center; font-size: .8rem; color: #40534b; }
 .site-session button, .site-session a, .site-menu-button { display: inline-flex; align-items: center; text-decoration: none; font-weight: 600; min-height: 44px; padding: .5rem .8rem; border: 1px solid #426459; color: #183e37; background: #fff; border-radius: .3rem; }
 .site-menu-button { display: none; }
+.site-demo-note { margin: 0; padding: .35rem 1rem; text-align: center; font-size: .8rem; color: #40534b; background: #eef3f0; }
 .site-nav-error { max-width: 72rem; margin: .5rem auto; padding: 0 1rem; color: #a51d2d; }
 @media (max-width: 1000px) {
   .site-header-inner { flex-wrap: wrap; justify-content: space-between; gap: .5rem; padding: .75rem 1rem; }
