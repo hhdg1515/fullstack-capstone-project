@@ -358,7 +358,7 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item = {}, onClo
       <input ref={fileInput} id="item-photo-files" type="file" aria-label="Choose photos" hidden accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple disabled={selectionDisabled}
         aria-invalid={error?.field === 'file' || undefined} aria-describedby={'photo-format-help' + (error?.field === 'file' ? ' ' + fileErrorId : '')} onChange={add} />
       <p id="photo-format-help" className="item-photos-help">Up to 5 photos. JPEG, PNG or static WebP, up to 20 MiB each.</p>
-      {(needsRefresh || !embedded) && refreshButton}
+      {(needsRefresh || !embedded || planId !== null) && refreshButton}
     </div>
     {pendingHistory.length > 0 && <details className="item-photo-history"><summary>Upload history</summary>
       <ul>{pendingHistory.map(operation => <li key={operation.id}>

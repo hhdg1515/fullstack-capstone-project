@@ -66,7 +66,7 @@ test('participants recognize current covers through acceptance, scheduling, cove
     await expect(page.getByLabel('Pickup date and time', { exact: true })).toBeVisible(); await audit(page, 'request form'); await evidence(page, info, 'request-form');
     await page.goto('/app/pickups/' + fixture.request.id); await loaded(thumb(page));
     await expect(thumb(page)).toHaveAccessibleName(fixture.item.name + ' (current cover)');
-    await expect(summary(page).getByText('Pending', { exact: true })).toBeVisible(); await expect(page.getByRole('button', { name: 'Cancel request', exact: true })).toBeEnabled();
+    await expect(summary(page).getByText('Pending', { exact: true })).toHaveCount(0); await expect(summary(page).getByRole('button', { name: 'Cancel request', exact: true })).toBeEnabled();
     await expect(page.getByText('Synthetic pickup history remains readable.', { exact: true })).toBeVisible();
     await audit(page, 'requester pending'); await evidence(page, info, 'requester-pending');
     await ownerPage.goto('/app/pickups/' + fixture.request.id); await loaded(thumb(ownerPage));
@@ -75,10 +75,10 @@ test('participants recognize current covers through acceptance, scheduling, cove
     ownerPage.once('dialog', dialog => dialog.accept()); await ownerPage.keyboard.press('Enter');
     await expect(summary(ownerPage).getByText('Accepted', { exact: true })).toBeVisible(); await loaded(thumb(ownerPage));
     await page.getByRole('button', { name: 'Reload request', exact: true }).click(); await expect(summary(page).getByText('Accepted', { exact: true })).toBeVisible(); await loaded(thumb(page));
-    await expect(page.getByRole('button', { name: 'Propose new time', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Propose new time', exact: true })).toHaveCount(0);
     const current = (await (await s.requester.request.get('/api/pickup-requests/' + fixture.request.id)).json()).request;
     await s.post(s.requester, '/api/pickup-requests/' + fixture.request.id + '/reschedule-proposals', { version: current.version, localDateTime: day(3) + 'T13:00', timeZone: 'UTC' });
-    await page.getByRole('button', { name: 'Reload request', exact: true }).click(); await expect(page.getByRole('group', { name: 'Pending time change' })).toBeVisible(); await loaded(thumb(page));
+    await page.getByRole('button', { name: 'Reload request', exact: true }).click(); await expect(page.getByRole('group', { name: 'Pending time change' })).toHaveCount(0); await loaded(thumb(page));
     await audit(page, 'accepted proposal'); await evidence(page, info, 'accepted-proposal');
     await s.post(s.owner, fixture.prefix + '/images/order', { imageRevision: fixture.revision, imageIds: fixture.photos.slice().reverse() });
     await page.getByRole('button', { name: 'Reload request', exact: true }).click(); await expect(thumb(page)).toHaveAttribute('src', '/api/item-images/' + fixture.photos[1] + '/thumbnail');

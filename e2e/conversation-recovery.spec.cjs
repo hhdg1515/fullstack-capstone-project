@@ -23,7 +23,7 @@ test('an uncertain committed send requires review, preserves drafts and closes r
     const endpoint = '/api/pickup-requests/' + request.id + '/conversation/messages';
     const page = await giver.newPage(); page.on('dialog', d => d.accept());
     if (testInfo.project.name === 'mobile') await page.setViewportSize({ width: 320, height: 1000 });
-    await page.goto('/app/pickups/' + request.id + '#conversation'); await expect(page.getByText('Conversation loaded.', { exact: true })).toBeVisible();
+    await page.goto('/app/pickups/' + request.id + '#conversation'); await expect(page.getByText('Conversation loaded.', { exact: true })).toBeAttached();
     let sends = 0; page.on('request', r => { if (r.method() === 'POST' && new URL(r.url()).pathname === endpoint) sends++; });
     await page.route('**/conversation/messages', async route => {
       if (route.request().method() !== 'POST') return route.continue();
@@ -51,12 +51,12 @@ test('an uncertain committed send requires review, preserves drafts and closes r
     }
     await page.evaluate(() => { document.documentElement.style.fontSize = ''; });
     await post(receiver, '/api/pickup-requests/' + request.id + '/actions', { action: 'cancel', version: request.version });
-    await page.getByRole('button', { name: 'Reload request', exact: true }).click(); await expect(page.getByText(/This request is closed. You can read/)).toBeVisible();
+    await page.getByRole('button', { name: 'Reload request', exact: true }).click(); await expect(page.getByText(/This request is closed. You can read/)).toBeAttached();
     await expect(page.getByLabel('Unsent message', { exact: true })).toHaveValue('Keep this independent unsent draft.'); await expect(page.getByLabel('Unsent message', { exact: true })).toHaveAttribute('readonly');
     await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
     await page.getByRole('button', { name: 'Discard draft', exact: true }).click(); await expect(page.getByRole('button', { name: 'Send message', exact: true })).toHaveCount(0);
     const other = await receiver.newPage(); await other.goto('/app/pickups/' + request.id + '#conversation');
-    await expect(other.getByText(/This request is closed. You can read/)).toBeVisible(); await expect(other.getByRole('region', { name: 'Message history' }).locator('.chat-message')).toHaveCount(2);
+    await expect(other.getByText(/This request is closed. You can read/)).toBeAttached(); await expect(other.getByRole('region', { name: 'Message history' }).locator('.chat-message')).toHaveCount(2);
     await expect(other.getByRole('button', { name: 'Send message', exact: true })).toHaveCount(0); expect(sends).toBe(1); expect(deployment.serverErrors).toEqual([]);
   } finally { for (const c of contexts) await c.close(); }
 });

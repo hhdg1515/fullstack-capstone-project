@@ -25,9 +25,9 @@ test('giver distinguishes requests for the same item and reviews the selected ap
     }
     const page = await giver.newPage(); await page.goto('/app/pickups/incoming');
     for (const [index, name] of ['Alex', 'Sam'].entries()) {
-      const card = page.locator('li.pickup-request-card').filter({ has: page.getByText('Applicant: ' + name, { exact: true }) });
+      const card = page.locator('li.pickup-request-card').filter({ has: page.getByRole('link', { name: 'View request from ' + name + ' for Shared desk', exact: true }) });
       await expect(card.getByRole('link', { name: 'Shared desk', exact: true })).toHaveAttribute('href', '/app/items/' + item.id);
-      await expect(card.getByText('Pending', { exact: true })).toBeVisible();
+      await expect(card.getByText('Pending', { exact: true })).toHaveCount(0); await expect(card.getByText(/^Applicant:/)).toHaveCount(0);
       await expect(card.locator('time').first()).toHaveAttribute('datetime', requests[index].proposedAt);
       await expect(card.locator('time').nth(1)).toHaveAttribute('datetime', requests[index].createdAt);
       await card.getByText('Pickup note', { exact: true }).click();
@@ -35,12 +35,12 @@ test('giver distinguishes requests for the same item and reviews the selected ap
       await expect(card.getByRole('link', { name: 'View request from ' + name + ' for Shared desk', exact: true })).toHaveAttribute('href', '/app/pickups/' + requests[index].id);
     }
     await page.getByRole('link', { name: 'View request from Sam for Shared desk', exact: true }).click();
-    await expect(page.getByText('Applicant: Sam', { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Shared desk', exact: true })).toBeVisible();
     await page.getByText('Pickup note', { exact: true }).click();
     await expect(page.getByText('Cafe entrance', { exact: true })).toBeVisible(); await expect(page.getByText('Library entrance', { exact: true })).toHaveCount(0);
     await page.getByRole('link', { name: 'Back to requests', exact: true }).click();
     await page.getByLabel('Request status', { exact: true }).selectOption('accepted');
     await expect(page.getByText('No requests match this status.', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Clear status filter', exact: true }).click(); await expect(page.getByText('Applicant: Alex', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Clear status filter', exact: true }).click(); await expect(page.getByRole('link', { name: 'View request from Alex for Shared desk', exact: true })).toBeVisible();
   } finally { for (const context of contexts) await context.close(); }
 });

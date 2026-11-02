@@ -65,7 +65,7 @@ export default function ListingForm({ item, photoCapabilities = null, publicatio
     if (Object.keys(issues).length) { validation.show(issues); return; }
     pending.current = true; setBusy(true);
     const clientIds = photoEntries.filter(isQueuedPhoto).map(entry => entry.clientUploadId);
-    const zone = [item?.pickup.timeZone, suggestion, localZone()].find(validPickupTimeZone) || null;
+    const zone = [suggestion, item?.pickup.timeZone, localZone()].find(validPickupTimeZone) || null;
     const body = { ...values, pickupTimeZone: zone, pickupTimeZoneConfirmed: Boolean(zone), ...(publishing ? { publish: true } : {}) }; nullable.forEach(key => { body[key] = body[key] || null; });
     try {
       const result = item ? await updateOwnerListing(item.id, { ...body, version: item.version }) : await createOwnerListing(body);

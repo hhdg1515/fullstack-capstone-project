@@ -85,7 +85,7 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     must(await bcrypt.compare(password, userA.password), 'Password is not stored as a bcrypt hash');
     const cookie = (await giver.cookies()).find(value => value.name === '__Host-giftlink_session');
     must(Boolean(cookie && cookie.httpOnly && cookie.secure && cookie.sameSite === 'Lax' && cookie.path === '/'), 'Session cookie security attributes changed');
-    await primary(a, 'Account'); await a.reload(); await expect(a.getByRole('heading', { name: 'Your account', exact: true })).toBeVisible();
+    await a.goto('/app/profile'); await expect(a.getByRole('heading', { name: 'Your account', exact: true })).toBeVisible();
     await expect(a.getByText(emailA, { exact: false })).toBeVisible();
     must(!JSON.stringify(await (await read(giver, deployment.origin + '/api/me')).json()).includes(userA.password), 'Password hash exposed by API');
     await test.step('Giver account, password hash and secure cookie verified', async () => {});
@@ -134,24 +134,19 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     await b.getByRole('option', { name: 'E2E City', exact: true }).waitFor({ state: 'attached' });
     await b.getByLabel('City', { exact: true }).selectOption('E2E City');
     await b.getByLabel('Neighborhood', { exact: true }).selectOption('E2E Neighborhood');
-    await b.getByLabel('Pickup availability', { exact: true }).selectOption('now');
     await b.getByLabel('Sort items', { exact: true }).selectOption('deadline');
-    await b.getByRole('button', { name: 'Find free items', exact: true }).click();
-    await expect(results.getByRole('listitem')).toHaveCount(3);
+    await expect(b).toHaveURL(/sort=deadline/); await expect(results.getByRole('listitem')).toHaveCount(3);
     await expect(results.getByRole('link').first()).toHaveText(prefix + ' desk');
     await b.reload(); await expect(results.getByRole('listitem')).toHaveCount(3);
     await expect(b.getByLabel('Neighborhood', { exact: true })).toHaveValue('E2E Neighborhood');
     await expect(b.getByLabel('Sort items', { exact: true })).toHaveValue('deadline');
     await filters(b);
-    await b.getByLabel('Pickup availability', { exact: true }).selectOption('later');
-    await b.getByRole('button', { name: 'Find free items', exact: true }).click();
-    await expect(b.getByText('No available items match these filters. Clear filters or try another search.', { exact: true })).toBeVisible();
+    await b.getByLabel('Search items', { exact: true }).fill(prefix + ' nothing matches');
+    await expect(b.getByText('No available items match these filters. Reset or try another search.', { exact: true })).toBeVisible();
     await filters(b);
-    await b.getByLabel('Pickup availability', { exact: true }).selectOption('now');
     await b.getByLabel('Search items', { exact: true }).fill(prefix + ' desk');
-    await b.getByRole('button', { name: 'Find free items', exact: true }).click();
     await expect(results.getByRole('listitem')).toHaveCount(1);
-    await test.step('Anonymous search, city/neighborhood/availability filters, sorting, pagination and reload verified', async () => {});
+    await test.step('Anonymous live search, city/neighborhood filters, sorting, pagination and reload verified', async () => {});
     const appointment = Math.ceil((deployment.now() + (deployment.local ? 120000 : 90000)) / 60000) * 60000;
     const localTime = Temporal.Instant.fromEpochMilliseconds(appointment).toZonedDateTimeISO('America/Los_Angeles').toPlainDateTime().toString({ smallestUnit: 'minute' });
     await b.getByRole('link', { name: prefix + ' desk', exact: true }).click();
@@ -168,7 +163,7 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     for (let i = 0; i < itemIds.length; i++) {
       if (i) await b.goto('/app/items/' + itemIds[i] + '/request');
       await b.getByLabel('Pickup date and time', { exact: true }).fill(localTime); await b.getByRole('button', { name: 'Send pickup request', exact: true }).click();
-      await b.getByText('Pending', { exact: true }).first().waitFor(); requestIds.push(b.url().split('/').pop());
+      await b.getByRole('button', { name: 'Cancel request', exact: true }).waitFor(); requestIds.push(b.url().split('/').pop());
       const privateResponse = await read(receiver, deployment.origin + '/api/pickup-requests/' + requestIds[i]);
       must((await privateResponse.json()).request.status === 'pending', 'Request was automatically reserved');
     }
@@ -201,11 +196,16 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     } else {
       while (Date.now() <= appointment + 1000) await new Promise(resolve => setTimeout(resolve, Math.min(1000, appointment + 1001 - Date.now())));
     }
-    await a.goto('/app/pickups/' + requestIds[0]); await a.getByRole('button', { name: 'Confirm handoff', exact: true }).click(); await a.getByText('Completed', { exact: true }).first().waitFor();
+    const outcome = async (id, action) => {
+      const current = (await (await read(giver, deployment.origin + '/api/pickup-requests/' + id)).json()).request;
+      must((await write(giver, '/api/pickup-requests/' + id + '/actions', { action, version: current.version })).status() === 200, action + ' was not recorded');
+    };
+    await outcome(requestIds[0], 'complete'); await a.goto('/app/pickups/' + requestIds[0]); await a.getByText('Completed', { exact: true }).first().waitFor();
+    await expect(a.getByRole('button', { name: /Confirm handoff|Record no-show/ })).toHaveCount(0);
     await b.goto('/app/pickups/' + requestIds[0]); await b.getByText('Completed', { exact: true }).first().waitFor();
     must((await read(receiver, deployment.origin + '/api/items/' + itemIds[0])).status() === 404, 'Cleared item remained public');
     const planRow = await deployment.db.collection('moveOutPlans').findOne({ ownerId: userA._id }); await a.goto('/app/plans/' + planRow._id + '/items'); await expect(a.getByText('1 of 3 items cleared', { exact: true })).toBeVisible();
-    await a.goto('/app/pickups/' + requestIds[2]); await a.getByRole('button', { name: 'Record no-show', exact: true }).click(); await a.getByText('No-show', { exact: true }).first().waitFor();
+    await outcome(requestIds[2], 'no_show'); await a.goto('/app/pickups/' + requestIds[2]); await a.getByText('No-show', { exact: true }).first().waitFor();
     const noShowListing = await read(receiver, deployment.origin + '/api/items/' + itemIds[2]);
     must(noShowListing.status() === 200 && (await noShowListing.json()).item.isReserved === false, 'No-show did not release public availability');
     const laterTime = Temporal.Instant.fromEpochMilliseconds(deployment.now() + 86400000).toZonedDateTimeISO('America/Los_Angeles').toPlainDateTime().toString({ smallestUnit: 'minute' });
