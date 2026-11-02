@@ -1,4 +1,4 @@
-const { test: base, expect } = require('@playwright/test');
+const { test: base, expect } = require('./local-browser.cjs');
 const { approve, inspectRemote, newRunId, runPattern } = require('./policy.cjs');
 const { localEnvironment } = require('./local.cjs');
 const test = base.extend({

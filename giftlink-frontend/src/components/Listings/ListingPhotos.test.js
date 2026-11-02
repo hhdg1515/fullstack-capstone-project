@@ -10,7 +10,7 @@ jest.mock('../../api/ownerListings', () => ({ createOwnerListing: jest.fn(), upd
 jest.mock('../../api/itemImages', () => ({ ...jest.requireActual('../../api/itemImages'), readPhotos: jest.fn(), readUpload: jest.fn(),
   deletePhoto: jest.fn(), reservePhoto: jest.fn(), uploadPhoto: jest.fn(), fileDigest: jest.fn(), uploadId: jest.fn(), securePhotoBrowser: () => true }));
 import React, { useState } from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, createEvent } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { TestAuthContext } from '../../context/AuthContext';
 import { UnsavedChangesProvider } from '../../forms/UnsavedChanges';
@@ -22,13 +22,13 @@ const capabilities = { metadata: true, binaryUpload: true, imageRead: true };
 const saved = { id: 'd'.repeat(24), name: 'Lamp', status: 'draft', version: 1, classification: {}, capabilities: { photos: true },
   location: { stateId: '06', metroId: '31080', city: '', neighborhood: '' }, pickup: { timeZone: 'America/Los_Angeles', timeZoneConfirmed: true, availableUntil: '2099-01-01' } };
 let media, sequence, operations, setActor;
-function Scene({ item, caps }) {
+function Scene({ item, caps, publicationEnabled }) {
   const [user, update] = useState({ id: 'owner-a' }); setActor = update;
   return <TestAuthContext.Provider value={{ user, status: user ? 'authenticated' : 'anonymous' }}><UnsavedChangesProvider>
-    {user && <ListingForm key={user.id} item={item} photoCapabilities={caps} />}</UnsavedChangesProvider></TestAuthContext.Provider>;
+    {user && <ListingForm key={user.id} item={item} photoCapabilities={caps} publicationEnabled={publicationEnabled} />}</UnsavedChangesProvider></TestAuthContext.Provider>;
 }
-function mount(item, caps = capabilities) {
-  const router = createMemoryRouter([{ path: '/app/listings/new', element: <Scene item={item} caps={caps} /> }, { path: '/app/listings/:id', element: <h1>Saved detail</h1> }],
+function mount(item, caps = capabilities, publicationEnabled = false) {
+  const router = createMemoryRouter([{ path: '/app/listings/new', element: <Scene item={item} caps={caps} publicationEnabled={publicationEnabled} /> }, { path: '/app/listings/:id', element: <h1>Saved detail</h1> }],
     { initialEntries: ['/app/listings/new'], future: { v7_relativeSplatPath: true } });
   render(<RouterProvider router={router} future={{ v7_startTransition: true }} />); return router;
 }
@@ -123,4 +123,36 @@ test('an account switch discards staged previews and late uploads cannot navigat
     thumbnail: { width: 400, height: 300, contentType: 'image/webp' }, display: { width: 800, height: 600, contentType: 'image/webp' } } }));
   expect(router.state.location.pathname).toBe('/app/listings/new');
   expect(screen.getByLabelText('Item name')).toHaveValue('');
+});
+
+
+const preparePublicForm = () => {
+  fireEvent.change(screen.getByLabelText('Item name'), { target: { value: 'Shelf' } });
+  fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Clean synthetic shelf' } });
+  fireEvent.change(screen.getByRole('combobox', { name:'Item type',exact:true }), { target: { value: 'Sofa' } });
+  fireEvent.click(screen.getByRole('option', { name:'Sofa Living Room',exact:true }));
+  fireEvent.change(screen.getByLabelText('State'), { target: { value:'06' } });
+  fireEvent.change(screen.getByLabelText('Metro area'), { target: { value:'31080' } }); fillDeadline();
+};
+const publishSelected = () => {
+  const event = createEvent.submit(screen.getByRole('form')); Object.defineProperty(event, 'submitter', { value:button('Publish with 2 photos') }); fireEvent(screen.getByRole('form'), event);
+};
+test('one Publish with photos commits the item first, uploads sequentially and asks no per-photo confirmation', async () => {
+  const confirm = jest.spyOn(window,'confirm').mockReturnValue(true);
+  try {
+    createOwnerListing.mockResolvedValue({ item:{...saved,status:'available'} }); const router = mount(undefined,capabilities,true); preparePublicForm();
+    await select(2); await screen.findByAltText('Local preview of selected photo 2'); expect(uploadPhoto).not.toHaveBeenCalled();
+    await act(async () => publishSelected()); await waitFor(()=>expect(router.state.location.pathname).toBe('/app/listings/'+saved.id));
+    expect(createOwnerListing).toHaveBeenCalledTimes(1); expect(createOwnerListing.mock.calls[0][0].publish).toBe(true);
+    expect(createOwnerListing.mock.invocationCallOrder[0]).toBeLessThan(reservePhoto.mock.invocationCallOrder[0]);
+    expect(uploadPhoto).toHaveBeenCalledTimes(2); expect(confirm).not.toHaveBeenCalled();
+  } finally { confirm.mockRestore(); }
+});
+test('publication remains successful after an ambiguous photo write, with retained files and status-only recovery', async () => {
+  createOwnerListing.mockResolvedValue({ item:{...saved,status:'available'} });
+  uploadPhoto.mockRejectedValueOnce(photoError({status:503},true));
+  const router = mount(undefined,capabilities,true); preparePublicForm(); await select(2); await screen.findByAltText('Local preview of selected photo 2');
+  await act(async () => publishSelected()); expect(await screen.findByText('Listing published. Some photos still need attention.')).toBeVisible();
+  expect(screen.getByAltText('Local preview of selected photo 2')).toBeVisible(); expect(screen.getByRole('button',{name:'Check upload 1 status',exact:true})).toBeVisible();
+  expect(createOwnerListing).toHaveBeenCalledTimes(1); expect(uploadPhoto).toHaveBeenCalledTimes(1); expect(router.state.location.pathname).toBe('/app/listings/new');
 });

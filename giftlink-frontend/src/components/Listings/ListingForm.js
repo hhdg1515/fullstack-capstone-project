@@ -14,7 +14,7 @@ import './ListingForm.css';
 const nullable = ['categoryId','itemTypeId','customItemType','condition','stateId','metroId','availableFrom','availableUntil','pickupTimeZone'];
 const contextFields = ['stateId','metroId','city','neighborhood','pickupTimeZone'];
 const photoLabel = count => count + (count === 1 ? ' photo' : ' photos');
-export default function ListingForm({ item, photoCapabilities = null }) {
+export default function ListingForm({ item, photoCapabilities = null, publicationEnabled = false }) {
   const navigate = useNavigate(), catalog = usePublicCatalog('/api/item-taxonomy'), directory = usePublicCatalog('/api/regions');
   const initial = { name: item?.name || '', description: item?.description || '', categoryId: item?.classification?.category?.id || '', itemTypeId: item?.classification?.itemType?.id || '',
     customItemType: item?.classification?.customItemType || '', condition: item?.classification?.condition?.id || '', stateId: item?.location.stateId || '', metroId: item?.location.metroId || '',
@@ -50,6 +50,7 @@ export default function ListingForm({ item, photoCapabilities = null }) {
     });
   };
   const save = async event => {
+    const publishing = event.nativeEvent.submitter?.value === 'publish';
     event.preventDefault(); if (pending.current || locked) return;
     if (photoBusy || intent.current || photoEntries.some(entry => entry.phase === 'preparing')) { validation.show({}, 'Wait for the current photo work to finish before saving.'); return; }
     validation.reset(); const issues = {};
@@ -58,13 +59,21 @@ export default function ListingForm({ item, photoCapabilities = null }) {
     if (values.pickupTimeZoneConfirmed && !values.pickupTimeZone) issues.pickupTimeZone = 'Select a timezone before confirming it.';
     for (const field of ['availableFrom','availableUntil']) if (values[field] && !isCalendarDate(values[field])) issues[field] = 'Choose a real calendar date.';
     if (values.availableFrom && values.availableUntil && values.availableFrom > values.availableUntil) issues.availableUntil = 'End pickup on or after the start date.';
+    if (publishing) {
+      if (!values.description.trim()) issues.description = 'Describe the item before publishing.';
+      if (!values.itemTypeId) issues.itemTypeId = 'Choose an item type before publishing.';
+      if (!values.stateId) issues.stateId = 'Choose a state before publishing.';
+      if (!values.metroId) issues.metroId = 'Choose a metro before publishing.';
+      if (!values.availableUntil) issues.availableUntil = 'Choose a pickup deadline before publishing.';
+      if (!values.pickupTimeZoneConfirmed) issues.pickupTimeZoneConfirmed = 'Confirm the pickup timezone before publishing.';
+    }
     // Photo intake needs the item's own confirmed deadline; keep files staged otherwise.
     if (queued && !issues.availableUntil && !values.availableUntil) issues.availableUntil = 'Add a pickup deadline to save photos.';
     if (queued && !issues.pickupTimeZone && (!values.pickupTimeZone || !values.pickupTimeZoneConfirmed)) issues.pickupTimeZoneConfirmed = 'Confirm the pickup timezone to save photos.';
     if (Object.keys(issues).length) { validation.show(issues); return; }
     pending.current = true; setBusy(true);
     const clientIds = photoEntries.filter(isQueuedPhoto).map(entry => entry.clientUploadId);
-    const body = { ...values }; nullable.forEach(key => { body[key] = body[key] || null; });
+    const body = { ...values, ...(publishing ? { publish: true } : {}) }; nullable.forEach(key => { body[key] = body[key] || null; });
     if (!confirmationTouched.current) delete body.pickupTimeZoneConfirmed;
     try {
       const result = item ? await updateOwnerListing(item.id, { ...body, version: item.version }) : await createOwnerListing(body);
@@ -75,7 +84,7 @@ export default function ListingForm({ item, photoCapabilities = null }) {
       intent.current = { id: ++intentSequence.current, itemId: result.item.id, clientIds }; setUploadIntent(intent.current);
     } catch (failure) {
       if (!alive.current) return;
-      if (failure.status === 409) { setStale(true); validation.show({}, 'This draft changed or is unavailable. Review the latest saved version before editing again.'); }
+      if (failure.status === 409 && (!failure.code || ['LISTING_CHANGED', 'LISTING_CONTEXT_INVALID', 'V2_LIFECYCLE_DISABLED'].includes(failure.code))) { setStale(true); validation.show({}, 'This draft changed or is unavailable. Review the latest saved version before editing again.'); }
       else if (failure.code === 'OWNER_LISTINGS_DISABLED') { setDisabled(true); validation.show({}, 'Listing tools are temporarily unavailable. Your unsaved details remain here.'); }
       else {
         validation.failure(failure, Object.keys(initial), { categoryId: 'itemTypeId' });
@@ -89,12 +98,12 @@ export default function ListingForm({ item, photoCapabilities = null }) {
       <input id={'listing-' + name} name={name} type={type} value={values[name]} disabled={locked} maxLength={maxLength} onChange={e => change({ [name]: e.target.value })} required={name === 'name'} autoFocus={name === 'name'} {...validation.fieldProps(name, name === 'pickupTimeZone' ? 'listing-zone-help' : undefined)} />}{message(name)}</div>;
   const suggestion = directory.data?.metros.find(metro => metro.id === values.metroId)?.suggestedTimeZone;
   const chosenType = catalog.data?.categories.find(c => c.id === values.categoryId)?.itemTypes.find(t => t.id === values.itemTypeId);
-  const submit = <button className="ui-button" type="submit" disabled={locked || photoBusy}>{busy ? 'Saving…' : queued ? 'Save draft with ' + photoLabel(queued) : 'Save Draft'}</button>;
+  const submit = <><button className="ui-button" type="submit" disabled={locked || photoBusy}>{busy ? 'Saving…' : queued ? 'Save draft with ' + photoLabel(queued) : 'Save Draft'}</button>{publicationEnabled && <button className="ui-button" type="submit" value="publish" disabled={locked || photoBusy}>{busy ? 'Saving…' : queued ? 'Publish with ' + photoLabel(queued) : 'Publish listing'}</button>}</>;
   const photos = photosEnabled && <ItemPhotos embedded allowStaging planId={null} item={photoItem || (item ? { id: item.id, name: item.name, status: item.status } : {})}
     entries={photoEntries} onEntriesChange={setPhotoEntries} previewUrls={urls.current} capabilities={photoCapabilities}
     disabled={busy || uncertain || stale || disabled} onBusyChange={setPhotoBusy} uploadIntent={uploadIntent} claimUploadIntent={claimUploadIntent} recovery={Boolean(photoItem)} />;
   return <main className="ui-page ui-page--form listing-editor"><PageHeader title={item ? 'Edit Listing' : 'Create Listing'} />
-    {photoItem && <Feedback><p role="status">{photoBusy || uploadIntent ? 'Draft saved. Saving photos…' : 'Draft saved. Some photos still need attention.'}</p>
+    {photoItem && <Feedback><p role="status">{photoBusy || uploadIntent ? (photoItem.status === 'available' ? 'Listing published. Saving photos…' : 'Draft saved. Saving photos…') : (photoItem.status === 'available' ? 'Listing published. Some photos still need attention.' : 'Draft saved. Some photos still need attention.')}</p>
       {!photoBusy && !uploadIntent && <Link to={'/app/listings/' + photoItem.id}>View saved listing</Link>}</Feedback>}
     <Surface as="form" aria-label={item ? 'Edit Listing' : 'Create Listing'} ref={validation.formRef} onSubmit={save} noValidate aria-busy={busy}>
       <div hidden={Boolean(photoItem)}>
@@ -117,7 +126,7 @@ export default function ListingForm({ item, photoCapabilities = null }) {
       </fieldset>
       </div>
       {photos}
-      <p hidden={Boolean(photoItem)}>{photosEnabled ? 'Private drafts need only an item name. Photos need a confirmed pickup timezone and deadline. Publishing is not available yet.' : 'Private drafts need only an item name. Publishing and photos are not available yet.'}</p>
+      <p hidden={Boolean(photoItem)}>{publicationEnabled ? 'Save a private draft or publish when ready.' : photosEnabled ? 'Private drafts need only an item name. Photos need a confirmed pickup timezone and deadline. Publishing is not available yet.' : 'Private drafts need only an item name. Publishing and photos are not available yet.'}</p>
       <div className="listing-form-actions" hidden={Boolean(photoItem)}>{submit}<button type="button" className="ui-button ui-button--secondary" disabled={busy || photoBusy} onClick={async () => {
         if (photoGuard.dirty ? await photoGuard.requestDiscard({ release: false, alsoText: guard.dirty }) : guard.confirmDiscard()) {
           // The photo dialog's approval also covers unsaved text; release both guards.

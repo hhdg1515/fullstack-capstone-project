@@ -9,6 +9,6 @@ module.exports = defineConfig({
     { name: 'desktop', use: { viewport: { width: 1440, height: 1000 } } },
     // Dedicated B3 F2/F3 reflow checks run at 1440/320/375 in desktop Chromium.
     // F1/F4 and every baseline spec also retain independent mobile emulation.
-    { name: 'mobile', testIgnore: ['listing-form-f2.spec.cjs', 'listing-lifecycle-f3.spec.cjs'], use: { ...devices['Pixel 7'] } }
+    { name: 'mobile', testIgnore: ['listing-form-f2.spec.cjs', 'listing-lifecycle-f3.spec.cjs', 'listing-native-zoom-c3.spec.cjs'], use: { ...devices['Pixel 7'] } }
   ]
 });

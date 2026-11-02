@@ -19,11 +19,12 @@ const lifecycleDisabled = () => new InventoryError(409, 'V2_LIFECYCLE_DISABLED',
 const id = value => typeof value === 'string' && /^[a-fA-F0-9]{24}$/.test(value);
 const integer = value => Number.isSafeInteger(value) && value >= 1;
 function checkInput(input, editing = false, action = false) {
-    const allowed = action ? ['action', 'version'] : editable.concat('publish', editing ? ['version'] : []);
+    const allowed = action ? ['action', 'version', 'confirmCancelRequests'] : editable.concat('publish', editing ? ['version'] : []);
     if (!input || Array.isArray(input) || typeof input !== 'object' || !Object.keys(input).length || Object.keys(input).some(key => !allowed.includes(key))) {
         throw new InventoryError(400, 'VALIDATION_FAILED', 'Unsupported or missing fields.');
     }
     if (editing && !integer(input.version) || input.publish !== undefined && typeof input.publish !== 'boolean' ||
+        input.confirmCancelRequests !== undefined && typeof input.confirmCancelRequests !== 'boolean' ||
         input.pickupTimeZoneConfirmed !== undefined && typeof input.pickupTimeZoneConfirmed !== 'boolean' ||
         action && !['publish', 'withdraw', 'unlist', 'clear', 'reopen'].includes(input.action)) throw new InventoryError(400, 'VALIDATION_FAILED', 'Check the action, version and confirmation fields.');
 }
@@ -65,7 +66,7 @@ function feedPipeline(ownerId, params, imageRead) {
     ], as: 'ownerPhotos' } });
     return stages;
 }
-function createOwnerListingService({ connectToDatabase, imageMetadata = null, imageRead = false, independentPhotos = false, independentPickups = false }) {
+function createOwnerListingService({ connectToDatabase, imageMetadata = null, imageRead = false, independentPhotos = false, independentPickups = false, independentPublication = false }) {
     const legacy = createInventoryService({ connectToDatabase, imageMetadata, imageRead });
     function response(item, plan, now) {
         const ctx = resolveListingContext(item, plan, item.ownerId, now, { operation: 'ownerDraft' });
@@ -83,7 +84,7 @@ function createOwnerListingService({ connectToDatabase, imageMetadata = null, im
                 datePolicy: v2 ? 'pickup-local' : 'utc-calendar', expiresAt: v2 && ctx.expiresAt ? ctx.expiresAt.toISOString() : null },
             photoPreview: { availability: preview.availability, images: preview.images },
             pickupSummary: v2 ? { supported: independentPickups, reserved: independentPickups && Boolean(item.isReserved) } : { supported: true, reserved: Boolean(item.isReserved) },
-            capabilities: { editDraft: v2 && item.status === 'draft', legacyEditor: !v2, publish: false, withdraw: false, photos: v2 && independentPhotos && item.status === 'draft' },
+            capabilities: { editDraft: v2 && (item.status === 'draft' || independentPublication && item.status === 'unlisted'), legacyEditor: !v2, publish: v2 && independentPublication && ['draft', 'unlisted'].includes(item.status), withdraw: v2 && independentPublication && item.status === 'available', photos: v2 && independentPhotos && !['expired', 'cleared'].includes(item.status) },
             createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() };
     }
     async function owned(db, ownerId, itemId, session) {
@@ -93,16 +94,17 @@ function createOwnerListingService({ connectToDatabase, imageMetadata = null, im
         return item;
     }
     async function create(ownerId, input) {
-        checkInput(input); if (input.publish) throw publicationDisabled();
+        checkInput(input); if (input.publish && !independentPublication) throw publicationDisabled();
         const db = await connectToDatabase(), session = db.client.startSession(), itemId = new ObjectId();
         try {
             return await session.withTransaction(async () => {
                 const clock = await db.collection('users').aggregate([{ $match: { _id: ownerId } }, { $project: { now: '$$NOW' } }], { session, maxTimeMS: 2000 }).next();
                 if (!clock) throw missing();
                 const now = clock.now;
-                const item = applyDraft({ _id: itemId, ownerId, listingSchemaVersion: 2, status: 'draft', version: 1, coordinationRevision: 0, imageRevision: 0,
+                let item = applyDraft({ _id: itemId, ownerId, listingSchemaVersion: 2, status: 'draft', version: 1, coordinationRevision: 0, imageRevision: 0,
                     createdAt: now, updatedAt: now, publishedAt: null, name: '', description: '', categoryId: null, itemTypeId: null, customItemType: null, condition: null,
                     stateId: null, metroId: null, city: '', neighborhood: '', pickupTimeZone: null, timeZoneConfirmedAt: null, availableFrom: null, availableUntil: null }, input, now);
+                if (input.publish) item = require('./listing-publication').publish(item, now);
                 const result = response(item, null, now);
                 await db.collection('items').insertOne(item, { session });
                 return { item: result };
@@ -137,14 +139,27 @@ function createOwnerListingService({ connectToDatabase, imageMetadata = null, im
         const db = await connectToDatabase(), item = await owned(db, ownerId, itemId);
         if (modelVersion(item) === 1) throw legacyWrite();
         return listingTransaction(db, ownerId, item._id, input.version, async (ctx, session, now) => {
-            if (ctx.item.status !== 'draft') throw lifecycleDisabled();
-            if (action || input.publish === true) {
-                if (input.action === 'publish' || input.publish === true) throw publicationDisabled();
+            const transition = action ? input.action : input.publish ? 'publish' : null;
+            if (transition && !independentPublication) {
+                if (transition === 'publish') throw publicationDisabled();
                 throw lifecycleDisabled();
             }
-            const saved = applyDraft(ctx.item, input, now);
+            let saved;
+            if (['withdraw', 'unlist'].includes(transition)) {
+                if (ctx.item.status !== 'available') throw lifecycleDisabled();
+                saved = await require('./listing-publication').withdraw(db, session, ctx.item, ownerId, now, input.confirmCancelRequests);
+            } else {
+                if (!(ctx.item.status === 'draft' || independentPublication && ctx.item.status === 'unlisted') || transition && transition !== 'publish') throw lifecycleDisabled();
+                saved = action ? Object.assign({}, ctx.item) : applyDraft(ctx.item, input, now);
+                if (transition === 'publish') saved = require('./listing-publication').publish(saved, now);
+            }
             saved.coordinationRevision = ctx.item.coordinationRevision + 1; saved.version++; saved.updatedAt = now;
-            const result = response(saved, null, now);
+            // Return the same authoritative bounded photo preview as private
+            // reads, without persisting enrichment fields on the item itself.
+            const previewItem = Object.assign({}, saved);
+            if (imageMetadata && imageRead) previewItem.ownerPhotos = await db.collection('itemImages').find({ itemId: saved._id, state: 'ready' },
+                { session, maxTimeMS: 2000 }).sort({ sortPosition: 1, _id: 1 }).limit(6).toArray();
+            const result = response(previewItem, null, now);
             const update = await db.collection('items').replaceOne({ _id: item._id, ownerId, version: input.version, coordinationRevision: saved.coordinationRevision }, saved, { session });
             if (update.modifiedCount !== 1) throw new InventoryError(409, 'LISTING_CHANGED', 'Listing changed. Reload it before editing.');
             return { item: result };

@@ -232,9 +232,9 @@ describe('UX-2C2 independent listing pickups, conversations and scheduling on ve
         // A v2 row that also claims a plan, or an unknown version, is not a valid reference.
         await db.collection('pickupRequests').updateOne({ _id: new ObjectId(req.id) }, { $set: { planId: plan._id } });
         for (const call of [act(req.id, receiver, 'cancel', req.version), propose(req.id, receiver, req.version, localDay(4) + 'T10:00')]) await call.expect(404);
-        await messages(req.id, receiver).expect(404);
+        await messages(req.id, receiver).expect(404); await detail(req.id, receiver).expect(404);
         await db.collection('pickupRequests').updateOne({ _id: new ObjectId(req.id) }, { $unset: { planId: '' }, $set: { referenceVersion: 3 } });
-        await act(req.id, receiver, 'cancel', req.version).expect(404); await messages(req.id, receiver).expect(404);
+        await act(req.id, receiver, 'cancel', req.version).expect(404); await messages(req.id, receiver).expect(404); await detail(req.id, receiver).expect(404);
         // A legacy item is still requested and stored through the v1 plan format.
         const legacy = { _id: new ObjectId(), planId: plan._id, ownerId: giver.id, name: 'Legacy desk', description: 'Synthetic legacy item.', category: '',
             categoryId: 'office-lighting', itemTypeId: 'desk', status: 'available', version: 2, availableFrom: null, availableUntil: null, publishedAt: new Date(Date.now() - 60000),
@@ -246,4 +246,21 @@ describe('UX-2C2 independent listing pickups, conversations and scheduling on ve
         assert.equal((await act(old.id, giver, 'accept', old.version).expect(200)).body.request.status, 'accepted');
         assert.equal((await db.collection('moveOutPlans').findOne({ _id: plan._id })).inventoryRevision, 2);
     });
+    it('C3 private request notes and history fail closed after participant or parent reference damage', async function () {
+        const item = await listing(), req = (await create(item).expect(201)).body.request;
+        const original = await db.collection('pickupRequests').findOne({ _id: new ObjectId(req.id) });
+        for (const changes of [{ receiverId: third.id }, { giverId: third.id }, { itemId: new ObjectId() }]) {
+            await db.collection('pickupRequests').replaceOne({ _id: original._id }, Object.assign({}, original, changes));
+            const actor = changes.receiverId || changes.giverId ? third : receiver;
+            await detail(req.id, actor).expect(404); await messages(req.id, actor).expect(404);
+        }
+        await db.collection('pickupRequests').replaceOne({ _id: original._id }, original);
+        await db.collection('items').updateOne({ _id: item._id }, { $set: { ownerId: third.id } });
+        await detail(req.id, receiver).expect(404);
+        await db.collection('items').updateOne({ _id: item._id }, { $set: { ownerId: giver.id } });
+        await detail(req.id, receiver).expect(200);
+        const closed = (await act(req.id, receiver, 'cancel', req.version).expect(200)).body.request;
+        assert.equal(closed.status, 'cancelled'); await detail(req.id, giver).expect(200); await detail(req.id, receiver).expect(200);
+    });
+
 });

@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const AxeBuilder = require('@axe-core/playwright').default;
-const { test: base, expect, chromium } = require('@playwright/test');
+const { test: base, expect, chromium } = require('./local-browser.cjs');
 const { localEnvironment } = require('./local.cjs');
 const test = base.extend({ deployment:[async ({},use)=>{
   if (process.env.E2E_APP_ORIGIN) throw Error('F3 is disposable local only');
@@ -35,7 +35,7 @@ async function accessible(page) {const violations=(await new AxeBuilder({page}).
 async function shot(page,label) {
  if(process.env.F3_SCREENSHOT_DIR){fs.mkdirSync(process.env.F3_SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:path.join(process.env.F3_SCREENSHOT_DIR,label+'.png'),fullPage:!label.startsWith('f3-native-zoom')});}
 }
-for(const width of [1440,320,375]) test('F3 create/edit guards, history, reload, save and keyboard at '+width,async({browser,deployment})=>{
+for(const width of [1440,320,375]) test('F3 create/edit guards, history, reload, save and keyboard at '+width,async({isolatedBrowser: browser,deployment})=>{
  const s=await setup(browser,deployment,width),{page}=s;
  try{
   await page.goto('/app/listings');await expect(page.getByText('No listings yet.')).toBeVisible();await accessible(page);
@@ -87,7 +87,7 @@ for(const width of [1440,320,375]) test('F3 create/edit guards, history, reload,
  }finally{await s.context.close();}
 });
 
-test('F3 definite failure retains input; committed but lost create response stays locked without duplicate POST',async({browser,deployment})=>{
+test('F3 definite failure retains input; committed but lost create response stays locked without duplicate POST',async({isolatedBrowser: browser,deployment})=>{
  const s=await setup(browser,deployment,375),{page}=s;let posts=0;
  try{
   await page.goto('/app/listings/new');await nameField(page).fill('F3 recovery chair');
@@ -105,7 +105,7 @@ test('F3 definite failure retains input; committed but lost create response stay
  }finally{await s.context.close();}
 });
 
-for(const edit of [false,true]) for(const status of [200,401]) test('F3 late '+(status===200&&!edit?201:status)+' '+(edit?'edit':'create')+' cannot navigate or leak after account switch',async({browser,deployment})=>{
+for(const edit of [false,true]) for(const status of [200,401]) test('F3 late '+(status===200&&!edit?201:status)+' '+(edit?'edit':'create')+' cannot navigate or leak after account switch',async({isolatedBrowser: browser,deployment})=>{
  const s=await setup(browser,deployment),{page}=s;let release;
  try{
   const old=edit?(await s.post('/api/items',{name:'Account A saved'})).item:null;
@@ -126,7 +126,7 @@ for(const edit of [false,true]) for(const status of [200,401]) test('F3 late '+(
  }finally{release?.();await s.context.close();}
 });
 
-test('F3 real bounded inventory pagination, retained-page retry, cursor restart and disabled state',async({browser,deployment})=>{
+test('F3 real bounded inventory pagination, retained-page retry, cursor restart and disabled state',async({isolatedBrowser: browser,deployment})=>{
  const s=await setup(browser,deployment,320),{page}=s;
  try{
   for(let i=0;i<21;i++)await s.post('/api/items',{name:'Inventory '+String(i).padStart(2,'0')});
@@ -147,7 +147,7 @@ test('F3 real bounded inventory pagination, retained-page retry, cursor restart 
  }finally{await s.context.close();}
 });
 
-test('F3 native Chromium 200 percent tab zoom preserves form, keyboard save and inventory reflow',async({browser,deployment})=>{
+test('F3 native Chromium 200 percent tab zoom preserves form, keyboard save and inventory reflow',async({isolatedBrowser: browser,deployment})=>{
  const s=await setup(browser,deployment);const directory=fs.mkdtempSync(path.join(os.tmpdir(),'moveout-f3-zoom-'));let zoom;
  try{
   // Chromium's normal Page zoom preference in a disposable browser profile.

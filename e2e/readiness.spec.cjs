@@ -2,7 +2,7 @@ const AxeBuilder = require('@axe-core/playwright').default;
 const { test, expect } = require('./fixtures.cjs');
 test.skip(Boolean(process.env.E2E_APP_ORIGIN), 'Readiness fault/accessibility checks use only the isolated local stack');
 
-test('public/account pages have no automated WCAG A/AA violations and support keyboard navigation', async ({ browser, deployment }, testInfo) => {
+test('public/account pages have no automated WCAG A/AA violations and support keyboard navigation', async ({ isolatedBrowser: browser, deployment }, testInfo) => {
   const options = { ...testInfo.project.use, ignoreHTTPSErrors: true };
   delete options.launchOptions; delete options.trace; delete options.screenshot; delete options.video;
   const context = await browser.newContext(options), page = await context.newPage();

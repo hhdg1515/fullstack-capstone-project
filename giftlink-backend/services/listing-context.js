@@ -27,11 +27,11 @@ function resolveListingContext(item, plan, ownerId, now, { operation = 'strict' 
     try {
         if (Object.prototype.hasOwnProperty.call(item, 'planId') || !['draft', 'available', 'unlisted', 'expired', 'cleared'].includes(item.status) ||
             !Number.isSafeInteger(item.version) || item.version < 1 || !Number.isSafeInteger(item.coordinationRevision) || item.coordinationRevision < 0) throw invalid();
-        if (operation === 'ownerDraft' && item.status === 'draft') {
+        if (operation === 'ownerDraft' && ['draft', 'unlisted'].includes(item.status)) {
             const deadline = require('./listing-draft').draftContext(item, now);
             return Object.assign({ modelVersion: 2, item, ownerId, region: { stateId: item.stateId, metroId: item.metroId, city: item.city, neighborhood: item.neighborhood },
                 pickupTimeZone: item.pickupTimeZone, availableFrom: item.availableFrom, availableUntil: item.availableUntil,
-                status: 'draft', fence: 'item', policyEligible: false, publicEnabled: false, disabledReason: 'V2_NOT_ACTIVATED' }, deadline);
+                status: item.status, fence: 'item', policyEligible: false, publicEnabled: false, disabledReason: 'V2_NOT_ACTIVATED' }, deadline);
         }
         if (!item.stateId || !item.metroId) throw invalid();
         validateRegion(item.stateId, item.metroId);

@@ -2,7 +2,7 @@ const { randomUUID, createHash } = require('node:crypto');
 const fs = require('node:fs'); const path = require('node:path');
 const sharp = require('../giftlink-backend/node_modules/sharp');
 const AxeBuilder = require('@axe-core/playwright').default;
-const { test: base, expect } = require('@playwright/test');
+const { test: base, expect } = require('./local-browser.cjs');
 const { localEnvironment } = require('./local.cjs');
 // A fresh app per case preserves the real 20/minute metadata limit, without
 // raising it, spoofing client IPs or sharing accounting with another case.
@@ -61,7 +61,7 @@ async function deleted(panel, position) {
   await expect(panel.getByRole('button', { name: 'Check photo changes', exact: true })).toHaveCount(0);
   await expect(panel.getByText(/Photo deleted\./)).toBeVisible();
 }
-test('legacy order compatibility, ordinary delete and cover fallback persist across reload', async ({ browser, deployment }, info) => {
+test('legacy order compatibility, ordinary delete and cover fallback persist across reload', async ({ isolatedBrowser: browser, deployment }, info) => {
   const s = await scene(browser, deployment, info, 3); const { page, panel, card, context, photos } = s;
   try {
     await evidence(page, info, 'initial', card); await audit(page, 'initial');
@@ -91,7 +91,7 @@ test('legacy order compatibility, ordinary delete and cover fallback persist acr
     expect((await deployment.db.collection('items').findOne({ name: s.item.name })).version).toBe(1);
   } finally { await context.close(); }
 });
-test('stale and uncertain changes preserve independent text/files and require reads without replay', async ({ browser, deployment }, info) => {
+test('stale and uncertain changes preserve independent text/files and require reads without replay', async ({ isolatedBrowser: browser, deployment }, info) => {
   const s = await scene(browser, deployment, info, 2); const { page, panel, context, photos } = s; let gate;
   try {
     const description = page.getByLabel('Description', { exact: true }); await description.fill('Keep this unsaved text.');
@@ -120,7 +120,7 @@ test('stale and uncertain changes preserve independent text/files and require re
     await expect(description).toHaveValue('Keep this unsaved text.'); await expect(panel.getByAltText('Local preview of selected photo 1')).toBeVisible();
   } finally { gate?.release(); await context.close(); }
 });
-test('upload races, expired sessions and nonparticipant denials never cross item or account scope', async ({ browser, deployment }, info) => {
+test('upload races, expired sessions and nonparticipant denials never cross item or account scope', async ({ isolatedBrowser: browser, deployment }, info) => {
   const s = await scene(browser, deployment, info, 1); const { page, panel, context, photos } = s; let gate;
   try {
     const file = { name: 'local.png', mimeType: 'image/png', buffer: await s.bytes('#54875c') };
@@ -145,7 +145,7 @@ test('upload races, expired sessions and nonparticipant denials never cross item
     expect(await deployment.db.collection('itemImages').countDocuments({ state: 'ready' })).toBe(1);
   } finally { gate?.release(); await context.close(); }
 });
-test('logical deletion leaves quota held until receipt-verified physical cleanup and history remains truthful', async ({ browser, deployment }, info) => {
+test('logical deletion leaves quota held until receipt-verified physical cleanup and history remains truthful', async ({ isolatedBrowser: browser, deployment }, info) => {
   const s = await scene(browser, deployment, info, 1); const { page, panel, context } = s;
   try {
     // Real browser network failure: a cover badge must not obscure its fallback text.

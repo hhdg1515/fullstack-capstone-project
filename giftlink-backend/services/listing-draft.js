@@ -59,7 +59,7 @@ function applyDraft(previous, input, now) {
 }
 function draftContext(item, now) {
     validateOptional(item);
-    if (item.publishedAt !== null || !(item.createdAt instanceof Date) || !Number.isFinite(item.createdAt.getTime()) ||
+    if (!(item.publishedAt === null || item.status === 'unlisted' && item.publishedAt instanceof Date) || !(item.createdAt instanceof Date) || !Number.isFinite(item.createdAt.getTime()) ||
         !(item.updatedAt instanceof Date) || !Number.isFinite(item.updatedAt.getTime()) ||
         !Number.isSafeInteger(item.imageRevision) || item.imageRevision < 0 ||
         !(item.timeZoneConfirmedAt === null || item.timeZoneConfirmedAt instanceof Date && Number.isFinite(item.timeZoneConfirmedAt.getTime()) && item.timeZoneConfirmedAt <= now && item.pickupTimeZone)) throw new Error('Invalid draft metadata');

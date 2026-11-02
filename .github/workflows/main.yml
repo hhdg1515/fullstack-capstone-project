@@ -90,8 +90,9 @@ jobs:
     needs: client_build
     # Match the reviewed local storage fixture runtime without weakening image checks.
     runs-on: ubuntu-24.04
-    # D2 main took 17 minutes; retain all regressions plus the integrated E1 cases.
-    timeout-minutes: 25
+    # C2 final-head browser job took 21m33s. C3 adds two real-appointment
+    # journeys and native zoom; retain every test, no retries/per-test inflation.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1; Node 24 action runtime
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0; application Node remains 22
@@ -113,3 +114,20 @@ jobs:
         working-directory: e2e
       - run: npm test
         working-directory: e2e
+
+  windows_local_smoke:
+    name: Windows local launcher safety smoke
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Parse native Windows launcher and shared local harness
+        run: |
+          node --check local/manual-mvp.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check e2e/local.cjs
+      - name: Verify refusal paths without Docker or remote credentials
+        run: node --test local/manual-mvp.test.cjs

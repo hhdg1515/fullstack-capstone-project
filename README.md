@@ -1029,5 +1029,27 @@ independent (v2) listings through the existing state machine. V2 requests use a
 separate `referenceVersion: 2` format with no `planId`, are serialized on the
 item's own fence, and evaluate the item's confirmed local deadline at database
 time. The `OWNER_LISTING_PICKUPS_ENABLED` gate is **false by default**, and v2
-publication remains UX-2C3, so only explicit local fixtures can be eligible. See
+publication is separately gated by UX-2C3. See
 the [lifecycle, authorization, verification and C3 handoff](docs/milestone-6.6-ux2c2-item-first-pickup-integration.md).
+
+## Milestone 6.6 UX-2C3: complete local Item-first acceptance
+
+Independent drafts can now be explicitly published, discovered alongside legacy
+plan items, requested and coordinated through the existing pickup lifecycle.
+Publication requires complete item details, canonical region, a future deadline
+and an explicitly confirmed pickup timezone; name-only private drafts remain
+supported. Withdrawal uses versioned item transactions and explicit request
+cancellation, preserving participant history and revoking fresh public media.
+
+`OWNER_LISTING_PUBLICATION_ENABLED=false` remains the default. It requires both
+owner listings and independent pickups. All hosted photo/R2 activation gates
+remain disabled; no production settings or remote indexes were changed.
+
+For a disposable native Windows PowerShell/Docker Desktop environment, follow
+[Windows local MVP acceptance](docs/windows-local-mvp-acceptance.md). The single
+`node local/manual-mvp.cjs --approve-disposable-local` command starts the real
+frontend development server, backend, verified local MongoDB replica set and
+private SeaweedFS pipeline; Ctrl+C shuts down and removes only that run.
+No Atlas/R2 endpoint or credentials are accepted.
+
+See [C3 acceptance, evidence, limits and rollback](docs/milestone-6.6-ux2c3-item-first-mvp-acceptance.md).

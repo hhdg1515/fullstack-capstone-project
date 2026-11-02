@@ -116,7 +116,7 @@ describe('server bootstrap and configuration', function () {
     it('keeps existing defaults and permits explicit test ports/databases', function () {
         const env = { MONGO_URL: 'mongodb://127.0.0.1:1' };
         assert.deepEqual(readServerConfig(env), {
-            mongoUrl: env.MONGO_URL, dbName: 'giftdb', appOrigin: 'http://localhost:3000', secureCookies: false, sessionTtlSeconds: 28800, port: 3060, ownerListingsEnabled: false, ownerListingPhotosEnabled: false, ownerListingPickupsEnabled: false
+            mongoUrl: env.MONGO_URL, dbName: 'giftdb', appOrigin: 'http://localhost:3000', secureCookies: false, sessionTtlSeconds: 28800, port: 3060, ownerListingsEnabled: false, ownerListingPhotosEnabled: false, ownerListingPickupsEnabled: false, ownerListingPublicationEnabled: false
         });
         const custom = readServerConfig(Object.assign({}, env, { PORT: '0', MONGO_DB_NAME: 'giftdb_test_custom' }));
         assert.equal(custom.port, 0);

@@ -10,10 +10,32 @@ const unavailable = () => ({ imageAvailability: 'unavailable', coverImage: null 
 
 // Detail-only optional read. Request participation never grants image delivery
 // authority: requester uses current public policy; giver uses actual ownership.
-function createPickupItemMedia({ connectToDatabase, configuration }) {
+function createPickupItemMedia({ connectToDatabase, configuration, independentMedia = false }) {
     const binding = validateImageConfig(configuration).storageBinding;
+    async function independentCover(original, userId) {
+        if (!validRequest(original) || !(userId instanceof ObjectId) || ![original.giverId, original.receiverId].some(id => id.equals(userId))) return unavailable();
+        try {
+            const db = await connectToDatabase();
+            const rows = await db.collection('pickupRequests').aggregate([
+                { $match: { _id: original._id, referenceVersion: 2, planId: { $exists: false }, itemId: original.itemId, giverId: original.giverId, receiverId: original.receiverId } },
+                { $lookup: { from: 'users', localField: 'giverId', foreignField: '_id', as: 'giver' } },
+                { $lookup: { from: 'users', localField: 'receiverId', foreignField: '_id', as: 'receiver' } },
+                { $match: { 'giver.0': { $exists: true }, 'receiver.0': { $exists: true } } },
+                { $lookup: { from: 'items', let: { item: '$itemId', owner: '$giverId' }, pipeline: [
+                    { $match: { listingSchemaVersion: 2, planId: { $exists: false }, $expr: { $and: [{ $eq: ['$_id', '$$item'] }, { $eq: ['$ownerId', '$$owner'] }] } } }
+                ].concat(original.giverId.equals(userId) ? [{ $match: { status: { $in: ['draft', 'available', 'unlisted', 'expired', 'cleared'] } } }] : require('./independent-visibility').independentVisibilityPipeline(), [
+                    { $lookup: { from: 'itemImages', localField: '_id', foreignField: 'itemId', pipeline: [{ $match: { state: 'ready' } }, { $sort: { sortPosition: 1, _id: 1 } }, { $limit: 6 }], as: 'photos' } },
+                    { $project: { listingSchemaVersion: 1, ownerId: 1, imageRevision: 1, photos: 1 } }
+                ]), as: 'mediaItem' } },
+                { $project: { itemId: 1, giverId: 1, receiverId: 1, referenceVersion: 1, status: 1, active: 1, history: { $slice: ['$history', 1] }, mediaItem: 1 } }
+            ], { readConcern: { level: 'snapshot' }, maxTimeMS: 5000 }).toArray();
+            const current = rows[0];
+            if (!validRequest(current)) return unavailable();
+            return mediaSummary(current.mediaItem[0], { _id: current.itemId, ownerId: current.giverId }, binding);
+        } catch (_) { return unavailable(); }
+    }
     return async function cover(original, userId) {
-        // UX-2C2: requests on independent items carry no photo rights yet (C3 decides public v2 media).
+        if (referenceVersion(original) === 2) return independentMedia ? independentCover(original, userId) : unavailable();
         if (referenceVersion(original) !== 1) return unavailable();
         if (!validRequest(original) || !(userId instanceof ObjectId) || ![original.giverId, original.receiverId].some(id => id.equals(userId))) return unavailable();
         try {
