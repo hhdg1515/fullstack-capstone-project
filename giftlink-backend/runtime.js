@@ -1,7 +1,7 @@
 const createApp = require('./app');
 const { assertDatabaseIndexes } = require('./services/database-indexes');
 
-async function initializeApplication(config, { database, logger, appFactory = createApp, onPhase = () => {} }) {
+async function initializeApplication(config, { database, logger, appFactory = createApp, onPhase = () => {}, imagePipeline = null }) {
     onPhase('database_connect');
     const db = await database.connect();
     onPhase('index_verification');
@@ -11,7 +11,7 @@ async function initializeApplication(config, { database, logger, appFactory = cr
     if (!topology.setName && topology.msg !== 'isdbgrid') throw new Error('MongoDB replica set required for atomic inventory updates; see README');
     onPhase('app_construction');
     return appFactory({ connectToDatabase: database.connect, appOrigin: config.appOrigin,
-        secureCookies: config.secureCookies, sessionTtlSeconds: config.sessionTtlSeconds, imageMetadata: config.imageMetadata, ownerListingsEnabled: config.ownerListingsEnabled === true, ownerListingPhotosEnabled: config.ownerListingPhotosEnabled === true,
+        secureCookies: config.secureCookies, sessionTtlSeconds: config.sessionTtlSeconds, imageMetadata: config.imageMetadata, imagePipeline, ownerListingsEnabled: config.ownerListingsEnabled === true, ownerListingPhotosEnabled: config.ownerListingPhotosEnabled === true,
         ownerListingPickupsEnabled: config.ownerListingPickupsEnabled === true, ownerListingPublicationEnabled: config.ownerListingPublicationEnabled === true, logger });
 }
 module.exports = { initializeApplication };

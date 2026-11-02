@@ -25,22 +25,33 @@ function approvalIdentity(env) {
         databaseFingerprint: env.ITEM_IMAGE_R2_DATABASE_TARGET, storageFingerprint,
         credentialsFingerprint: hash(env.ITEM_IMAGE_R2_ACCESS_KEY_ID + ':' + env.ITEM_IMAGE_R2_SECRET_ACCESS_KEY) };
 }
-function readR2ImageStorageConfig(env = process.env) {
+// standing: hosted demo only (see hosted-photo-config.js). The deployment's own
+// protected configuration replaces the expiring signed approval file; every
+// other target, database and credential check still applies.
+function readR2ImageStorageConfig(env = process.env, { standing = false } = {}) {
     if (env.ITEM_IMAGE_R2_ENABLED === undefined || env.ITEM_IMAGE_R2_ENABLED === 'false') {
         const disabled = Object.freeze({ enabled: false }); bindings.set(disabled, null); return disabled;
     }
     if (env.ITEM_IMAGE_R2_ENABLED !== 'true' || ![undefined, 'true', 'false'].includes(env.ITEM_IMAGE_R2_UPLOADS_ENABLED)) fail();
     const target = targetIdentity(env), expected = approvalIdentity(env);
     if (expected.role === 'recovery' && env.ITEM_IMAGE_R2_UPLOADS_ENABLED === 'true') fail();
-    publicKey(env.ITEM_IMAGE_R2_APPROVAL_PUBLIC_KEY);
-    const file = env.ITEM_IMAGE_R2_APPROVAL_FILE, key = env.ITEM_IMAGE_R2_APPROVAL_PUBLIC_KEY;
-    const initial = readApproval(file, expected, key), expectedSignature = initial.signature;
+    if (standing !== (env.ITEM_IMAGE_R2_APPROVAL_MODE === 'standing') || env.ITEM_IMAGE_R2_APPROVAL_MODE !== undefined && !standing) fail();
+    let initial, verify;
+    if (standing) {
+        if (expected.role !== 'runtime') fail();
+        initial = Object.freeze(Object.assign({ approvalMode: 'standing' }, expected)); verify = async () => true;
+    } else {
+        publicKey(env.ITEM_IMAGE_R2_APPROVAL_PUBLIC_KEY);
+        const file = env.ITEM_IMAGE_R2_APPROVAL_FILE, key = env.ITEM_IMAGE_R2_APPROVAL_PUBLIC_KEY;
+        initial = readApproval(file, expected, key);
+        const expectedSignature = initial.signature;
+        verify = async () => readApproval(file, expected, key).signature === expectedSignature;
+    }
     const config = Object.freeze({ enabled: true, driver: 'r2-private', environment: target.environment,
         role: expected.role, targetFingerprint: expected.storageFingerprint, uploadsEnabled: env.ITEM_IMAGE_R2_UPLOADS_ENABLED === 'true' });
     bindings.set(config, Object.freeze({ receipt: target, approval: initial,
         credentials: Object.freeze({ accessKeyId: env.ITEM_IMAGE_R2_ACCESS_KEY_ID, secretAccessKey: env.ITEM_IMAGE_R2_SECRET_ACCESS_KEY }),
-        role: expected.role, region: 'auto', protocol: 'https:', hostname: target.account + '.r2.cloudflarestorage.com', port: undefined,
-        verify: async () => readApproval(file, expected, key).signature === expectedSignature }));
+        role: expected.role, region: 'auto', protocol: 'https:', hostname: target.account + '.r2.cloudflarestorage.com', port: undefined, verify }));
     return config;
 }
 function r2StorageBinding(config) { if (!bindings.has(config)) fail(); return bindings.get(config); }

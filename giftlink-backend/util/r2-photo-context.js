@@ -10,10 +10,12 @@ const fail = () => { throw new Error('R2 photo target verification refused.'); }
 
 // Explicit operator/runtime entry, never called by ordinary server startup.
 // storageOptions is a trusted code-only test seam, not an env/CLI endpoint override.
-async function openR2PhotoContext({ env, allowRemote = false, storageOptions = () => ({}) }) {
+// standing: the hosted demo entry (index.js); no distributed control on that path.
+async function openR2PhotoContext({ env, allowRemote = false, storageOptions = () => ({}), standing = false }) {
     if (![undefined, 'false', 'true'].includes(env.ITEM_IMAGE_DISTRIBUTED_CONTROL_ENABLED)) fail();
+    if (standing && env.ITEM_IMAGE_DISTRIBUTED_CONTROL_ENABLED === 'true') fail();
     if (env.ITEM_IMAGE_DISTRIBUTED_CONTROL_ENABLED === 'true' && (env.PHOTO_CONTROL_OWNER_PRIVATE_KEY !== undefined || env.PHOTO_APPROVAL_PRIVATE_KEY !== undefined)) fail();
-    const storageConfig = readR2ImageStorageConfig(env), binding = r2StorageBinding(storageConfig);
+    const storageConfig = readR2ImageStorageConfig(env, { standing }), binding = r2StorageBinding(storageConfig);
     if (!binding) fail();
     const metadata = readImageMetadataConfig(env);
     if (!metadata || metadata.storageBinding.fingerprint !== storageConfig.targetFingerprint ||

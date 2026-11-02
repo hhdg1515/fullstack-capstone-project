@@ -9,13 +9,16 @@ function readDatabaseConfig(env = process.env) {
     return { mongoUrl: env.MONGO_URL, dbName };
 }
 
-function readServerConfig(env = process.env) {
+// hostedPhotos: only the hosted entry (index.js) may enable standing R2 photos.
+function readServerConfig(env = process.env, { hostedPhotos = false } = {}) {
     if (env.ITEM_IMAGE_DISTRIBUTED_CONTROL_ENABLED !== undefined && env.ITEM_IMAGE_DISTRIBUTED_CONTROL_ENABLED !== 'false') {
         throw new Error('Distributed photo control requires a separately approved explicit context; ordinary startup remains disabled');
     }
-    if (env.ITEM_IMAGE_R2_ENABLED !== undefined && env.ITEM_IMAGE_R2_ENABLED !== 'false') {
+    const hostedR2Photos = hostedPhotos && require('./services/hosted-photo-config').standing(env);
+    if (env.ITEM_IMAGE_R2_ENABLED !== undefined && env.ITEM_IMAGE_R2_ENABLED !== 'false' && !hostedR2Photos) {
         throw new Error('Hosted R2 photos require separate real-provider approval and runtime integration; ordinary startup remains disabled');
     }
+    if (hostedR2Photos && env.ITEM_IMAGE_METADATA_ENABLED !== 'true') throw new Error('Hosted R2 photos require ITEM_IMAGE_METADATA_ENABLED=true');
     if (env.ITEM_IMAGE_PIPELINE_ENABLED !== undefined && env.ITEM_IMAGE_PIPELINE_ENABLED !== 'false') {
         throw new Error('Deployed photo processing remains disabled pending real-provider approval; use reviewed B4-compatible explicit context injection only');
     }
@@ -57,6 +60,7 @@ function readServerConfig(env = process.env) {
     const config = { mongoUrl: database.mongoUrl, dbName: database.dbName, appOrigin, secureCookies, sessionTtlSeconds, port, ownerListingsEnabled, ownerListingPhotosEnabled, ownerListingPickupsEnabled, ownerListingPublicationEnabled };
     const imageMetadata = require('./services/item-image-policy').readImageMetadataConfig(env);
     if (imageMetadata) config.imageMetadata = imageMetadata;
+    if (hostedR2Photos) config.hostedR2Photos = true;
     return config;
 }
 
