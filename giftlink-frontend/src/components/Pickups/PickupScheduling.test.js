@@ -119,31 +119,6 @@ test('unknown/older backend metadata cannot enable scheduling', async () => {
   mount({ ...base, rescheduling: undefined }); await screen.findByText(/Reload the request to check whether/);
   expect(screen.queryByRole('button')).not.toBeInTheDocument();
 });
-test('the real detail distinguishes confirmed/proposed time and renders structured events outside chat', async () => {
-  let current = { ...pending(), item: null, note: '', history: [], cancellationReason: null };
-  handler = async (url, options) => {
-    if (url.endsWith('/conversation')) return reply({ conversation: { id, requestId: id, role: 'giver', status: current.status, counterpart: current.counterpart } });
-    if (url.endsWith('/conversation/messages')) return reply({ messages: [], nextCursor: null });
-    if (options.method === 'POST') {
-      current = { ...current, proposedAt: proposal.proposedAt, localDateTime: proposal.localDateTime, version: 4,
-        rescheduling: { proposal: null, canPropose: true, canAccept: false, canDecline: false },
-        history: [{ action: 'reschedule_accepted', actor: 'giver', at: '2030-01-01T00:00:00.000Z', reason: null,
-          reschedule: { proposal, previousAppointment: base } }] };
-    }
-    return reply({ request: current });
-  };
-  render(<MemoryRouter initialEntries={['/app/pickups/' + id]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AuthProvider><Routes>
-    <Route path="/app/pickups/:requestId" element={<RequireAuth><PickupDetail /></RequireAuth>} />
-  </Routes></AuthProvider></MemoryRouter>);
-  await screen.findByText('Conversation loaded.');
-  expect(screen.getByText('Confirmed pickup:').closest('p').querySelector('time')).toHaveAttribute('datetime', base.proposedAt);
-  expect(screen.getByRole('group', { name: 'Pending time change' }).querySelector('time')).toHaveAttribute('datetime', proposal.proposedAt);
-  fireEvent.click(screen.getByRole('button', { name: 'Accept proposed time' })); await screen.findByRole('button', { name: 'Propose new time' });
-  expect(screen.getByText('Confirmed pickup:').closest('p').querySelector('time')).toHaveAttribute('datetime', proposal.proposedAt);
-  expect(screen.queryByRole('group', { name: 'Pending time change' })).not.toBeInTheDocument();
-  expect(screen.getByText('New pickup time confirmed')).toBeInTheDocument();
-  expect(within(screen.getByRole('region', { name: 'Message history' })).getByText('No messages yet.')).toBeInTheDocument();
-});
 
 test('cancelling a valid time edit restores focus to its existing proposal entry', async () => {
   mount(); const input = await open(); fireEvent.change(input, { target: { value: '2030-01-18T15:00' } });

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import ListingFormView from './ListingForm';
 import { listOwnerListings, getOwnerListing, actOnOwnerListing } from '../../api/ownerListings';
@@ -32,7 +32,8 @@ export function MyListings() {
     catch (failure) { if (alive.current) setError(failure); } finally { pending.current = false; if (alive.current) setBusy(false); }
   };
   useEffect(() => { alive.current = true; load(false); return () => { alive.current = false; }; }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (!busy && nextFocus.current) { document.getElementById('owner-listing-' + nextFocus.current)?.focus(); nextFocus.current = null; } }, [items, busy]);
+  // Layout effect: move focus in the same commit that shows the new card.
+  useLayoutEffect(() => { if (!busy && nextFocus.current) { document.getElementById('owner-listing-' + nextFocus.current)?.focus(); nextFocus.current = null; } }, [items, busy]);
   const badCursor = error && [400,409].includes(error.status);
   return <main className="ui-page owner-listings"><PageHeader title="My Listings" action={error?.code !== 'OWNER_LISTINGS_DISABLED' && <Link className="ui-button" to="/app/listings/new">Create Listing</Link>} />
     <p><Link to="/app/pickups/incoming">Incoming requests</Link></p>

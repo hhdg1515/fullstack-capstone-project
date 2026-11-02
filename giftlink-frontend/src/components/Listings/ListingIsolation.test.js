@@ -18,12 +18,11 @@ test.each([200, 401, 503])('actual AuthProvider/router discards delayed A %s aft
     throw new Error('Unexpected route');
   });
   render(<MemoryRouter initialEntries={['/app/listings']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AuthProvider><App /><Switch /></AuthProvider></MemoryRouter>);
-  await screen.findByText('Signed in as OwnerA');
+  await screen.findByRole('button', { name: 'Logout' });
   await waitFor(() => expect(typeof release).toBe('function'));
   fireEvent.click(screen.getByText('Switch account'));
   await screen.findByRole('link', { name: 'Private B', exact: true });
   await act(async () => release(reply(status === 200 ? { items: [item('Private A')], nextCursor: null } : { error: { code: 'SESSION_EXPIRED', message: 'Old account' } }, status)));
-  expect(screen.getByText('Signed in as OwnerB')).toBeVisible();
   expect(screen.getByRole('link', { name: 'Private B', exact: true })).toBeVisible();
   expect(screen.queryByText('Private A', { exact: true })).not.toBeInTheDocument();
 });

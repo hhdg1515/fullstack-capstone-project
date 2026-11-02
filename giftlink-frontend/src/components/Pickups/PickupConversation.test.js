@@ -256,18 +256,17 @@ test('message timestamps retain full accessible device-local dates, separate fro
   handler = async url => url.endsWith('/conversation') ? reply(context()) : reply({ messages: [message(1)], nextCursor: null });
   mount(); await ready(); const time = document.querySelector('.chat-message time');
   expect(time).toHaveAttribute('datetime', message(1).createdAt); expect(time.getAttribute('aria-label')).toMatch(/2030/);
-  expect(screen.getByText(/Message times use your device timezone/)).toHaveTextContent('Pickup times use the giver’s timezone');
   expect(screen.getByRole('region', { name: 'Message history' })).not.toHaveAttribute('aria-live');
 });
 
-test('an embedded conversation retains item context and links formal pickup changes without losing its draft', async () => {
+test('an embedded conversation keeps its draft and offers no time-change shortcut', async () => {
   const pickup = { id, role: 'giver', status: 'accepted', version: 2, counterpart: { firstName: 'Alex' },
     item: { id: nextId, name: 'Local pickup desk', description: 'Synthetic item', city: 'Oakland', neighborhood: 'Temescal', effectiveAvailableUntil: '2030-01-30' },
     timeZone: 'UTC', proposedAt: '2030-01-15T12:00:00Z', note: '', history: [],
     rescheduling: { proposal: { id: '64a000000000000000000003', proposedBy: 'receiver', proposedAt: '2030-01-16T12:00:00Z', timeZone: 'UTC' }, canPropose: false, canAccept: true, canDecline: true } };
   handler = async url => url.endsWith('/conversation') ? reply(context('giver', 'accepted')) : url.endsWith('/messages') ? reply({ messages: [], nextCursor: null }) : reply({ request: pickup });
-  mount({ detail: true }); await ready(); expect(document.querySelector('.chat-item')).toHaveTextContent('Local pickup desk'); type('Keep this independent draft');
-  fireEvent.click(screen.getByRole('link', { name: 'Review pickup time change' })); await waitFor(() => expect(screen.getByRole('heading', { name: 'Pickup arrangement' })).toHaveFocus());
-  fireEvent.click(screen.getByRole('link', { name: 'Open conversation' })); await waitFor(() => expect(screen.getByRole('heading', { name: 'Pickup conversation' })).toHaveFocus());
+  mount({ detail: true }); await ready(); type('Keep this independent draft');
+  expect(screen.queryByRole('link', { name: 'Review pickup time change' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Open conversation' })).not.toBeInTheDocument();
   expect(screen.getByLabelText('Message', { exact: true })).toHaveValue('Keep this independent draft');
 });

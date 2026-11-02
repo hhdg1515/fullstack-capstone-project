@@ -39,7 +39,8 @@ beforeEach(() => {
   global.fetch = jest.fn(async (url, options) => url.includes('/api/items/locations') ? locationHandler(url, options) : handler(url, options));
 });
 const ready = () => screen.findByRole('link', { name: a.name });
-const submit = async () => { await act(async () => { fireEvent.submit(screen.getByRole('button', { name: 'Find free items' }).closest('form')); }); };
+// Enter in the form applies at once; otherwise filters apply shortly after each change.
+const submit = async () => { await act(async () => { fireEvent.submit(screen.getByRole('form', { name: 'Search and filters' })); }); };
 const click = async name => { await act(async () => { fireEvent.click(screen.getByRole('button', { name })); }); };
 const apiCalls = () => fetch.mock.calls.filter(([url]) => !url.includes('/api/items/locations'));
 
@@ -138,30 +139,21 @@ test('neighborhood-only filtering spans cities and does not require an eligibili
   await waitFor(() => expect(screen.getByLabelText('Current URL')).toHaveTextContent('neighborhood=Temescal'));
   expect(screen.getByLabelText('Current URL')).not.toHaveTextContent('city=');
 });
-test.each(['now', 'later'])('applies the %s availability filter without confusing it with publication order', async availability => {
+test('deadline sorting is preserved in the request and URL', async () => {
   mount(); await ready();
-  fireEvent.change(screen.getByLabelText('Pickup availability'), { target: { value: availability } }); await submit();
-  await waitFor(() => expect(apiCalls().some(([url]) => new URL(url, 'http://localhost').searchParams.get('availability') === availability)).toBe(true));
-});
-test('selected pickup dates and deadline sorting are preserved together in the request and URL', async () => {
-  mount(); await ready();
-  fireEvent.change(screen.getByLabelText('Pickup availability'), { target: { value: 'date' } });
-  expect(screen.getByLabelText('Pickup date (UTC)')).toHaveAttribute('min', day(0));
-  fireEvent.change(screen.getByLabelText('Pickup date (UTC)'), { target: { value: day(6) } });
-  fireEvent.change(screen.getByLabelText('Sort items'), { target: { value: 'deadline' } }); await submit();
-  await waitFor(() => expect(apiCalls().some(([url]) => { const query = new URL(url, 'http://localhost').searchParams; return query.get('date') === day(6) && query.get('sort') === 'deadline'; })).toBe(true));
-  expect(screen.getByLabelText('Current URL')).toHaveTextContent('availability=date');
+  fireEvent.change(screen.getByLabelText('Sort items'), { target: { value: 'deadline' } });
+  await waitFor(() => expect(apiCalls().some(([url]) => new URL(url, 'http://localhost').searchParams.get('sort') === 'deadline')).toBe(true));
+  expect(screen.getByLabelText('Current URL')).toHaveTextContent('sort=deadline');
 });
 test('shared URLs restore filters and browser back restores the previous query after clearing', async () => {
   mount('/app/items?q=lamp&city=Oakland&availability=later&sort=deadline'); await ready();
   expect(screen.getByLabelText('Search items')).toHaveValue('lamp'); expect(screen.getByLabelText('City')).toHaveValue('Oakland');
   expect(screen.getByLabelText('Sort items')).toHaveValue('deadline');
-  await click('Clear filters');
+  await click('Reset');
   await waitFor(() => expect(screen.getByLabelText('Current URL')).toHaveTextContent(/^\/app\/items\?stateId=06&metroId=41860$/));
-  expect(screen.getByLabelText('Pickup availability')).toHaveValue('all');
   await click('Browser back');
   await waitFor(() => expect(screen.getByLabelText('Search items')).toHaveValue('lamp'));
-  expect(screen.getByLabelText('City')).toHaveValue('Oakland'); expect(screen.getByLabelText('Pickup availability')).toHaveValue('later');
+  expect(screen.getByLabelText('City')).toHaveValue('Oakland');
 });
 test('Load More appends a server page, retains filters, deduplicates live records, and prevents duplicate clicks', async () => {
   const next = pending();
@@ -267,66 +259,32 @@ test('focus refresh keeps an unsubmitted search draft while checking current pub
   expect(screen.getByLabelText('Search items')).toHaveValue('Unsaved search');
   expect(apiCalls().length).toBe(2);
 });
-test('filters stay visible without a toggle and editing them neither fetches nor discards an unsubmitted search', async () => {
+test('filters stay visible and apply shortly after typing, with no submit button', async () => {
   mount(); await ready();
-  expect(screen.queryByRole('button', { name: /^Filters/ })).not.toBeInTheDocument();
-  expect(screen.getByLabelText('City')).toBeVisible();
-  expect(screen.getByRole('button', { name: 'Find free items' })).toBeVisible();
-  expect(screen.queryByRole('button', { name: 'Refresh listings' })).not.toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText('Search items'), { target: { value: 'Unsaved kitchen search' } });
-  const count = fetch.mock.calls.length;
-  expect(screen.getByLabelText('City')).toBeVisible();
-  expect(screen.getByLabelText('City')).toBeVisible();
-  expect(screen.getByLabelText('Search items')).toHaveValue('Unsaved kitchen search');
-  expect(fetch).toHaveBeenCalledTimes(count);
+  expect(screen.queryByRole('button', { name: /^Filters/ })).not.toBeInTheDocument(); expect(screen.queryByRole('button', { name: 'Find free items' })).not.toBeInTheDocument();
+  const count = apiCalls().length;
+  fireEvent.change(screen.getByLabelText('Search items'), { target: { value: 'kitchen' } });
+  expect(apiCalls()).toHaveLength(count); expect(screen.getByLabelText('Search items')).toHaveValue('kitchen');
+  await waitFor(() => expect(screen.getByLabelText('Current URL')).toHaveTextContent('q=kitchen'));
+  await waitFor(() => expect(apiCalls().some(([url]) => new URL(url, 'http://localhost').searchParams.get('q') === 'kitchen')).toBe(true));
+  expect(screen.getByLabelText('Search items')).toHaveValue('kitchen');
 });
 test('shared URL conditions remain visible with their saved values', async () => {
   mount('/app/items?q=lamp&city=Oakland&availability=later&sort=deadline'); await ready();
   expect(screen.queryByRole('button', { name: /^Filters/ })).not.toBeInTheDocument();
-  expect(screen.getByLabelText('Applied filters')).toHaveTextContent('Search: lamp · City: Oakland · Pickup: later · Sort: earliest pickup deadline');
+  expect(screen.getByLabelText('Applied filters')).toHaveTextContent('Search: lamp · City: Oakland · Sort: earliest pickup deadline');
   expect(screen.getByLabelText('City')).toBeVisible();
   expect(screen.getByLabelText('City')).toHaveValue('Oakland');
-  expect(screen.getByLabelText('Pickup availability')).toHaveValue('later');
-});
-test('an incomplete common date filter has an actionable error and retains visible focus after applying', async () => {
-  mount(); await ready();
-  fireEvent.change(screen.getByLabelText('Pickup availability'), { target: { value: 'date' } });
-  const reads = apiCalls().length;
-  await submit();
-  expect(screen.getByRole('alert')).toHaveTextContent('Choose today or a later pickup date');
-  expect(screen.getByLabelText('Pickup date (UTC)')).toHaveFocus();
-  expect(screen.getByLabelText('Pickup date (UTC)')).toHaveAttribute('aria-invalid', 'true');
-  expect(apiCalls()).toHaveLength(reads);
-  fireEvent.change(screen.getByLabelText('Pickup date (UTC)'), { target: { value: day(2) } });
-  await submit(); await ready();
-  expect(screen.getByLabelText('Pickup date (UTC)')).toBeVisible();
-  expect(screen.getByLabelText('Pickup date (UTC)')).toBeVisible();
-  expect(screen.getByLabelText('Applied filters')).toHaveTextContent(day(2));
-  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-});
-test('Find free items refreshes results/options without adding an identical history entry', async () => {
-  mount(['/app/items?q=before', '/app/items?q=lamp']); await ready();
-  const reads = apiCalls().length, locations = fetch.mock.calls.filter(([url]) => url.includes('/api/items/locations')).length;
-  await submit(); await ready();
-  expect(apiCalls()).toHaveLength(reads + 1);
-  expect(fetch.mock.calls.filter(([url]) => url.includes('/api/items/locations'))).toHaveLength(locations + 1);
-  await click('Clear filters'); await ready();
-  await click('Browser back'); await ready();
-  expect(screen.getByLabelText('Search items')).toHaveValue('lamp');
-  await click('Browser back'); await ready();
-  expect(screen.getByLabelText('Search items')).toHaveValue('before');
 });
 
-test('an unselected region asks where to browse without requesting any listings or showing a false zero', async () => {
+test('an unselected region asks for a metro area without requesting any listings or showing a false zero', async () => {
   mount('/app/items', true);
-  expect(screen.getByRole('heading', { name: 'Where would you like to find free items?' })).toBeInTheDocument();
-  expect(screen.getByLabelText('State')).toBeVisible(); expect(screen.getByLabelText('Metro area')).toBeDisabled();
+  expect(screen.getByRole('heading', { name: 'Choose a metro area' })).toBeInTheDocument();
+  expect(screen.getByLabelText('Metro area')).toBeEnabled(); expect(screen.getByLabelText('City')).toBeDisabled(); expect(screen.getByLabelText('Search items')).toBeDisabled();
   expect(apiCalls()).toHaveLength(0); expect(screen.queryByText(/0 available/)).not.toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText('State'), { target: { value: '06' } });
-  expect(apiCalls()).toHaveLength(0);
   await act(async () => fireEvent.change(screen.getByLabelText('Metro area'), { target: { value: '41860' } })); await ready();
+  expect(screen.getByLabelText('Current URL')).toHaveTextContent('stateId=06&metroId=41860');
   expect(JSON.parse(localStorage.getItem('moveout.browse-region.v1'))).toEqual({ stateId: '06', metroId: '41860' });
-  expect(screen.getByRole('button', { name: 'Change region' })).toHaveFocus();
 });
 test('a valid saved preference restores an unscoped URL and never writes an account or plan', async () => {
   localStorage.setItem('moveout.browse-region.v1', JSON.stringify({ stateId: '06', metroId: '41860' }));
@@ -338,7 +296,6 @@ test('an explicit URL overrides the saved preference and changing region clears 
   localStorage.setItem('moveout.browse-region.v1', JSON.stringify({ stateId: '06', metroId: '31080' }));
   mount('/app/items?stateId=06&metroId=41860&city=Oakland&neighborhood=Temescal&q=seat'); await ready();
   expect(screen.getByLabelText('Current URL')).toHaveTextContent('metroId=41860');
-  await click('Change region');
   handler = async () => feed([{ ...a, metroId: '31080', name: 'Other metro item' }]);
   await act(async () => fireEvent.change(screen.getByLabelText('Metro area'), { target: { value: '31080' } }));
   await screen.findByRole('link', { name: 'Other metro item' });
@@ -348,17 +305,12 @@ test('an explicit URL overrides the saved preference and changing region clears 
 });
 test.each(['not-json', JSON.stringify({ stateId: '06', metroId: 'unknown' })])('invalid stored preference %s cannot authorize a global search', async value => {
   localStorage.setItem('moveout.browse-region.v1', value); mount('/app/items', true);
-  expect(screen.getByRole('heading', { name: 'Where would you like to find free items?' })).toBeInTheDocument(); expect(apiCalls()).toHaveLength(0);
+  expect(screen.getByRole('heading', { name: 'Choose a metro area' })).toBeInTheDocument(); expect(apiCalls()).toHaveLength(0);
 });
 test('blocked local storage does not prevent choosing a valid URL region', async () => {
   const get = jest.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('Blocked'); });
   const set = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Blocked'); });
   mount(); await ready(); expect(screen.getByRole('link', { name: a.name })).toBeInTheDocument(); get.mockRestore(); set.mockRestore();
-});
-test('an uncovered state explains limited coverage instead of showing an empty marketplace', async () => {
-  mount('/app/items?stateId=02', true);
-  expect(screen.getByText('No metros are listed for this state yet.')).toBeInTheDocument();
-  expect(apiCalls()).toHaveLength(0); expect(screen.queryByText(/0 available|No available items/)).not.toBeInTheDocument();
 });
 test('controlled category/type/condition filters combine with text and reset incompatible type selection', async () => {
   mount(); await ready();
@@ -399,31 +351,27 @@ test('owner cards remain visible with compact authoritative type and condition l
 test('location-first hierarchy keeps the page title short, all filter controls visible', async () => {
   mount(); await ready();
   expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/^Find free items$/);
-  expect(screen.getByRole('region', { name: 'Browsing area' })).toHaveTextContent('San Francisco-Oakland-Berkeley · CA');
-  for (const name of ['Category', 'Item type', 'Pickup availability', 'Sort items']) expect(screen.getByLabelText(name)).toBeVisible();
+  expect(screen.queryByRole('region', { name: 'Browsing area' })).not.toBeInTheDocument(); expect(screen.queryByRole('button', { name: 'Change region' })).not.toBeInTheDocument();
+  for (const name of ['Category', 'Item type', 'Condition', 'Sort items']) expect(screen.getByLabelText(name)).toBeVisible();
+  expect(screen.queryByLabelText('Pickup availability')).not.toBeInTheDocument();
   expect(screen.getByLabelText('Item type')).toBeDisabled();
   expect(screen.getByLabelText('Item type')).toHaveTextContent('Choose a category first');
-  for (const name of ['Condition', 'City', 'Neighborhood']) expect(screen.getByLabelText(name)).toBeVisible();
-  const reads = apiCalls().length;
-  await click('Change region'); expect(screen.getByLabelText('State')).toHaveFocus();
-  expect(screen.getByRole('button', { name: 'Change region' })).toHaveAttribute('aria-expanded', 'true');
-  await click('Change region'); expect(screen.getByLabelText('State')).not.toBeVisible(); expect(apiCalls()).toHaveLength(reads);
+  for (const name of ['Metro area', 'City', 'Neighborhood']) expect(screen.getByLabelText(name)).toBeVisible();
+  expect(screen.getByLabelText('Metro area')).toHaveValue('41860');
 });
 test('an invalid explicit URL never restores a different saved area or triggers a global query', () => {
   localStorage.setItem('moveout.browse-region.v1', JSON.stringify({ stateId: '06', metroId: '41860' }));
   mount('/app/items?stateId=06&metroId=unknown', true);
-  expect(screen.getByText('This area selection is not supported. Choose a listed state and metro.')).toBeVisible();
+  expect(screen.getByText('This area is not supported. Choose a listed metro area.')).toBeVisible();
   expect(apiCalls()).toHaveLength(0); expect(screen.queryByRole('heading', { name: /available/ })).not.toBeInTheDocument();
 });
 test('changing region removes the old cursor and local labels but retains shared classification and sort choices', async () => {
   mount('/app/items?stateId=06&metroId=41860&cursor=old&city=Oakland&neighborhood=Temescal&categoryId=living-room&itemTypeId=sofa&sort=deadline'); await ready();
-  await click('Change region');
   handler = async () => feed([{ ...a, metroId: '31080' }]);
   await act(async () => fireEvent.change(screen.getByLabelText('Metro area'), { target: { value: '31080' } })); await ready();
   const query = new URL(screen.getByLabelText('Current URL').textContent, 'http://localhost').searchParams;
   for (const name of ['cursor', 'city', 'neighborhood']) expect(query.has(name)).toBe(false);
   expect(query.get('sort')).toBe('deadline'); expect(query.get('itemTypeId')).toBe('sofa'); expect(query.get('categoryId')).toBe('living-room');
-  expect(screen.getByRole('button', { name: 'Change region' })).toHaveFocus();
 });
 test('Escape does not collapse filters or discard unsubmitted selections', async () => {
   mount(); await ready();
@@ -434,11 +382,11 @@ test('Escape does not collapse filters or discard unsubmitted selections', async
 });
 
 test('reset is offered only when useful and clears unsubmitted filters without losing the area', async () => {
-  mount(); await ready(); expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument();
+  mount(); await ready(); expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'living-room' } });
-  await click('Clear filters'); await ready();
+  await click('Reset'); await ready();
   expect(screen.getByLabelText('Category')).toHaveValue(''); expect(screen.getByLabelText('Current URL')).toHaveTextContent('metroId=41860');
-  expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument();
 });
 
 test.each([{ ...a, status: 'draft' }, { ...a, pickupTimeZone: 'not/a-zone' }, { ...a, effectiveAvailableUntil: '2026-02-30' }, { ...a, availability: 'reserved' }])('unsafe availability metadata produces a service error rather than a truthful-looking card', async row => {
@@ -447,14 +395,14 @@ test.each([{ ...a, status: 'draft' }, { ...a, pickupTimeZone: 'not/a-zone' }, { 
   expect(screen.queryByRole('link', { name: a.name })).not.toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: /\d+ available/ })).not.toBeInTheDocument();
 });
-test('cards expose real type/category, optional condition, location and UTC window without invented imagery', async () => {
+test('cards expose real type/category, optional condition, location and pickup window without invented imagery', async () => {
   handler = async () => feed([{ ...b, classification: { category: { id: 'office-lighting', label: 'Office & Lighting' }, itemType: { id: 'lamp', label: 'Lamp' }, condition: null } }]);
   mount(); const link = await screen.findByRole('link', { name: b.name });
   const card = within(link.closest('li'));
   expect(card.getByRole('heading', { level: 3 })).toHaveTextContent(b.name);
   expect(card.getByText('Lamp · Office & Lighting')).toBeVisible();
   expect(card.getByText('Rockridge, Oakland, CA')).toBeVisible();
-  expect(card.getByText('Free')).toBeVisible(); expect(card.getByText('(UTC)')).toBeVisible();
+  expect(card.getByText('Free')).toBeVisible(); expect(card.queryByText('(UTC)')).not.toBeInTheDocument();
   expect(card.getByText(formatDate(b.availableFrom))).toHaveAttribute('datetime', b.availableFrom);
   expect(card.queryByText(/Condition:/)).not.toBeInTheDocument();
   expect(card.queryByRole('img')).not.toBeInTheDocument();
@@ -505,14 +453,6 @@ test.each([200,401])('initial session resolution reissues anonymous public reads
   expect(screen.getByRole('link',{name:b.name})).toBeInTheDocument();expect(screen.queryByText('Your listing')).not.toBeInTheDocument();expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
 
-test('mixed discovery uses the server date lower bound and truthful listing-timezone labels', async () => {
- handler = async () => reply(200, {items:[{...a,listingModel:2,datePolicy:'pickup-local',pickupTimeZone:'America/Los_Angeles'}],total:1,dateMinimum:day(-1),page:{limit:12,hasMore:false,nextCursor:null}});
- mount(); await ready(); fireEvent.change(screen.getByLabelText('Pickup availability'),{target:{value:'date'}});
- expect(screen.getByLabelText('Pickup date (listing timezone)')).toHaveAttribute('min',day(-1));
- fireEvent.change(screen.getByLabelText('Pickup date (listing timezone)'),{target:{value:day(-1)}}); await submit();
- await waitFor(()=>expect(apiCalls().some(([url])=>new URL(url,'http://localhost').searchParams.get('date')===day(-1))).toBe(true));
- expect(screen.queryByText('(UTC)',{exact:true})).not.toBeInTheDocument();
-});
 
 test('optional v2 city and neighborhood fields do not create blank filter options', async () => {
  locationHandler = async () => reply(200,{locations:[{city:'',neighborhoods:['','Synthetic area']}],truncated:false}); mount(); await ready();

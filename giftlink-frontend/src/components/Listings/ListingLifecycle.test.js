@@ -32,7 +32,7 @@ test.each([false,true])('successful %s save releases guard before navigation and
  expect(screen.getAllByRole('button',{name:'Saving…'}).every(button=>button.disabled)).toBe(true);
  fireEvent.submit(screen.getByRole('form'));
  expect((edit?updateOwnerListing:createOwnerListing)).toHaveBeenCalledTimes(1);
- await act(async()=>done({item})); await screen.findByRole('heading',{name:'Saved destination'});
+ await act(async()=>done({item})); await screen.findByRole('heading',{name:'Inventory destination'});
  expect(window.confirm).not.toHaveBeenCalled();
 });
 test.each([false,true])('definite %s save failure preserves values, guard and explicit retry', async edit=>{

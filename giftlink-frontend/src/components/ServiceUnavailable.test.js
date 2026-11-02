@@ -18,10 +18,10 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
-test('frontend-only hosting keeps the homepage usable and Account opens login with an honest service notice', async () => {
+test('frontend-only hosting keeps the homepage usable and Log in opens login with an honest service notice', async () => {
   mount('/'); expect(screen.getByRole('link', { name: 'Start Giving' })).toBeInTheDocument();
   await screen.findByText('Account service is temporarily unavailable. You can still explore the site.');
-  await click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('link', { name: 'Account' }));
+  await click(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('link', { name: 'Log in' }));
   expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument();
   expect(screen.getByRole('alert', { name: 'Account service unavailable' })).toHaveTextContent('temporarily unavailable');
   expect(screen.queryByText(/Cannot read|Unexpected token/)).not.toBeInTheDocument();

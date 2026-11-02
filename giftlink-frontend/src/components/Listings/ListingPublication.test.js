@@ -1,53 +1,46 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
-import { ListingDetail, ListingEditor } from './Listings';
-import { getOwnerListing, actOnOwnerListing } from '../../api/ownerListings';
-jest.mock('../../api/ownerListings', () => ({ getOwnerListing: jest.fn(), actOnOwnerListing: jest.fn() }));
+import { ListingEditor, ListingRedirect } from './Listings';
+import { getOwnerListing, actOnOwnerListing, updateOwnerListing } from '../../api/ownerListings';
+jest.mock('../../api/usePublicCatalog', () => ({ __esModule: true, default: path => ({ data: require('../../test-support/catalogs')[path === '/api/regions' ? 'regions' : 'taxonomy'] }) }));
+jest.mock('../../api/ownerListings', () => ({ getOwnerListing: jest.fn(), actOnOwnerListing: jest.fn(), updateOwnerListing: jest.fn(), createOwnerListing: jest.fn(), listOwnerListings: jest.fn() }));
 const id = 'a'.repeat(24);
-const listing = (status = 'draft', capabilities = { publish: true, editDraft: true }) => ({ item: { id, name: 'Synthetic shelf', description: 'Useful household shelf', status, version: 3,
-  classification: {}, location: {}, pickup: { datePolicy: 'pickup-local', timeZone: 'America/Los_Angeles', timeZoneConfirmed: true, availableUntil: '2099-11-01' }, capabilities, photoPreview: { availability: 'none', images: [] } } });
-const mount = () => render(<MemoryRouter initialEntries={['/app/listings/' + id]} future={{v7_startTransition:true,v7_relativeSplatPath:true}}><Routes><Route path="/app/listings/:itemId" element={<ListingDetail />} /></Routes></MemoryRouter>);
-beforeEach(() => { jest.clearAllMocks(); getOwnerListing.mockResolvedValue(listing()); });
-test('publication sends the authoritative version once and renders the server status and public entry', async () => {
-  actOnOwnerListing.mockResolvedValue(listing('available', { withdraw: true })); mount();
-  fireEvent.click(await screen.findByRole('button', {name:'Publish listing',exact:true}));
-  await screen.findByText('Published'); expect(actOnOwnerListing).toHaveBeenCalledTimes(1);
-  expect(actOnOwnerListing).toHaveBeenCalledWith(id, {action:'publish',version:3});
-  expect(screen.getByRole('link',{name:'View public listing'})).toHaveAttribute('href','/app/items/'+id);
-  expect(screen.queryByText(/Private draft/)).not.toBeInTheDocument();
+const listing = (status = 'available', capabilities = { editDraft: true, withdraw: true }) => ({ publicationEnabled: true, item: { id, name: 'Synthetic shelf', description: 'Useful household shelf', status, version: 3,
+  classification: { category: { id: 'living-room' }, itemType: { id: 'bookshelf' } }, location: { stateId: '06', metroId: '31080', city: '', neighborhood: '' },
+  pickup: { datePolicy: 'pickup-local', timeZone: 'America/Los_Angeles', timeZoneConfirmed: true, availableUntil: '2099-11-01' }, capabilities, photoPreview: { availability: 'none', images: [] } } });
+const mount = (path = '/app/items/' + id + '/edit') => render(<MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><Routes>
+  <Route path="/app/items/:itemId/edit" element={<ListingEditor />} /><Route path="/app/listings/:itemId" element={<ListingRedirect />} />
+  <Route path="/app/listings" element={<h1>My Listings page</h1>} />
+</Routes></MemoryRouter>);
+beforeEach(() => { jest.clearAllMocks(); window.confirm = jest.fn(() => true); getOwnerListing.mockResolvedValue(listing()); updateOwnerListing.mockResolvedValue(listing()); });
+test('Manage listing opens a published listing in the editor with one Publish action and Withdraw', async () => {
+  mount(); expect(await screen.findByRole('heading', { name: 'Edit Listing' })).toBeInTheDocument();
+  expect(screen.getByLabelText('Item name')).toHaveValue('Synthetic shelf'); expect(screen.getAllByRole('button', { name: 'Publish' })).toHaveLength(1);
+  expect(screen.getByRole('button', { name: 'Withdraw listing' })).toBeInTheDocument(); expect(screen.queryByRole('button', { name: /Save draft/i })).not.toBeInTheDocument();
 });
-test('withdrawal only cancels requests after explicit confirmation and then replaces the authoritative status', async () => {
-  getOwnerListing.mockResolvedValue(listing('available',{withdraw:true}));
-  actOnOwnerListing.mockRejectedValueOnce({code:'PICKUP_CONFIRMATION_REQUIRED',message:'This will cancel 2 outstanding pickup requests.'}).mockResolvedValueOnce(listing('unlisted',{publish:true,editDraft:true}));
-  mount(); fireEvent.click(await screen.findByRole('button',{name:'Withdraw listing',exact:true}));
-  await screen.findByRole('button',{name:'Withdraw and cancel requests'}); expect(actOnOwnerListing).toHaveBeenCalledTimes(1);
-  fireEvent.click(screen.getByRole('button',{name:'Keep listing'})); expect(screen.queryByRole('button',{name:'Withdraw and cancel requests'})).not.toBeInTheDocument();
-  actOnOwnerListing.mockRejectedValueOnce({code:'PICKUP_CONFIRMATION_REQUIRED',message:'Review cancellation.'});
-  // Re-open using the explicit pending decision, then confirm exactly once.
-  actOnOwnerListing.mockReset().mockRejectedValueOnce({code:'PICKUP_CONFIRMATION_REQUIRED',message:'Review cancellation.'}).mockResolvedValueOnce(listing('unlisted',{publish:true,editDraft:true}));
-  fireEvent.click(screen.getByRole('button',{name:'Withdraw listing',exact:true}));
-  fireEvent.click(await screen.findByRole('button',{name:'Withdraw and cancel requests'})); await screen.findByText('Withdrawn');
-  expect(actOnOwnerListing).toHaveBeenLastCalledWith(id,{action:'withdraw',version:3,confirmCancelRequests:true});
-  expect(screen.queryByRole('button',{name:'Withdraw listing',exact:true})).not.toBeInTheDocument();
+test('Publish saves the published listing in place once, then returns to My Listings', async () => {
+  mount(); fireEvent.change(await screen.findByLabelText('Item name'), { target: { value: 'Renamed shelf' } }); fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+  await screen.findByRole('heading', { name: 'My Listings page' }); expect(updateOwnerListing).toHaveBeenCalledTimes(1);
+  expect(updateOwnerListing).toHaveBeenCalledWith(id, expect.objectContaining({ name: 'Renamed shelf', publish: true, version: 3, pickupTimeZone: 'America/Los_Angeles' }));
 });
-test('disabled publication stays private and failure never claims publication succeeded or retries automatically', async () => {
-  getOwnerListing.mockResolvedValue(listing('draft',{editDraft:true})); mount(); await screen.findByText(/Private draft/);
-  expect(screen.queryByRole('button',{name:'Publish listing'})).not.toBeInTheDocument(); expect(actOnOwnerListing).not.toHaveBeenCalled();
+test('withdrawal asks first and confirms request cancellation separately before returning to My Listings', async () => {
+  actOnOwnerListing.mockRejectedValueOnce({ code: 'PICKUP_CONFIRMATION_REQUIRED', message: 'This will cancel 2 outstanding pickup requests.' }).mockResolvedValueOnce(listing('unlisted'));
+  mount(); fireEvent.click(await screen.findByRole('button', { name: 'Withdraw listing' }));
+  await screen.findByRole('heading', { name: 'My Listings page' });
+  expect(window.confirm).toHaveBeenCalledTimes(2); expect(window.confirm).toHaveBeenLastCalledWith('This will cancel 2 outstanding pickup requests.');
+  expect(actOnOwnerListing.mock.calls.map(call => call[1])).toEqual([{ action: 'withdraw', version: 3 }, { action: 'withdraw', version: 3, confirmCancelRequests: true }]);
 });
-test('an uncertain action offers canonical refresh without replaying the mutation', async () => {
-  actOnOwnerListing.mockRejectedValue({status:0,message:'Result uncertain. Refresh to inspect.'}); mount();
-  fireEvent.click(await screen.findByRole('button',{name:'Publish listing',exact:true})); await screen.findByRole('alert');
-  expect(screen.getByText('Draft',{exact:true})).toBeVisible(); getOwnerListing.mockResolvedValue(listing('available',{withdraw:true}));
-  fireEvent.click(screen.getByRole('button',{name:'Refresh listing'})); await waitFor(()=>expect(screen.getByText('Published',{exact:true})).toBeVisible());
-  expect(actOnOwnerListing).toHaveBeenCalledTimes(1);
+test('declining the withdrawal prompt sends nothing', async () => {
+  window.confirm = jest.fn(() => false); mount(); fireEvent.click(await screen.findByRole('button', { name: 'Withdraw listing' }));
+  expect(actOnOwnerListing).not.toHaveBeenCalled(); expect(screen.getByRole('heading', { name: 'Edit Listing' })).toBeInTheDocument();
 });
-
-test('Back or a direct edit URL for a published item follows server capabilities to the private detail', async () => {
-  getOwnerListing.mockResolvedValue(listing('available',{withdraw:true,editDraft:false}));
-  render(<MemoryRouter initialEntries={['/app/items/'+id+'/edit']} future={{v7_startTransition:true,v7_relativeSplatPath:true}}><Routes>
-    <Route path="/app/items/:itemId/edit" element={<ListingEditor />} /><Route path="/app/listings/:itemId" element={<ListingDetail />} />
-  </Routes></MemoryRouter>);
-  await screen.findByRole('link',{name:'View public listing'}); expect(screen.queryByRole('form')).not.toBeInTheDocument();
-  expect(screen.queryByRole('button',{name:'Save Draft'})).not.toBeInTheDocument(); expect(actOnOwnerListing).not.toHaveBeenCalled();
+test('drafts have no Withdraw action', async () => {
+  getOwnerListing.mockResolvedValue(listing('draft', { editDraft: true, publish: true })); mount();
+  await screen.findByRole('heading', { name: 'Edit Listing' }); expect(screen.queryByRole('button', { name: 'Withdraw listing' })).not.toBeInTheDocument();
+});
+test('old status-page links open the editor, and listings that cannot be edited return to My Listings', async () => {
+  mount('/app/listings/' + id); expect(await screen.findByRole('heading', { name: 'Edit Listing' })).toBeInTheDocument();
+  getOwnerListing.mockResolvedValue(listing('cleared', { editDraft: false })); mount();
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'My Listings page' })).toBeInTheDocument());
 });

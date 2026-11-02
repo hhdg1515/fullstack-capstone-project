@@ -39,7 +39,7 @@ function Conversation({ requestId, requestStatus }) {
   const current = useRef(view);
   const update = useCallback(change => { current.current = change(current.current); setView(current.current); }, []);
   const [busy, setBusy] = useState('initial'); const inFlight = useRef(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(''); const [notice, setNotice] = useState('');
   const [blocked, setBlocked] = useState(false); const [uncertain, setUncertain] = useState(false);
   const [draft, setDraft] = useState(''); const guard = useUnsavedForm({ text: draft }, { text: '' });
   const validation = useFormErrors(busy === 'send');
@@ -65,7 +65,7 @@ function Conversation({ requestId, requestStatus }) {
     const index = current.current.ranges.findIndex(range => range.nextCursor);
     if (kind === 'earlier' && index < 0) return;
     inFlight.current = true; const ticket = ++generation.current;
-    setBusy(kind); setError('');
+    setBusy(kind); setError(''); setNotice('');
     try {
       const path = root + '/messages' + (kind === 'earlier' ? '?before=' + encodeURIComponent(current.current.ranges[index].nextCursor) : '');
       const context = kind === 'earlier' ? null : await apiRequest(root, { notifyUnauthorized: false, validate: data => data?.conversation?.id === requestId &&
@@ -82,6 +82,7 @@ function Conversation({ requestId, requestStatus }) {
         return { context: context?.conversation || previous.context, ranges: mergeRanges(ranges) };
       });
       if (kind !== 'earlier') setBlocked(false);
+      setNotice(kind === 'earlier' ? 'Earlier messages loaded.' : kind === 'initial' ? 'Conversation loaded.' : 'Conversation refreshed.');
     } catch (failure) {
       if (!alive.current || ticket !== generation.current) return;
       if ([401, 403, 404].includes(failure.status)) { update(() => ({ context: null, ranges: [] })); setBlocked(true); }
@@ -110,14 +111,14 @@ function Conversation({ requestId, requestStatus }) {
       validation.show({ text: 'Remove <, > and unsupported control characters.' }); return;
     }
     inFlight.current = true; const ticket = ++generation.current;
-    setBusy('send'); setError('');
+    setBusy('send'); setError(''); setNotice('');
     try {
       const result = await apiRequest(root + '/messages', { method: 'POST', body: { text }, notifyUnauthorized: false,
         validate: data => validMessage(data?.message) && data.message.sender === context.role });
       if (!alive.current || ticket !== generation.current) return;
       capture(true);
       update(previous => ({ ...previous, ranges: [{ ...previous.ranges[0], messages: mergeMessages(previous.ranges[0].messages, [result.message]) }, ...previous.ranges.slice(1)] }));
-      setDraft(''); guard.markSaved(); setUncertain(false);
+      setDraft(''); guard.markSaved(); setUncertain(false); setNotice('Message sent.');
       if (validation.formRef.current?.contains(document.activeElement)) composer.current?.focus({ preventScroll: true });
     } catch (failure) {
       if (!alive.current || ticket !== generation.current) return;
@@ -136,8 +137,9 @@ function Conversation({ requestId, requestStatus }) {
     <div className="chat-header"><h2 id="conversation-heading" tabIndex={-1}>Pickup conversation</h2>
       <button type="button" className="ui-button ui-button--secondary" disabled={Boolean(busy)} onClick={() => { validation.reset(); load(); }}>{context ? 'Refresh conversation' : 'Retry conversation'}</button></div>
     {error && <Feedback error>{error}</Feedback>}
-    {busy === 'initial' && <p role="status" className="chat-help">Loading…</p>}
-    {context && <div className="chat-box">
+    <p role="status" className="visually-hidden">{busy === 'send' ? 'Sending message…' : busy ? (busy === 'earlier' ? 'Loading earlier messages…' : 'Loading conversation…') : notice}</p>
+    {(context || draft.length > 0) && <div className="chat-box">{context && <>
+      {closed && <p className="visually-hidden">This request is closed. You can read its messages, but cannot send new ones.</p>}
       <button type="button" className="ui-button ui-button--secondary" disabled={Boolean(busy)} hidden={!view.ranges.some(range => range.nextCursor)} onClick={() => load('earlier')}>Load earlier messages</button>
       <div ref={history} className="chat-history" role="region" aria-label="Message history" tabIndex={0}>
         {!messages.length ? <p>No messages yet.</p> : <ol>{view.ranges.slice().reverse().flatMap((range, index) => [
@@ -147,16 +149,16 @@ function Conversation({ requestId, requestStatus }) {
             <p className="chat-text">{message.text}</p></li>),
           ...(index < view.ranges.length - 1 ? [<li key={`gap-${index}`} className="chat-gap">Some messages between these pages are not loaded yet. Use Load earlier messages to fill the gap.</li>] : [])
         ])}</ol>}
-      </div>
+      </div></>}
     {((!closed && context) || draft.length > 0) && <form ref={validation.formRef} className="chat-composer" noValidate onSubmit={send} aria-busy={busy === 'send'}>
       <div className="ui-field"><label htmlFor="chat-text" className="visually-hidden">{canSend ? 'Message' : 'Unsent message'}</label>
-        <textarea ref={composer} id="chat-text" name="text" rows={3} value={draft} readOnly={!canSend || busy === 'send'} maxLength={2000}
+        <textarea ref={composer} id="chat-text" name="text" rows={3} value={draft} readOnly={!canSend || busy === 'send'}
           placeholder="Up to 2,000 characters. Plain text. Keep residential addresses and sensitive account details out of messages."
           {...validation.fieldProps('text')} onChange={event => { setDraft(event.target.value); validation.clear('text'); }} />
         {validation.errors.text && <p id="text-error" className="ui-field-error">{validation.errors.text}</p>}</div>
       {uncertain && !closed && <p>Check recent messages after refreshing before deciding whether to send this draft again.</p>}
       {!canSend && draft && <p>Your unsent text is kept here. Refresh to check access, or discard the draft.</p>}
-      <div className="chat-actions"><button type="submit" className="ui-button" disabled={!canSend || Boolean(busy)}>{busy === 'send' ? 'Sending…' : 'Send message'}</button>
+      <div className="chat-actions"><button type="submit" className="ui-button" disabled={!canSend || Boolean(busy)}>Send message</button>
         {!canSend && draft && <button type="button" className="ui-button ui-button--secondary" disabled={Boolean(busy)} onClick={() => {
           if (guard.confirmDiscard()) { setDraft(''); setUncertain(false); validation.reset(); }
         }}>Discard draft</button>}</div>

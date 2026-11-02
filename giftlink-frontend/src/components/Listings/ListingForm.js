@@ -89,7 +89,7 @@ export default function ListingForm({ item, photoCapabilities = null, publicatio
     {name === 'description' ? <textarea id={'listing-' + name} name={name} value={values[name]} maxLength={2000} disabled={locked} onChange={e => change({ [name]: e.target.value })} {...validation.fieldProps(name)} /> :
       <input id={'listing-' + name} name={name} type={type} value={values[name]} disabled={locked} maxLength={maxLength} onChange={e => change({ [name]: e.target.value })} required={name === 'name'} autoFocus={name === 'name'} {...validation.fieldProps(name)} />}{message(name)}</div>;
   const chosenType = catalog.data?.categories.find(c => c.id === values.categoryId)?.itemTypes.find(t => t.id === values.itemTypeId);
-  const submit = <button className="ui-button" type="submit" disabled={locked || photoBusy}>{busy ? 'Saving…' : publicationEnabled ? 'Publish' : 'Save draft'}</button>;
+  const submit = <button className="ui-button" type="submit" disabled={locked || photoBusy}>{busy ? 'Saving…' : publicationEnabled ? 'Publish' : 'Save Draft'}</button>;
   const photos = photosEnabled && <ItemPhotos embedded allowStaging planId={null} item={photoItem || (item ? { id: item.id, name: item.name, status: item.status } : {})}
     entries={photoEntries} onEntriesChange={setPhotoEntries} previewUrls={urls.current} capabilities={photoCapabilities}
     disabled={busy || uncertain || stale || disabled} onBusyChange={setPhotoBusy} uploadIntent={uploadIntent} claimUploadIntent={claimUploadIntent} recovery={Boolean(photoItem)} />;

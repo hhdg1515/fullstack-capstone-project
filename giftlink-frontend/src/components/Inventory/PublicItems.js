@@ -146,12 +146,14 @@ function Discovery() {
   }, [selected, query, fields, city, neighborhood]); // eslint-disable-line react-hooks/exhaustive-deps
   const submit = event => {
     event.preventDefault(); if (!selected) return;
+    // Enter commits the search: show the normalized text the server receives.
+    setFields(previous => ({ ...previous, q: normalize(previous.q) }));
     const next = filterQuery(); if (sameQuery(next, query)) setAttempt(value => value + 1); else apply(next);
   };
   const restart = () => { const next = new URLSearchParams(query); next.delete('cursor'); if (sameQuery(next, query)) setAttempt(value => value + 1); else setParams(next, { replace: true }); };
   const reset = () => {
     const next = new URLSearchParams({ stateId, metroId }); setFields(fieldsFrom(next));
-    if (sameQuery(next, query)) setAttempt(value => value + 1); else apply(next);
+    if (sameQuery(next, query)) setAttempt(value => value + 1); else { pushed.current = next.toString(); setParams(next); }
   };
   const loadMore = async () => {
     if (moreFlight.current || visible.loading || visible.moreLoading || !visible.page?.nextCursor) return;
@@ -174,7 +176,7 @@ function Discovery() {
   return <main className="ui-page discovery-page discovery-feed">
     <JourneyNav journey="find" />
     <PageHeader title="Find free items" />
-    {directory.error && <Feedback error><p>Metro areas are unavailable.</p><button className="ui-button ui-button--secondary" onClick={directory.retry}>Retry metro areas</button></Feedback>}
+    {directory.error && <Feedback error><p>Region options are unavailable.</p><button className="ui-button ui-button--secondary" onClick={directory.retry}>Retry region options</button></Feedback>}
     <Surface as="form" aria-label="Search and filters" className="discovery-filters" onSubmit={submit} noValidate>
       <div className="ui-field discovery-search"><label htmlFor="browse-q">Search items</label>
         <input id="browse-q" name="q" maxLength={100} placeholder="Name, description or item type" value={fields.q} onChange={change} disabled={!selected} /></div>

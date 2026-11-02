@@ -62,10 +62,10 @@ test('anonymous homepage exposes both intentions immediately while the session c
   expect(screen.getByText(/Everything is free/)).toBeInTheDocument();
   expect(fetch).toHaveBeenCalledTimes(1); expect(fetch.mock.calls[0][0]).toMatch(/\/api\/me$/);
 });
-test('Find Free Items opens anonymously without a plan and asks for a browsing region', async () => {
+test('Find Free Items opens anonymously without a plan and asks for a metro area', async () => {
   mount(); await click(screen.getByRole('link', { name: 'Explore Free Items' }));
-  expect(await screen.findByRole('heading', { name: 'Where would you like to find free items?' })).toBeInTheDocument();
-  expect(screen.getByLabelText('State', { exact: true })).toHaveValue('');
+  expect(await screen.findByRole('heading', { name: 'Choose a metro area' })).toBeInTheDocument();
+  expect(screen.getByLabelText('Metro area', { exact: true })).toHaveValue('');
   expect(fetch.mock.calls.some(([url]) => url.includes('/api/items?'))).toBe(false);
   expect(primary().getByRole('link', { name: 'Find Free Items' })).toHaveAttribute('aria-current', 'location');
   expect(context('Find Free Items').getByRole('link', { name: 'My pickup requests' })).toHaveAccessibleDescription('Sign in required');
@@ -83,7 +83,7 @@ test('Start Giving requires login, preserves intent through registration and ret
   expect(await screen.findByRole('heading', { name: 'My Listings' })).toBeInTheDocument();
   const [, options] = fetch.mock.calls.find(([url]) => url.endsWith('/api/auth/register'));
   expect(Object.keys(JSON.parse(options.body)).sort()).toEqual(['email', 'firstName', 'lastName', 'password']);
-  expect(screen.getByText('Signed in as Neighbor')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Logout' })).toBeInTheDocument();
 });
 test('login preserves a protected inventory URL including edit query and fragment', async () => {
   const path = `/app/plans/${plan.id}/items?edit=${item.id}#inventory`;
@@ -105,16 +105,14 @@ test('one account gives in Pasadena and searches Irvine without copying or enfor
   sessionUser = user; mount('/app/plans');
   expect(await screen.findByRole('link', { name: 'Pasadena move' })).toBeInTheDocument();
   await click(primary().getByRole('link', { name: 'Find Free Items' }));
-  await act(async () => fireEvent.change(screen.getByLabelText('State'), { target: { value: '06' } }));
   await act(async () => fireEvent.change(screen.getByLabelText('Metro area'), { target: { value: '31080' } }));
   await screen.findByRole('option', { name: 'Irvine' }); expect(screen.getByLabelText('City', { exact: true })).toHaveValue('');
   fireEvent.change(screen.getByLabelText('City', { exact: true }), { target: { value: 'Irvine' } });
-  await click(screen.getByRole('button', { name: 'Find free items' }));
   await waitFor(() => expect(screen.getByTestId('route')).toHaveTextContent('/app/items?stateId=06&metroId=31080&city=Irvine'));
   await click(primary().getByRole('link', { name: 'My Listings' })); await screen.findByRole('heading', { name: 'My Listings' });
   await click(screen.getByRole('button', { name: 'Browser Back' }));
   expect(await screen.findByLabelText('City', { exact: true })).toHaveValue('Irvine');
-  expect(screen.getByText('Signed in as Neighbor')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Logout' })).toBeInTheDocument();
   expect(fetch.mock.calls.some(([, options]) => options.method !== undefined && options.method !== 'GET')).toBe(false);
 });
 test('Give Away provides consolidated incoming requests and per-plan inventory/clearance without another dashboard', async () => {
@@ -153,7 +151,7 @@ test.each([['giver', 'Give Away', 'Incoming requests'], ['receiver', 'Find Free 
   expect(screen.getByRole('link', { name: 'Back to requests' })).toHaveAttribute('href', role === 'giver' ? '/app/pickups/incoming' : '/app/pickups');
 });
 test('mobile menu exposes its state, supports Escape/focus return, and closes after navigation', async () => {
-  sessionUser = user; mount(); await screen.findByText('Signed in as Neighbor');
+  sessionUser = user; mount(); await screen.findByRole('button', { name: 'Logout' });
   const button = screen.getByRole('button', { name: 'Menu' }); expect(button).toHaveAttribute('aria-expanded', 'false');
   await click(button); expect(button).toHaveAttribute('aria-expanded', 'true'); expect(button).toHaveAttribute('aria-controls', 'primary-navigation');
   fireEvent.keyDown(primary().getByRole('link', { name: 'My Listings' }), { key: 'Escape' });
@@ -164,16 +162,16 @@ test('mobile menu exposes its state, supports Escape/focus return, and closes af
 });
 test('private item editors keep My Listings active instead of public discovery', async () => {
   sessionUser = user; mount('/app/items/' + item.id + '/edit');
-  await screen.findByText('Signed in as Neighbor');
+  await screen.findByRole('button', { name: 'Logout' });
   expect(primary().getByRole('link', { name: 'My Listings' })).toHaveAttribute('aria-current', 'location');
   expect(primary().getByRole('link', { name: 'Find Free Items' })).not.toHaveAttribute('aria-current');
 });
-test('brand and default account/logout navigation return to the two-path homepage', async () => {
+test('brand and logout navigation return to the two-path homepage', async () => {
   sessionUser = user; mount('/app/profile'); await screen.findByRole('heading', { name: 'Your account' });
-  expect(primary().getByRole('link', { name: 'Account' })).toHaveAttribute('aria-current', 'location');
+  expect(primary().queryByRole('link', { name: 'Account' })).not.toBeInTheDocument();
   await click(screen.getByRole('link', { name: 'Move-Out Marketplace' })); expect(screen.getByRole('link', { name: 'Start Giving' })).toBeInTheDocument();
   await click(screen.getByRole('button', { name: 'Logout' }));
-  expect(primary().getByRole('link', { name: 'Account' })).toHaveAttribute('href', '/app/login');
+  expect(primary().getByRole('link', { name: 'Log in' })).toHaveAttribute('href', '/app/login');
   expect(screen.getByTestId('route')).toHaveTextContent('/');
 });
 test('existing demo routes and item detail links remain usable outside the primary journeys', async () => {

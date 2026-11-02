@@ -221,7 +221,6 @@ test('public discovery searches published listings without requiring sign-in or 
   mount('/app/items?stateId=06&metroId=41860');
   expect(await screen.findByRole('link', { name: item.name })).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Neighborhood'), { target: { value: 'Temescal' } });
-  await click(screen.getByRole('button', { name: 'Find free items' }));
   await waitFor(() => expect(fetch.mock.calls.some(([url]) => url.includes('neighborhood=Temescal'))).toBe(true));
   await click(await screen.findByRole('link', { name: item.name }));
   expect(await screen.findByRole('heading', { name: item.name })).toBeInTheDocument();

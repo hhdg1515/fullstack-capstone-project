@@ -147,7 +147,7 @@ test('a missing or inaccessible plan shows an unavailable state without an edit 
   mount(`/app/plans/${plan.id}`);
   expect(await screen.findByRole('alert')).toHaveTextContent('This plan is unavailable.');
   expect(screen.queryByRole('link', { name: 'Edit plan' })).not.toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'My plans' })).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Incoming requests' })).toBeInTheDocument();
 });
 test('edit preloads fields and saves names, a cleared title, deadline and manual status with PATCH', async () => {
   const updated = { ...plan, title: '', neighborhood: 'Richmond', status: 'completed' };

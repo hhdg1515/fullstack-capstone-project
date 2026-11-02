@@ -44,7 +44,6 @@ function mount() {
 const choose = async (files = [new File(['synthetic'], 'private-address-and-name.png', { type: 'image/png' })]) => act(async () => { fireEvent.change(screen.getByLabelText('Choose photos'), { target: { files } }); });
 const loaded = async () => waitFor(() => expect(screen.getByLabelText('Choose photos')).toBeEnabled());
 const refreshPhotos = async () => {
-  if (!screen.queryByRole('button', { name: 'Refresh photos' })) await click(screen.getByText('Photo tips'));
   await click(screen.getByRole('button', { name: 'Refresh photos' }));
 };
 const begin = async () => { const button = await screen.findByRole('button', { name: 'Upload 1 photo' }); await waitFor(() => expect(button).toBeEnabled()); await click(button); };
@@ -67,12 +66,12 @@ test('requires an explicitly saved item and makes no invisible save or metadata 
   expect(screen.getByText('Save this item before adding photos.')).toBeInTheDocument(); expect(screen.queryByLabelText('Choose photos')).not.toBeInTheDocument();
   expect(reservePhoto).not.toHaveBeenCalled();
 });
-test('keeps the default panel minimal with a count, Add photos and accessible collapsed tips', async () => {
+test('keeps the default panel minimal with a count, Add photos and a one-line hint', async () => {
   mount(); await loaded();
   expect(screen.getByRole('heading', { name: 'Photos for Synthetic chair' })).toBeInTheDocument();
   expect(screen.getByText('0 / 5')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Add photos' })).toHaveAccessibleDescription(expect.stringContaining('Remove visible addresses'));
-  expect(screen.getByText(/Up to 5 photos/)).not.toBeVisible();
+  expect(screen.getByRole('button', { name: 'Add photos' })).toHaveAccessibleDescription('Up to 5 photos. JPEG, PNG or static WebP, up to 20 MiB each.');
+  expect(screen.queryByText('Photo tips')).not.toBeInTheDocument();
   expect(screen.queryByText('Photo allowance')).not.toBeInTheDocument();
   expect(screen.queryByText(/No ready photos|Photos selected|Maximum 5 photos/)).not.toBeInTheDocument();
   expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
