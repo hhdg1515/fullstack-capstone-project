@@ -69,7 +69,9 @@ async function localEnvironment({ photos = false, ownerListings = false, ownerLi
     web.use(express.static(root + '/giftlink-frontend/build')); web.get('*', (req, res) => res.sendFile(root + '/giftlink-frontend/build/index.html'));
     front = https.createServer({ key: certificate?.key || fs.readFileSync(path.join(directory, 'key.pem')), cert: certificate?.cert || fs.readFileSync(path.join(directory, 'cert.pem')) }, web).listen(0, '127.0.0.1');
     await new Promise(resolve => front.once('listening', resolve)); const origin = 'https://127.0.0.1:' + front.address().port;
-    const env = { NODE_ENV: 'production', DB_ENVIRONMENT: guardedPreparation ? 'development' : 'staging', MONGO_URL: isolated.mongoUrl, MONGO_DB_NAME: isolated.dbName, APP_ORIGIN: origin };
+    // The hosted runtime accepts only staging/production labels (index.js); guarded
+    // index preparation above keeps its own explicit development confirmation.
+    const env = { NODE_ENV: 'production', DB_ENVIRONMENT: 'staging', MONGO_URL: isolated.mongoUrl, MONGO_DB_NAME: isolated.dbName, APP_ORIGIN: origin };
     if (ownerListings) env.OWNER_LISTINGS_ENABLED = 'true';
     if (ownerListingPhotos) env.OWNER_LISTING_PHOTOS_ENABLED = 'true';
     if (ownerListingPickups) env.OWNER_LISTING_PICKUPS_ENABLED = 'true';
