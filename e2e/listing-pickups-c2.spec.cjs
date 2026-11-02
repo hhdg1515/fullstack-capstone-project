@@ -49,9 +49,9 @@ test('two accounts request, accept, chat, reschedule and close a pickup for an i
 
     const b = await requester.newPage(); b.on('dialog', dialog => dialog.accept());
     await b.goto('/app/items/' + item.id); await expect(b.getByRole('heading', { name: item.name, exact: true })).toBeVisible();
-    await expect(b.getByText('Pickup dates are local to ' + zone + '.')).toBeVisible(); await audit(b, 'listing');
+    await expect(b.getByText(zone, { exact: false })).toHaveCount(0); await audit(b, 'listing');
     await b.getByRole('link', { name: 'Request pickup', exact: true }).click();
-    await expect(b.getByText(new RegExp('in ' + zone.replace('/', '\\/') + '\\. The listing ends at the end of that local date\\.'))).toBeVisible();
+    await expect(b.getByText(/^Choose a date from /)).toBeVisible();
     await b.getByLabel('Pickup date and time').fill(localDay(3) + 'T10:00'); await b.getByLabel('Coordination note (optional, private)').fill('Synthetic meeting point near the library.');
     await audit(b, 'request-form');
     await b.getByRole('button', { name: 'Send pickup request', exact: true }).click();
@@ -66,26 +66,21 @@ test('two accounts request, accept, chat, reschedule and close a pickup for an i
     const a = await owner.newPage(); a.on('dialog', dialog => dialog.accept());
     await a.goto('/app/pickups/incoming'); await a.getByRole('link', { name: 'View request from Reader for ' + item.name, exact: true }).click();
     await expect(a).toHaveURL(deployment.origin + '/app/pickups/' + requestId);
-    await expect(a.getByRole('link', { name: 'View item', exact: true })).toHaveAttribute('href', '/app/listings/' + item.id);
-    await expect(a.getByText(new RegExp('\\(local dates in ' + zone.replace('/', '\\/') + '\\)'))).toBeVisible();
+    await expect(a.getByRole('link', { name: 'View item', exact: true })).toHaveAttribute('href', '/app/items/' + item.id);
+    await expect(a.getByText(/^Pickup window: /)).toBeVisible();
     await a.getByRole('button', { name: 'Accept pickup', exact: true }).click();
     await expect(a.getByText('Pickup arranged. The item is reserved; handoff has not been recorded.')).toBeVisible(); await audit(a, 'owner-accepted');
 
     // Private conversation in both directions.
-    await b.reload(); await expect(b.getByText('Conversation loaded.', { exact: true })).toBeVisible();
+    await b.reload(); await expect(b.getByText('Conversation loaded.', { exact: true })).toBeAttached();
     await b.getByLabel('Message', { exact: true }).fill('Synthetic hello from the requester.'); await b.getByRole('button', { name: 'Send message', exact: true }).click();
     await expect(b.getByText('Synthetic hello from the requester.')).toBeVisible();
     await a.reload(); await expect(a.getByText('Synthetic hello from the requester.')).toBeVisible();
     await a.getByLabel('Message', { exact: true }).fill('Synthetic reply from the giver.'); await a.getByRole('button', { name: 'Send message', exact: true }).click();
     await expect(a.getByText('Synthetic reply from the giver.')).toBeVisible(); await audit(a, 'conversation');
 
-    // Rescheduling in the item's confirmed zone.
-    await a.getByRole('button', { name: 'Propose new time', exact: true }).click();
-    await a.getByLabel('New pickup date and time', { exact: true }).fill(localDay(4) + 'T15:30');
-    await a.getByRole('button', { name: 'Propose time change', exact: true }).click();
-    await b.reload(); await expect(b.getByRole('button', { name: 'Accept proposed time', exact: true })).toBeVisible(); await audit(b, 'proposal');
-    await b.getByRole('button', { name: 'Accept proposed time', exact: true }).click();
-    await expect.poll(async () => (await deployment.db.collection('pickupRequests').findOne({ _id: new ObjectId(requestId) })).localDateTime).toBe(localDay(4) + 'T15:30');
+    // Time changes are no longer offered in the UI.
+    await expect(a.getByRole('button', { name: /Propose new time|Confirm handoff|Record no-show/ })).toHaveCount(0);
 
     // Outsiders and anonymous users see nothing private.
     const c = await outsider.newPage(); await c.goto('/app/pickups/' + requestId);

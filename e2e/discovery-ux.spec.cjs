@@ -79,10 +79,10 @@ test('expanded areas, responsive filters, truthful cards and recovery preserve s
     await page.getByLabel('Category', { exact: true }).selectOption('living-room'); await page.getByLabel('Item type', { exact: true }).selectOption('sofa');
     await page.getByLabel('Condition', { exact: true }).selectOption('good'); await page.getByLabel('Sort items', { exact: true }).selectOption('deadline');
     await page.getByLabel('City', { exact: true }).selectOption('Philadelphia'); await page.getByLabel('Search items', { exact: true }).fill('couch');
-    await page.getByRole('button', { name: 'Find free items', exact: true }).click(); await expect(count(1)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Find free items', exact: true })).toHaveCount(0); await expect(count(1)).toBeVisible();
     await expect(results.getByRole('link', { name: first.name, exact: true })).toBeVisible();
     const url = new URL(page.url()); expect(url.searchParams.get('q')).toBe('couch'); expect(url.searchParams.get('sort')).toBe('deadline'); expect(url.searchParams.get('itemTypeId')).toBe('sofa');
-    await page.getByRole('button', { name: 'Clear filters', exact: true }).click(); await expect(count(2)).toBeVisible(); expect(new URL(page.url()).searchParams.get('metroId')).toBe('37980');
+    await page.getByRole('button', { name: 'Reset', exact: true }).click(); await expect(count(2)).toBeVisible(); expect(new URL(page.url()).searchParams.get('metroId')).toBe('37980');
     await page.goto('/app/items?stateId=10&metroId=37980'); await expect(count(2)).toBeVisible();
     await page.goto('/app/items'); await expect(count(2)).toBeVisible(); expect(new URL(page.url()).searchParams.get('stateId')).toBe('10');
     await page.goto('/app/items?stateId=20&metroId=28140'); await expect(count(1)).toBeVisible(); await expect(results.getByRole('link', { name: 'Different metro sofa', exact: true })).toBeVisible();
@@ -101,15 +101,15 @@ test('expanded areas, responsive filters, truthful cards and recovery preserve s
     let release;
     const gate = new Promise(resolve => { release = resolve; });
     await page.route('**/api/items?**', async route => { await gate; await route.continue(); });
-    await page.getByRole('button', { name: 'Find free items', exact: true }).click(); await expect(page.getByText('Loading listings…', { exact: true })).toBeVisible(); await expect(count(0)).toHaveCount(0); await expect(count(1)).toHaveCount(0);
+    await page.getByLabel('Search items', { exact: true }).press('Enter'); await expect(page.getByText('Loading listings…', { exact: true })).toBeVisible(); await expect(count(0)).toHaveCount(0); await expect(count(1)).toHaveCount(0);
     release(); await expect(count(1)).toBeVisible(); await page.unroute('**/api/items?**');
     await page.route('**/api/items?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>Local fallback</title>' }));
-    await page.getByRole('button', { name: 'Find free items', exact: true }).click(); await expect(page.getByRole('alert')).toContainText('temporarily unavailable');
+    await page.getByLabel('Search items', { exact: true }).press('Enter'); await expect(page.getByRole('alert')).toContainText('temporarily unavailable');
     await expect(count(0)).toHaveCount(0); await expect(page.getByText(/No available items/)).toHaveCount(0); await audit(page, 'API error');
     await page.unroute('**/api/items?**'); await page.getByRole('button', { name: 'Retry results', exact: true }).click(); await expect(count(1)).toBeVisible();
-    await page.getByLabel('Search items', { exact: true }).fill('no matching item'); await page.getByRole('button', { name: 'Find free items', exact: true }).click();
+    await page.getByLabel('Search items', { exact: true }).fill('no matching item');
     await expect(count(0)).toBeVisible(); await expect(page.getByText(/No available items match these filters/)).toBeVisible(); await audit(page, 'empty filter');
-    const before = gets; await page.goto('/app/items?stateId=56'); await expect(page.getByText('No metros are listed for this state yet.', { exact: true })).toBeVisible(); expect(gets).toBe(before); await expect(count(0)).toHaveCount(0);
+    const before = gets; await page.goto('/app/items?stateId=56'); await expect(page.getByRole('heading', { name: 'Choose a metro area', exact: true })).toBeVisible(); expect(gets).toBe(before); await expect(count(0)).toHaveCount(0);
     expect((await (await receiver.request.get('/api/regions')).json()).metros).toHaveLength(50);
     expect(deployment.serverErrors).toEqual([]);
   } finally { for (const actor of contexts) await actor.close(); }

@@ -7,7 +7,6 @@ import './Inventory.css';
 import JourneyNav from '../Journeys/JourneyNav';
 import { useAppContext } from '../../context/AuthContext';
 import usePublicCatalog from '../../api/usePublicCatalog';
-import RegionFields from '../MoveOutPlans/RegionFields';
 import ItemLabels from './ItemLabels';
 import { PageHeader, Surface, Feedback } from '../../design-system/primitives';
 import './Discovery.css';
@@ -18,8 +17,8 @@ import { placeLabel } from '../Pickups/placeLabel';
 
 const normalize = value => value.trim().replace(/\s+/g, ' ');
 const key = value => normalize(value).toLowerCase();
-const fieldsFrom = params => ({ stateId: params.get('stateId') || '', metroId: params.get('metroId') || '', categoryId: params.get('categoryId') || '', itemTypeId: params.get('itemTypeId') || '', condition: params.get('condition') || '', q: params.get('q') || '', city: params.get('city') || '', neighborhood: params.get('neighborhood') || '',
-  availability: params.get('availability') || 'all', date: params.get('date') || '', sort: params.get('sort') || 'newest' });
+const fieldsFrom = params => ({ categoryId: params.get('categoryId') || '', itemTypeId: params.get('itemTypeId') || '', condition: params.get('condition') || '', q: params.get('q') || '', city: params.get('city') || '', neighborhood: params.get('neighborhood') || '',
+  sort: params.get('sort') || 'newest' });
 function PickupWindow({ item }) {
   const later = (item.availability || (item.availableFrom && item.availableFrom > utcToday() ? 'later' : 'now')) === 'later';
   return <>
@@ -28,7 +27,6 @@ function PickupWindow({ item }) {
     </span></p>
     <p>Pickup from: {item.availableFrom ? <time dateTime={item.availableFrom}>{formatDeadline(item.availableFrom)}</time> : 'Immediately'}</p>
     <p>Pickup until: <time dateTime={item.effectiveAvailableUntil}>{formatDeadline(item.effectiveAvailableUntil)}</time></p>
-    {item.datePolicy === 'pickup-local' && <p>Pickup dates are local to {item.pickupTimeZone}.</p>}
   </>;
 }
 const preferenceKey = 'moveout.browse-region.v1';
@@ -61,19 +59,19 @@ function Discovery() {
   const stateId = params.get('stateId') || '', metroId = params.get('metroId') || '';
   const selected = selectedMetro(directory.data, stateId, metroId);
   const invalidRegion = directory.data && ((stateId && !directory.data.states.some(row => row.id === stateId)) || (metroId && !selected));
-  const regionCodes = selected ? selected.stateIds.map(id => directory.data.states.find(row => row.id === id)?.code).filter(Boolean).join('–') : '';
   const feedMatchesRegion = data => validFeed(data) && data.items.every(item => item.metroId === metroId && selected.stateIds.includes(item.stateId));
   const scope = `${viewer}:${query}`;
   const [fields, setFields] = useState(() => fieldsFrom(params));
-  const [regionEditing, setRegionEditing] = useState(false);
-  const regionPanel = useRef(), regionButton = useRef(), focusAfterRegion = useRef(false);
-  const [filterError, setFilterError] = useState('');
-  const dateInput = useRef();
+  // Filters apply as they change; `pushed` marks URL updates that came from the
+  // form itself so a slower URL round-trip never overwrites newer typing.
+  const pushed = useRef(null);
   const [attempt, setAttempt] = useState(0), [locationAttempt, setLocationAttempt] = useState(0);
   const [places, setPlaces] = useState({ locations: [] }), [result, setResult] = useState({});
   const revision = useRef(null), moreFlight = useRef(false), changedAvailability = useRef(null);
-  useEffect(() => { if (filterError) dateInput.current?.focus(); }, [filterError]);
-  useEffect(() => { setFields(fieldsFrom(new URLSearchParams(query))); setFilterError(''); }, [query]);
+  useEffect(() => {
+    const own = pushed.current !== null && sameQuery(query, pushed.current); pushed.current = null;
+    if (!own) setFields(fieldsFrom(new URLSearchParams(query)));
+  }, [query]);
   useEffect(() => {
     if (!directory.data || params.has('stateId') || params.has('metroId')) return;
     const preference = preferredRegion(directory.data);
@@ -83,10 +81,6 @@ function Discovery() {
     }
   }, [directory.data, params, query, setParams]);
   useEffect(() => { if (selected) rememberRegion(stateId, selected.id); }, [selected, stateId]);
-  useEffect(() => {
-    if (focusAfterRegion.current && selected) { focusAfterRegion.current = false; regionButton.current?.focus(); }
-    if (regionEditing) regionPanel.current?.querySelector('select')?.focus();
-  }, [selected, regionEditing]);
   useEffect(() => {
     const current = { active: true }; revision.current = current; moreFlight.current = false;
     const refreshedAvailability = changedAvailability.current === scope; changedAvailability.current = null;
@@ -109,8 +103,6 @@ function Discovery() {
     window.addEventListener('focus', refresh); return () => window.removeEventListener('focus', refresh);
   }, []);
   const visible = result.key === scope ? result : { loading: Boolean(selected), items: [] };
-  const mixedDates = isCalendarDate(visible.dateMinimum);
-  const dateMinimum = mixedDates ? visible.dateMinimum : utcToday();
   const city = places.locations.find(place => key(place.city) === key(fields.city))?.city || normalize(fields.city);
   const neighborhoods = Array.from(new Map(places.locations.filter(place => !city || key(place.city) === key(city))
     .flatMap(place => place.neighborhoods).filter(Boolean).map(value => [key(value), value])).values()).sort((a, b) => a.localeCompare(b));
@@ -127,39 +119,41 @@ function Discovery() {
     const entries = name === 'categoryId' ? catalog.data?.categories : name === 'condition' ? catalog.data?.conditions : catalog.data?.categories.flatMap(entry => entry.itemTypes);
     if (id) applied.push(`${label}: ${entries?.find(entry => entry.id === id)?.label || 'Check selection'}`);
   }
-  if (params.get('availability') && params.get('availability') !== 'all') applied.push(`Pickup: ${params.get('availability') === 'date' ? params.get('date') || 'choose a date' : params.get('availability')}`);
   if (params.get('sort') === 'deadline') applied.push('Sort: earliest pickup deadline');
-  const canClear = (applied.length > 0 || Object.entries(fields).some(([name, value]) => !['stateId', 'metroId'].includes(name) && value && !((name === 'availability' && value === 'all') || (name === 'sort' && value === 'newest'))));
-  const changeRegion = changes => {
+  const canReset = applied.length > 0 || Object.entries(fields).some(([name, value]) => value && !(name === 'sort' && value === 'newest'));
+  const metros = (directory.data?.metros || []).slice().sort((a, b) => a.label.localeCompare(b.label));
+  const changeMetro = event => {
+    const metro = directory.data.metros.find(row => row.id === event.target.value);
     const next = new URLSearchParams(query);
     for (const name of ['cursor', 'city', 'neighborhood']) next.delete(name);
-    if (changes.stateId !== undefined) {
-      if (changes.stateId) next.set('stateId', changes.stateId); else { next.delete('stateId'); rememberRegion(); }
-      next.delete('metroId');
-    } else if (changes.metroId) {
-      next.set('metroId', changes.metroId); focusAfterRegion.current = true; setRegionEditing(false);
-    } else next.delete('metroId');
+    if (metro) { next.set('stateId', metro.stateIds.includes(stateId) ? stateId : metro.stateIds[0]); next.set('metroId', metro.id); }
+    else { next.delete('stateId'); next.delete('metroId'); rememberRegion(); }
     setParams(next, { replace: sameQuery(next, query) });
   };
+  const filterQuery = () => {
+    const next = new URLSearchParams({ stateId, metroId });
+    for (const [name, value] of Object.entries({ q: normalize(fields.q), city, neighborhood, categoryId: fields.categoryId, itemTypeId: fields.itemTypeId, condition: fields.condition, sort: fields.sort })) {
+      if (value && !(name === 'sort' && value === 'newest')) next.set(name, value);
+    }
+    return next;
+  };
+  const apply = next => { pushed.current = next.toString(); setParams(next, { replace: true }); };
+  useEffect(() => {
+    if (!selected) return undefined;
+    const next = filterQuery(); if (sameQuery(next, query)) return undefined;
+    const timer = setTimeout(() => apply(next), 300);
+    return () => clearTimeout(timer);
+  }, [selected, query, fields, city, neighborhood]); // eslint-disable-line react-hooks/exhaustive-deps
   const submit = event => {
     event.preventDefault(); if (!selected) return;
-    if (fields.availability === 'date' && (!isCalendarDate(fields.date) || fields.date < dateMinimum)) {
-      setFilterError(mixedDates ? 'Choose today or a later date in the listing timezone.' : 'Choose today or a later pickup date (UTC).'); return;
-    }
-    setFilterError('');
-    const next = new URLSearchParams({ stateId, metroId });
-    for (const [name, value] of Object.entries({ q: normalize(fields.q), city, neighborhood, categoryId: fields.categoryId, itemTypeId: fields.itemTypeId,
-      condition: fields.condition, availability: fields.availability, date: fields.availability === 'date' ? fields.date : '', sort: fields.sort })) {
-      if (value && !((name === 'availability' && value === 'all') || (name === 'sort' && value === 'newest'))) next.set(name, value);
-    }
-    if (sameQuery(next, query)) setAttempt(value => value + 1); else setParams(next);
-    setLocationAttempt(value => value + 1);
+    // Enter commits the search: show the normalized text the server receives.
+    setFields(previous => ({ ...previous, q: normalize(previous.q) }));
+    const next = filterQuery(); if (sameQuery(next, query)) setAttempt(value => value + 1); else apply(next);
   };
   const restart = () => { const next = new URLSearchParams(query); next.delete('cursor'); if (sameQuery(next, query)) setAttempt(value => value + 1); else setParams(next, { replace: true }); };
-  const clear = () => {
-    setFilterError(''); const next = new URLSearchParams({ stateId, metroId });
-    if (sameQuery(next, query)) setAttempt(value => value + 1); else setParams(next);
-    setFields(fieldsFrom(next)); setLocationAttempt(value => value + 1);
+  const reset = () => {
+    const next = new URLSearchParams({ stateId, metroId }); setFields(fieldsFrom(next));
+    if (sameQuery(next, query)) setAttempt(value => value + 1); else { pushed.current = next.toString(); setParams(next); }
   };
   const loadMore = async () => {
     if (moreFlight.current || visible.loading || visible.moreLoading || !visible.page?.nextCursor) return;
@@ -176,59 +170,42 @@ function Discovery() {
     } finally { if (current.active) moreFlight.current = false; }
   };
   const change = event => {
-    const { name, value } = event.target; if (['availability', 'date'].includes(name)) setFilterError('');
-    setFields(previous => ({ ...previous, [name]: value, ...(name === 'city' ? { neighborhood: '' } : {}),
-      ...(name === 'availability' ? { date: '' } : {}), ...(name === 'categoryId' ? { itemTypeId: '' } : {}) }));
+    const { name, value } = event.target;
+    setFields(previous => ({ ...previous, [name]: value, ...(name === 'city' ? { neighborhood: '' } : {}), ...(name === 'categoryId' ? { itemTypeId: '' } : {}) }));
   };
   return <main className="ui-page discovery-page discovery-feed">
     <JourneyNav journey="find" />
     <PageHeader title="Find free items" />
-    <Surface aria-label="Browsing area" className={`discovery-area${selected ? ' discovery-area--selected' : ''}`}>
-      {selected && <div className="discovery-area-heading">
-        <p className="discovery-area-name">{selected.shortLabel || selected.label.split(', ')[0]}{regionCodes ? ` · ${regionCodes}` : ''}</p>
-        <button ref={regionButton} type="button" className="ui-button ui-button--secondary" aria-expanded={regionEditing} aria-controls="discovery-region-options"
-          onClick={() => setRegionEditing(value => !value)}>Change region</button>
-      </div>}
-      <div id="discovery-region-options" ref={regionPanel} hidden={Boolean(selected) && !regionEditing}>
-        {!selected && <h2>Where would you like to find free items?</h2>}
-        {invalidRegion && <p role="status">This area selection is not supported. Choose a listed state and metro.</p>}
-        <div className="discovery-region-fields"><RegionFields directory={directory} values={{ stateId, metroId }} onChange={changeRegion}
-          prefix="browse-region" browsing fieldClassName="ui-field" showHelp={false} /></div>
-        <p className="discovery-help">Choose a metro to browse. Coverage uses {directory.data?.vintage?.metros || 'dated'} Census definitions; not every area is listed. No GPS or address needed.</p>
-      </div>
-    </Surface>
-    {selected && <>
+    {directory.error && <Feedback error><p>Region options are unavailable.</p><button className="ui-button ui-button--secondary" onClick={directory.retry}>Retry region options</button></Feedback>}
     <Surface as="form" aria-label="Search and filters" className="discovery-filters" onSubmit={submit} noValidate>
       <div className="ui-field discovery-search"><label htmlFor="browse-q">Search items</label>
-        <input id="browse-q" name="q" maxLength={100} placeholder="Name, description or item type" value={fields.q} onChange={change} /></div>
+        <input id="browse-q" name="q" maxLength={100} placeholder="Name, description or item type" value={fields.q} onChange={change} disabled={!selected} /></div>
       <div id="discovery-common-options" className="discovery-common-options">
-        <div className="ui-field"><label htmlFor="browse-category">Category</label><select id="browse-category" name="categoryId" value={fields.categoryId} onChange={change} disabled={catalog.loading || Boolean(catalog.error)}>
+        <div className="ui-field"><label htmlFor="browse-category">Category</label><select id="browse-category" name="categoryId" value={fields.categoryId} onChange={change} disabled={!selected || catalog.loading || Boolean(catalog.error)}>
           <option value="">All categories</option>{catalog.data?.categories.map(entry => <option value={entry.id} key={entry.id}>{entry.label}</option>)}
         </select></div>
-        <div className="ui-field discovery-type-option"><label htmlFor="browse-type">Item type</label><select id="browse-type" name="itemTypeId" value={fields.itemTypeId} onChange={change} disabled={!category || catalog.loading || Boolean(catalog.error)}>
+        <div className="ui-field discovery-type-option"><label htmlFor="browse-type">Item type</label><select id="browse-type" name="itemTypeId" value={fields.itemTypeId} onChange={change} disabled={!selected || !category || catalog.loading || Boolean(catalog.error)}>
           <option value="">{category ? 'All item types' : 'Choose a category first'}</option>{category?.itemTypes.map(entry => <option value={entry.id} key={entry.id}>{entry.label}</option>)}
         </select></div>
-        <div className="ui-field discovery-extra-option"><label htmlFor="browse-availability">Pickup availability</label><select id="browse-availability" name="availability" value={fields.availability} onChange={change}>
-          <option value="all">Any pickup window</option><option value="now">Available Now</option><option value="later">Available Later</option><option value="date">On a selected date</option></select></div>
-        {fields.availability === 'date' && <div className="ui-field discovery-extra-option"><label htmlFor="browse-date">{mixedDates ? 'Pickup date (listing timezone)' : 'Pickup date (UTC)'}</label>
-          <input id="browse-date" ref={dateInput} type="date" name="date" required min={dateMinimum} value={fields.date} onChange={change}
-            aria-invalid={Boolean(filterError)} aria-describedby={filterError ? 'browse-date-error' : undefined} />
-          {filterError && <p id="browse-date-error" role="alert" className="ui-field-error">{filterError}</p>}</div>}
-        <div className="ui-field discovery-extra-option"><label htmlFor="browse-sort">Sort items</label><select id="browse-sort" name="sort" value={fields.sort} onChange={change}>
+        <div className="ui-field"><label htmlFor="browse-condition">Condition</label><select id="browse-condition" name="condition" value={fields.condition} onChange={change} disabled={!selected || catalog.loading || Boolean(catalog.error)}>
+          <option value="">Any condition</option>{catalog.data?.conditions.map(entry => <option value={entry.id} key={entry.id}>{entry.label}</option>)}
+        </select></div>
+        <div className="ui-field"><label htmlFor="browse-sort">Sort items</label><select id="browse-sort" name="sort" value={fields.sort} onChange={change} disabled={!selected}>
           <option value="newest">Newest publication</option><option value="deadline">Earliest pickup deadline</option></select></div>
       </div>
       <div id="discovery-filter-options" className="discovery-options">
-        <div className="ui-field"><label htmlFor="browse-condition">Condition</label><select id="browse-condition" name="condition" value={fields.condition} onChange={change} disabled={catalog.loading || Boolean(catalog.error)}>
-          <option value="">Any condition</option>{catalog.data?.conditions.map(entry => <option value={entry.id} key={entry.id}>{entry.label}</option>)}
-        </select></div>
-        <div className="ui-field"><label htmlFor="browse-city">City</label><select id="browse-city" name="city" value={city} onChange={change}><option value="">All cities</option>
+        <div className="ui-field"><label htmlFor="browse-metro">Metro area</label><select id="browse-metro" name="metroId" value={selected ? selected.id : ''} onChange={changeMetro} disabled={directory.loading || Boolean(directory.error)}>
+          <option value="">{directory.loading ? 'Loading metro areas…' : 'Choose a metro area'}</option>{metros.map(metro => <option key={metro.id} value={metro.id}>{metro.label}</option>)}</select></div>
+        <div className="ui-field"><label htmlFor="browse-city">City</label><select id="browse-city" name="city" value={city} onChange={change} disabled={!selected}><option value="">All cities</option>
           {cities.map(value => <option key={key(value)} value={value}>{value}</option>)}</select></div>
-        <div className="ui-field"><label htmlFor="browse-neighborhood">Neighborhood</label><select id="browse-neighborhood" name="neighborhood" value={neighborhood} onChange={change}><option value="">All neighborhoods</option>
+        <div className="ui-field"><label htmlFor="browse-neighborhood">Neighborhood</label><select id="browse-neighborhood" name="neighborhood" value={neighborhood} onChange={change} disabled={!selected}><option value="">All neighborhoods</option>
           {neighborhoods.map(value => <option key={key(value)} value={value}>{value}</option>)}</select></div>
       </div>
-      <p className="discovery-help">Pickup dates use the timezone shown on each listing; legacy plan dates use UTC.</p>
-      <div className="discovery-search-actions"><button className="ui-button">Find free items</button>{canClear && <button type="button" className="ui-button ui-button--secondary" onClick={clear}>Clear filters</button>}</div>
+      {invalidRegion && <p role="status" className="discovery-help">This area is not supported. Choose a listed metro area.</p>}
+      {selected && canReset && <div className="discovery-search-actions"><button type="button" className="ui-button ui-button--secondary" onClick={reset}>Reset</button></div>}
     </Surface>
+    {!selected && !directory.loading && !directory.error && <Surface className="discovery-empty"><h2>Choose a metro area</h2><p>Pick a metro area above to see free items near you.</p></Surface>}
+    {selected && <>
     <p className="discovery-summary" aria-label="Applied filters">{applied.length ? applied.join(' · ') : 'No account needed to browse.'}</p>
     {catalog.error && <Feedback error><p>Item filter options are unavailable.</p><button className="ui-button ui-button--secondary" onClick={catalog.retry}>Retry item filters</button></Feedback>}
     {places.loading && <p role="status" className="discovery-help">Loading location options…</p>}
@@ -240,7 +217,7 @@ function Discovery() {
       {visible.loading && <Feedback>Loading listings…</Feedback>}
       {visible.error && <Feedback error><h2>Could not load items</h2><p>{visible.error.message}</p>{visible.moreError && <p>Previously loaded items are shown below. Refresh to confirm availability.</p>}<button className="ui-button ui-button--secondary" onClick={() => visible.moreError && !['STALE_CURSOR', 'INVALID_CURSOR'].includes(visible.error.code) ? loadMore() : restart()}>
         {['STALE_CURSOR', 'INVALID_CURSOR'].includes(visible.error.code) ? 'Start again' : 'Retry results'}</button></Feedback>}
-      {!visible.loading && !visible.error && visible.total === 0 && <Surface className="discovery-empty"><h3>{applied.length ? 'Try a different filter' : 'No items here yet'}</h3><p>{applied.length ? 'No available items match these filters. Clear filters or try another search.' : 'No available items in this metro yet. Try another region or check back later.'}</p></Surface>}
+      {!visible.loading && !visible.error && visible.total === 0 && <Surface className="discovery-empty"><h3>{applied.length ? 'Try a different filter' : 'No items here yet'}</h3><p>{applied.length ? 'No available items match these filters. Reset or try another search.' : 'No available items in this metro yet. Try another region or check back later.'}</p></Surface>}
       {Boolean(visible.items?.length) && !visible.error && <p role="status" className="discovery-loaded">Showing {visible.items.length} {visible.items.length === 1 ? 'item' : 'items'}</p>}
       <ul className="discovery-grid" aria-label="Available items">{visible.items?.map(item => <PublicItemCard key={item.id} item={item} search={query} stateCode={directory.data.states.find(row => row.id === item.stateId)?.code} />)}</ul>
       {visible.page?.hasMore && <button className="ui-button discovery-more" disabled={visible.moreLoading} onClick={loadMore}>{visible.moreLoading ? 'Loading more…' : 'Load more'}</button>}
@@ -280,13 +257,13 @@ function PublicItemDetail({ itemId }) {
     {current.error && <div role="alert"><p>{current.error.status === 404 ? 'This listing is no longer available.' : current.error.message}</p>
       <button className="btn btn-outline-secondary ui-button ui-button--secondary" onClick={() => setAttempt(value => value + 1)}>Retry listing</button></div>}
     {item && <article className="plan-panel">
-      <div className="public-item-heading"><h1>{item.name}</h1>{item.isOwner === true && auth?.status === 'authenticated' && (item.listingModel === 2 ? <Link className="btn btn-primary ui-button" to={`/app/listings/${item.id}`}>Manage listing</Link> :
+      <div className="public-item-heading"><h1>{item.name}</h1>{item.isOwner === true && auth?.status === 'authenticated' && (item.listingModel === 2 ? <Link className="btn btn-primary ui-button" to={`/app/items/${item.id}/edit`}>Manage listing</Link> :
         <Link className="btn btn-primary ui-button" to={`/app/items/${item.id}/edit`}>Edit item</Link>)}</div><p>{placeLabel(item)} · Free</p>
       <ItemLabels item={item} />
       <PublicItemGallery key={`${scope}:${attempt}`} item={item} />
       <PickupWindow item={item} />
       <h2>Description</h2><p className="public-item-description">{item.description || 'No additional description provided.'}</p>
-      {item.isOwner === true ? <p role="status">Your listing.</p> : item.isReserved === true ? <p role="status">This item has an accepted pickup. Check back if it becomes available.</p> : item.pickupTimeZone ? <><p>Pickup timezone: {item.pickupTimeZone}</p><Link className="btn btn-primary ui-button" to={`/app/items/${item.id}/request`} state={{ discoverySearch: previous }}>Request pickup</Link>
+      {item.isOwner === true ? <p role="status">Your listing.</p> : item.isReserved === true ? <p role="status">This item has an accepted pickup. Check back if it becomes available.</p> : item.pickupTimeZone ? <><Link className="btn btn-primary ui-button" to={`/app/items/${item.id}/request`} state={{ discoverySearch: previous }}>Request pickup</Link>
         <p>A request does not reserve the item. The giver must accept an appointment.</p></> : <p>The giver needs to set a pickup timezone before this listing can receive requests.</p>}
       {typeof item.isReserved !== 'boolean' && <p>Current pickup availability will be checked when you send a request.</p>}
       {item.publishedAt && <p>First published: <time dateTime={item.publishedAt}>{formatDeadline(item.publishedAt.slice(0, 10))}</time>. Publication is separate from pickup dates.</p>}

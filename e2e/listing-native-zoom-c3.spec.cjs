@@ -24,7 +24,7 @@ test('C3 native Chromium 200% zoom retains publication controls and reflow', asy
     const metrics = await page.evaluate(() => ({ cssWidth: innerWidth, devicePixelRatio, outerWidth }));
     expect(metrics.outerWidth).toBe(1280); expect(metrics.devicePixelRatio).toBe(2); expect(metrics.cssWidth).toBe(640);
     expect(await page.evaluate(() => matchMedia('(max-width: 700px)').matches)).toBe(true);
-    await page.getByRole('button', { name: 'Save Draft', exact: true }).last().focus(); await expect(page.getByRole('button', { name: 'Save Draft', exact: true }).last()).toBeFocused();
+    await page.getByRole('button', { name: 'Publish', exact: true }).focus(); await expect(page.getByRole('button', { name: 'Publish', exact: true })).toBeFocused();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations.map(row=>row.id); expect(violations).toEqual([]);
     if (process.env.C3_EVIDENCE_DIR) { fs.mkdirSync(process.env.C3_EVIDENCE_DIR, {recursive:true}); const session = await context.newCDPSession(page); const capture = await session.send('Page.captureScreenshot', { format:'png', captureBeyondViewport:false, fromSurface:true }); fs.writeFileSync(path.join(process.env.C3_EVIDENCE_DIR,'native-200-percent-form.png'), Buffer.from(capture.data,'base64'));

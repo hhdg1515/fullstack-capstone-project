@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
 import { apiRequest } from '../../api/client';
 import { useAppContext } from '../../context/AuthContext';
 import { useUnsavedForm } from '../../forms/UnsavedChanges';
@@ -34,8 +33,7 @@ export default function PickupConversation(props) {
   return <Conversation key={`${user.id}:${props.requestId}`} {...props} />;
 }
 
-function Conversation({ requestId, requestStatus, itemName, hasTimeProposal = false }) {
-  const location = useLocation();
+function Conversation({ requestId, requestStatus }) {
   const root = `/api/pickup-requests/${encodeURIComponent(requestId)}/conversation`;
   const [view, setView] = useState({ context: null, ranges: [] });
   const current = useRef(view);
@@ -138,13 +136,10 @@ function Conversation({ requestId, requestStatus, itemName, hasTimeProposal = fa
   return <Surface id="conversation" className="pickup-conversation" aria-labelledby="conversation-heading">
     <div className="chat-header"><h2 id="conversation-heading" tabIndex={-1}>Pickup conversation</h2>
       <button type="button" className="ui-button ui-button--secondary" disabled={Boolean(busy)} onClick={() => { validation.reset(); load(); }}>{context ? 'Refresh conversation' : 'Retry conversation'}</button></div>
-    {itemName && <p className="chat-item">{itemName}</p>}
-    {hasTimeProposal && <p className="chat-arrangement"><Link to={{ hash: '#pickup-arrangement-heading', search: location.search }} state={location.state}>Review pickup time change</Link>. Chat does not change the confirmed time.</p>}
-    {context && <p className="chat-participant">With {context.counterpart.firstName} ({roleLabel(context.role === 'giver' ? 'receiver' : 'giver')}). Private to this request.</p>}
-    {(busy || notice) && <Feedback>{busy === 'send' ? 'Sending message…' : busy ? (busy === 'earlier' ? 'Loading earlier messages…' : 'Loading conversation…') : notice}</Feedback>}
     {error && <Feedback error>{error}</Feedback>}
-    {context && <>
-      {closed && <Feedback>This request is closed. You can read its messages, but cannot send new ones.</Feedback>}
+    <p role="status" className="visually-hidden">{busy === 'send' ? 'Sending message…' : busy ? (busy === 'earlier' ? 'Loading earlier messages…' : 'Loading conversation…') : notice}</p>
+    {(context || draft.length > 0) && <div className="chat-box">{context && <>
+      {closed && <p className="visually-hidden">This request is closed. You can read its messages, but cannot send new ones.</p>}
       <button type="button" className="ui-button ui-button--secondary" disabled={Boolean(busy)} hidden={!view.ranges.some(range => range.nextCursor)} onClick={() => load('earlier')}>Load earlier messages</button>
       <div ref={history} className="chat-history" role="region" aria-label="Message history" tabIndex={0}>
         {!messages.length ? <p>No messages yet.</p> : <ol>{view.ranges.slice().reverse().flatMap((range, index) => [
@@ -154,16 +149,13 @@ function Conversation({ requestId, requestStatus, itemName, hasTimeProposal = fa
             <p className="chat-text">{message.text}</p></li>),
           ...(index < view.ranges.length - 1 ? [<li key={`gap-${index}`} className="chat-gap">Some messages between these pages are not loaded yet. Use Load earlier messages to fill the gap.</li>] : [])
         ])}</ol>}
-      </div>
-      <p className="chat-help">Message times use your device timezone ({Intl.DateTimeFormat().resolvedOptions().timeZone || 'device setting'}). Pickup times use the giver’s timezone. Use Refresh conversation to check for new messages.</p>
-    </>}
+      </div></>}
     {((!closed && context) || draft.length > 0) && <form ref={validation.formRef} className="chat-composer" noValidate onSubmit={send} aria-busy={busy === 'send'}>
-      <div className="ui-field"><label htmlFor="chat-text">{canSend ? 'Message' : 'Unsent message'}</label>
+      <div className="ui-field"><label htmlFor="chat-text" className="visually-hidden">{canSend ? 'Message' : 'Unsent message'}</label>
         <textarea ref={composer} id="chat-text" name="text" rows={3} value={draft} readOnly={!canSend || busy === 'send'}
-          {...validation.fieldProps('text', 'chat-help chat-count')} onChange={event => { setDraft(event.target.value); validation.clear('text'); }} />
-        <small id="chat-count" className="chat-count">{Array.from(draft.trim()).length.toLocaleString('en')} / 2,000 characters</small>
-        {validation.errors.text && <p id="text-error" className="ui-field-error">{validation.errors.text}</p>}
-        <small id="chat-help">Plain text. Keep residential addresses and sensitive account details out of messages. Enter adds a new line.</small></div>
+          placeholder="Up to 2,000 characters. Plain text. Keep residential addresses and sensitive account details out of messages."
+          {...validation.fieldProps('text')} onChange={event => { setDraft(event.target.value); validation.clear('text'); }} />
+        {validation.errors.text && <p id="text-error" className="ui-field-error">{validation.errors.text}</p>}</div>
       {uncertain && !closed && <p>Check recent messages after refreshing before deciding whether to send this draft again.</p>}
       {!canSend && draft && <p>Your unsent text is kept here. Refresh to check access, or discard the draft.</p>}
       <div className="chat-actions"><button type="submit" className="ui-button" disabled={!canSend || Boolean(busy)}>Send message</button>
@@ -171,6 +163,7 @@ function Conversation({ requestId, requestStatus, itemName, hasTimeProposal = fa
           if (guard.confirmDiscard()) { setDraft(''); setUncertain(false); validation.reset(); }
         }}>Discard draft</button>}</div>
     </form>}
+    </div>}
     {validation.error && <Feedback error ref={validation.summaryRef} tabIndex={-1}>{validation.error}</Feedback>}
   </Surface>;
 }

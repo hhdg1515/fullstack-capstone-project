@@ -41,7 +41,7 @@ test('participants exchange private text, retain reading position and drafts, th
     for (let i = 1; i <= 23; i++) await post(i % 2 ? giver : receiver, endpoint, {
       text: 'Local history message ' + String(i).padStart(2, '0') + (i === 23 ? '\n' + 'https://example.invalid/longword'.repeat(25) + '\nCafé 😀' : '') });
     await a.goto('/app/pickups/' + request.id); await b.goto('/app/pickups/' + request.id);
-    await expect(a.getByText('Conversation loaded.', { exact: true })).toBeVisible(); await expect(b.getByText('Conversation loaded.', { exact: true })).toBeVisible();
+    await expect(a.getByText('Conversation loaded.', { exact: true })).toBeAttached(); await expect(b.getByText('Conversation loaded.', { exact: true })).toBeAttached();
     const history = a.getByRole('region', { name: 'Message history', exact: true });
     await expect(history.locator('.chat-message')).toHaveCount(20); await expect(a.getByText('Local history message 01', { exact: true })).toHaveCount(0);
     await a.getByRole('button', { name: 'Load earlier messages', exact: true }).scrollIntoViewIfNeeded();
@@ -55,7 +55,7 @@ test('participants exchange private text, retain reading position and drafts, th
     let posts = 0; b.on('request', value => { if (value.method() === 'POST' && value.url().endsWith(endpoint)) posts++; });
     const receiverText = b.getByLabel('Message', { exact: true }); await receiverText.fill('Ready to collect.\nSee you by the library.');
     await receiverText.evaluate(element => { element.form.requestSubmit(); element.form.requestSubmit(); });
-    await expect(b.getByText('Message sent.', { exact: true })).toBeVisible(); expect(posts).toBe(1); await expect(receiverText).toHaveValue('');
+    await expect(b.getByText('Message sent.', { exact: true })).toBeAttached(); expect(posts).toBe(1); await expect(receiverText).toHaveValue('');
     await a.getByRole('button', { name: 'Refresh conversation', exact: true }).scrollIntoViewIfNeeded();
     await history.evaluate(element => { element.scrollTop = 160; }); const anchor = await relativeTop(a, 'Local history message 08');
     await a.getByRole('button', { name: 'Refresh conversation', exact: true }).click(); await expect(history.locator('.chat-message')).toHaveCount(24);
@@ -65,7 +65,7 @@ test('participants exchange private text, retain reading position and drafts, th
     await a.getByRole('button', { name: 'Send message', exact: true }).click(); await expect(input).toBeFocused(); await expect(input).toHaveAttribute('aria-invalid', 'true');
     await input.fill('Thanks, see you there.'); await input.press('Enter'); await expect(input).toHaveValue('Thanks, see you there.\n');
     await input.press('Tab'); await expect(a.getByRole('button', { name: 'Send message', exact: true })).toBeFocused(); await a.keyboard.press('Enter');
-    await expect(a.getByText('Message sent.', { exact: true })).toBeVisible(); await expect(history.locator('.chat-message')).toHaveCount(25);
+    await expect(a.getByText('Message sent.', { exact: true })).toBeAttached(); await expect(history.locator('.chat-message')).toHaveCount(25);
     if (testInfo.project.name === 'mobile') await a.setViewportSize({ width: 320, height: 740 });
     expect(await a.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     const rules = (await new AxeBuilder({ page: a }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations.map(row => row.id);

@@ -28,15 +28,13 @@ function Scene({ item, caps, publicationEnabled }) {
     {user && <ListingForm key={user.id} item={item} photoCapabilities={caps} publicationEnabled={publicationEnabled} />}</UnsavedChangesProvider></TestAuthContext.Provider>;
 }
 function mount(item, caps = capabilities, publicationEnabled = false) {
-  const router = createMemoryRouter([{ path: '/app/listings/new', element: <Scene item={item} caps={caps} publicationEnabled={publicationEnabled} /> }, { path: '/app/listings/:id', element: <h1>Saved detail</h1> }],
+  const router = createMemoryRouter([{ path: '/app/listings/new', element: <Scene item={item} caps={caps} publicationEnabled={publicationEnabled} /> }, { path: '/app/listings', element: <h1>Saved detail</h1> }],
     { initialEntries: ['/app/listings/new'], future: { v7_relativeSplatPath: true } });
   render(<RouterProvider router={router} future={{ v7_startTransition: true }} />); return router;
 }
 const select = async (count = 1) => act(async () => { fireEvent.change(screen.getByLabelText('Choose photos'), { target: { files: Array.from({ length: count }, () => new File(['local'], 'private.png', { type: 'image/png' })) } }); });
 const fillDeadline = () => {
   fireEvent.change(screen.getByLabelText('Pickup deadline'), { target: { value: '2099-01-01' } });
-  fireEvent.change(screen.getByLabelText('Pickup timezone'), { target: { value: 'America/Los_Angeles' } });
-  fireEvent.click(screen.getByLabelText('Confirm this pickup timezone'));
 };
 const button = name => screen.getAllByRole('button', { name, exact: true })[0];
 beforeEach(() => {
@@ -58,20 +56,19 @@ test('one Save Draft with photos creates once, then uploads each prepared photo 
   const router = mount(); fireEvent.change(screen.getByLabelText('Item name'), { target: { value: 'Lamp' } }); fillDeadline();
   await select(2); await screen.findByAltText('Local preview of selected photo 2');
   expect(reservePhoto).not.toHaveBeenCalled();
-  await act(async () => { fireEvent.click(button('Save draft with 2 photos')); });
-  await waitFor(() => expect(router.state.location.pathname).toBe('/app/listings/' + saved.id));
+  await act(async () => { fireEvent.click(button('Save Draft')); });
+  await waitFor(() => expect(router.state.location.pathname).toBe('/app/listings'));
   expect(createOwnerListing).toHaveBeenCalledTimes(1); expect(reservePhoto).toHaveBeenCalledTimes(2); expect(uploadPhoto).toHaveBeenCalledTimes(2);
   // planId null selects /api/items/:itemId/images; never a plan route.
   expect(reservePhoto.mock.calls.every(call => call[0] === null && call[1] === saved.id)).toBe(true);
   expect(uploadPhoto.mock.calls.every(call => call[0] === null && call[1] === saved.id)).toBe(true);
 });
 
-test('photos require a confirmed timezone and deadline before any save or upload', async () => {
+test('photos require a pickup deadline before any save or upload', async () => {
   mount(); fireEvent.change(screen.getByLabelText('Item name'), { target: { value: 'Lamp' } });
   await select(1); await screen.findByAltText('Local preview of selected photo 1');
-  await act(async () => { fireEvent.click(button('Save draft with 1 photo')); });
+  await act(async () => { fireEvent.click(button('Save Draft')); });
   expect(await screen.findAllByText('Add a pickup deadline to save photos.')).not.toHaveLength(0);
-  expect(screen.getAllByText('Confirm the pickup timezone to save photos.')).not.toHaveLength(0);
   expect(createOwnerListing).not.toHaveBeenCalled(); expect(reservePhoto).not.toHaveBeenCalled();
   expect(screen.getByAltText('Local preview of selected photo 1')).toBeVisible();
 });
@@ -82,7 +79,7 @@ test('a lost upload response keeps the saved draft locked, recovers by status re
   readUpload.mockImplementation(async (planId, itemId, imageId) => ({ imageRevision: media.imageRevision, upload: media.images.find(image => image.id === imageId) }));
   const router = mount(); fireEvent.change(screen.getByLabelText('Item name'), { target: { value: 'Lamp' } }); fillDeadline();
   await select(2); await screen.findByAltText('Local preview of selected photo 2');
-  await act(async () => { fireEvent.click(button('Save draft with 2 photos')); });
+  await act(async () => { fireEvent.click(button('Save Draft')); });
   expect(await screen.findByText('Draft saved. Some photos still need attention.')).toBeVisible();
   expect(router.state.location.pathname).toBe('/app/listings/new'); expect(createOwnerListing).toHaveBeenCalledTimes(1);
   expect(screen.getByLabelText('Item name')).not.toBeVisible(); expect(uploadPhoto).toHaveBeenCalledTimes(1);
@@ -90,14 +87,14 @@ test('a lost upload response keeps the saved draft locked, recovers by status re
   expect(readUpload).toHaveBeenCalledWith(null, saved.id, expect.any(String), expect.any(String)); expect(uploadPhoto).toHaveBeenCalledTimes(1);
   await waitFor(() => expect(screen.getByRole('button', { name: 'Upload remaining 1 photo', exact: true })).toBeEnabled());
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Upload remaining 1 photo', exact: true })); });
-  await waitFor(() => expect(router.state.location.pathname).toBe('/app/listings/' + saved.id));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/app/listings'));
   expect(createOwnerListing).toHaveBeenCalledTimes(1); expect(uploadPhoto).toHaveBeenCalledTimes(2); expect(reservePhoto).toHaveBeenCalledTimes(2);
 });
 
 test('editing an existing draft saves text first and uploads only after the versioned PATCH', async () => {
   mount(saved); await screen.findByText('0 / 5');
   await select(1); await screen.findByAltText('Local preview of selected photo 1');
-  await act(async () => { fireEvent.click(button('Save draft with 1 photo')); });
+  await act(async () => { fireEvent.click(button('Save Draft')); });
   await waitFor(() => expect(uploadPhoto).toHaveBeenCalledTimes(1));
   expect(updateOwnerListing).toHaveBeenCalledWith(saved.id, expect.objectContaining({ version: 1 }));
   expect(updateOwnerListing.mock.invocationCallOrder[0]).toBeLessThan(reservePhoto.mock.invocationCallOrder[0]);
@@ -106,15 +103,15 @@ test('editing an existing draft saves text first and uploads only after the vers
 test('without the server photo capability no photo controls appear and Save Draft is unchanged', async () => {
   mount(undefined, { metadata: false, binaryUpload: false, imageRead: false });
   expect(screen.queryByLabelText('Choose photos')).not.toBeInTheDocument();
-  expect(screen.getAllByRole('button', { name: 'Save Draft', exact: true })).toHaveLength(2);
-  expect(screen.getByText('Private drafts need only an item name. Publishing and photos are not available yet.')).toBeVisible();
+  expect(screen.getAllByRole('button', { name: 'Save Draft', exact: true })).toHaveLength(1);
+
 });
 
 test('an account switch discards staged previews and late uploads cannot navigate the next account', async () => {
   let finish; uploadPhoto.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
   const router = mount(); fireEvent.change(screen.getByLabelText('Item name'), { target: { value: 'Lamp' } }); fillDeadline();
   await select(1); await screen.findByAltText('Local preview of selected photo 1');
-  await act(async () => { fireEvent.click(button('Save draft with 1 photo')); });
+  await act(async () => { fireEvent.click(button('Save Draft')); });
   await waitFor(() => expect(uploadPhoto).toHaveBeenCalledTimes(1));
   await act(async () => { setActor({ id: 'owner-b' }); });
   expect(screen.queryByAltText('Local preview of selected photo 1')).not.toBeInTheDocument();
@@ -135,14 +132,14 @@ const preparePublicForm = () => {
   fireEvent.change(screen.getByLabelText('Metro area'), { target: { value:'31080' } }); fillDeadline();
 };
 const publishSelected = () => {
-  const event = createEvent.submit(screen.getByRole('form')); Object.defineProperty(event, 'submitter', { value:button('Publish with 2 photos') }); fireEvent(screen.getByRole('form'), event);
+  const event = createEvent.submit(screen.getByRole('form')); Object.defineProperty(event, 'submitter', { value:button('Publish') }); fireEvent(screen.getByRole('form'), event);
 };
 test('one Publish with photos commits the item first, uploads sequentially and asks no per-photo confirmation', async () => {
   const confirm = jest.spyOn(window,'confirm').mockReturnValue(true);
   try {
     createOwnerListing.mockResolvedValue({ item:{...saved,status:'available'} }); const router = mount(undefined,capabilities,true); preparePublicForm();
     await select(2); await screen.findByAltText('Local preview of selected photo 2'); expect(uploadPhoto).not.toHaveBeenCalled();
-    await act(async () => publishSelected()); await waitFor(()=>expect(router.state.location.pathname).toBe('/app/listings/'+saved.id));
+    await act(async () => publishSelected()); await waitFor(()=>expect(router.state.location.pathname).toBe('/app/listings'));
     expect(createOwnerListing).toHaveBeenCalledTimes(1); expect(createOwnerListing.mock.calls[0][0].publish).toBe(true);
     expect(createOwnerListing.mock.invocationCallOrder[0]).toBeLessThan(reservePhoto.mock.invocationCallOrder[0]);
     expect(uploadPhoto).toHaveBeenCalledTimes(2); expect(confirm).not.toHaveBeenCalled();

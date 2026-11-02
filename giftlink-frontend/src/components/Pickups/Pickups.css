@@ -10,7 +10,7 @@
 .ui-page.pickup-page .pickup-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 24rem), 1fr)); gap: var(--ui-space-4); list-style: none; padding: 0; }
 .pickup-card-heading { display: flex; align-items: flex-start; flex-wrap: wrap; gap: var(--ui-space-3); margin-bottom: var(--ui-space-4); }
 .pickup-card-heading h2 { flex: 1 1 12rem; min-width: 0; }
-.pickup-card-heading .ui-status { flex-shrink: 0; }
+.pickup-card-heading .ui-status, .pickup-card-heading .ui-button { flex-shrink: 0; }
 .pickup-filter { max-width: 24rem; }
 .pickup-actions { display: flex; flex-wrap: wrap; gap: var(--ui-space-3); align-items: center; }
 .pickup-request-card p, .pickup-summary p { margin-block: var(--ui-space-3); }

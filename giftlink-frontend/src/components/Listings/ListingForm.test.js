@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act, createEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import ListingForm from './ListingForm';
 import { createOwnerListing, updateOwnerListing } from '../../api/ownerListings';
@@ -12,30 +12,13 @@ beforeEach(() => { jest.clearAllMocks(); createOwnerListing.mockResolvedValue({i
 test('name-only drafts require no publication context and duplicate submits issue one POST', async () => {
  let resolve; createOwnerListing.mockReturnValue(new Promise(done => {resolve=done;})); mount();
  fireEvent.change(screen.getByLabelText('Item name'),{target:{value:'Chair'}}); submit(); fireEvent.submit(screen.getByRole('form'));
- expect(createOwnerListing).toHaveBeenCalledTimes(1); expect(createOwnerListing.mock.calls[0][0]).toMatchObject({name:'Chair',stateId:null,metroId:null,pickupTimeZone:null,availableUntil:null});
- expect(createOwnerListing.mock.calls[0][0]).not.toHaveProperty('pickupTimeZoneConfirmed'); await act(async()=>resolve({item:record}));
+ expect(createOwnerListing).toHaveBeenCalledTimes(1); expect(createOwnerListing.mock.calls[0][0]).toMatchObject({name:'Chair',stateId:null,metroId:null,availableUntil:null,pickupTimeZoneConfirmed:true});
+ expect(typeof createOwnerListing.mock.calls[0][0].pickupTimeZone).toBe('string'); await act(async()=>resolve({item:record}));
 });
-test('region suggestion is opt-in and using it never confirms it', () => {
- mount(); fireEvent.change(screen.getByLabelText('State'),{target:{value:'06'}}); fireEvent.change(screen.getByLabelText('Metro area'),{target:{value:'31080'}});
- expect(screen.getByLabelText('Pickup timezone')).toHaveValue(''); fireEvent.click(screen.getByRole('button',{name:'Use suggested timezone'}));
- expect(screen.getByLabelText('Pickup timezone')).toHaveValue('America/Los_Angeles'); expect(screen.getByLabelText('Confirm this pickup timezone')).not.toBeChecked();
-});
-test.each([['City (optional)','Other city'],['Neighborhood (optional)','Other neighborhood'],['Pickup timezone','UTC'],['Metro area','41860'],['State','36']])('changing %s invalidates a prior confirmation and sends false', async (label,value) => {
- mount(record); expect(screen.getByLabelText('Confirm this pickup timezone')).toBeChecked(); fireEvent.change(screen.getByLabelText(label),{target:{value}});
- expect(screen.getByLabelText('Confirm this pickup timezone')).not.toBeChecked(); submit(); await waitFor(()=>expect(updateOwnerListing).toHaveBeenCalled());
- expect(updateOwnerListing.mock.calls[0][1]).toMatchObject({version:3,pickupTimeZoneConfirmed:false});
-});
-test('explicit uncheck clears confirmation even with unchanged region; untouched confirmation is omitted', async () => {
- mount(record); fireEvent.click(screen.getByLabelText('Confirm this pickup timezone')); submit(); await waitFor(()=>expect(updateOwnerListing).toHaveBeenCalled());
- expect(updateOwnerListing.mock.calls[0][1].pickupTimeZoneConfirmed).toBe(false);
-});
-test('unchanged confirmed context is preserved without silently issuing fresh confirmation', async () => {
- mount(record); fireEvent.change(screen.getByLabelText('Item name'),{target:{value:'New chair'}}); submit(); await waitFor(()=>expect(updateOwnerListing).toHaveBeenCalled());
- expect(updateOwnerListing.mock.calls[0][1]).not.toHaveProperty('pickupTimeZoneConfirmed');
-});
-test('new confirmation includes the exact selected zone', async () => {
- mount(); fireEvent.change(screen.getByLabelText('Item name'),{target:{value:'Chair'}}); fireEvent.change(screen.getByLabelText('Pickup timezone'),{target:{value:'UTC'}}); fireEvent.click(screen.getByLabelText('Confirm this pickup timezone')); submit();
- await waitFor(()=>expect(createOwnerListing).toHaveBeenCalled()); expect(createOwnerListing.mock.calls[0][0]).toMatchObject({pickupTimeZone:'UTC',pickupTimeZoneConfirmed:true});
+test('the pickup timezone is never asked for: a new listing silently uses its metro timezone', async () => {
+ mount(); expect(screen.queryByLabelText(/timezone/i)).not.toBeInTheDocument();
+ fireEvent.change(screen.getByLabelText('Item name'),{target:{value:'Chair'}}); fireEvent.change(screen.getByLabelText('State'),{target:{value:'06'}}); fireEvent.change(screen.getByLabelText('Metro area'),{target:{value:'31080'}}); submit();
+ await waitFor(()=>expect(createOwnerListing).toHaveBeenCalled()); expect(createOwnerListing.mock.calls[0][0]).toMatchObject({pickupTimeZone:'America/Los_Angeles',pickupTimeZoneConfirmed:true});
 });
 test('local validation focuses and associates the first invalid field, without sending', async () => {
  mount(); submit(); await waitFor(()=>expect(screen.getByLabelText('Item name')).toHaveFocus()); expect(screen.getByRole('alert')).toHaveTextContent('Check the highlighted');
@@ -56,10 +39,9 @@ test('ambiguous create keeps contents, disables resubmission and offers owner in
  await screen.findByText(/The save result is uncertain/); expect(screen.getByLabelText('Item name')).toHaveValue('Keep draft'); submit(); expect(createOwnerListing).toHaveBeenCalledTimes(1);
 });
 
-test('deadline-only edits retain the confirmed context without a new confirmation intent', async () => {
- mount(record); fireEvent.change(screen.getByLabelText('Pickup deadline'),{target:{value:'2027-11-13'}});
- expect(screen.getByLabelText('Confirm this pickup timezone')).toBeChecked(); submit(); await waitFor(()=>expect(updateOwnerListing).toHaveBeenCalled());
- expect(updateOwnerListing.mock.calls[0][1]).toMatchObject({availableUntil:'2027-11-13',version:3}); expect(updateOwnerListing.mock.calls[0][1]).not.toHaveProperty('pickupTimeZoneConfirmed');
+test('edits keep the listing\'s stored pickup timezone', async () => {
+ mount(record); fireEvent.change(screen.getByLabelText('Pickup deadline'),{target:{value:'2027-11-13'}}); submit(); await waitFor(()=>expect(updateOwnerListing).toHaveBeenCalled());
+ expect(updateOwnerListing.mock.calls[0][1]).toMatchObject({availableUntil:'2027-11-13',version:3,pickupTimeZone:'America/Los_Angeles',pickupTimeZoneConfirmed:true});
 });
 
 test('feature-disabled is a definite service state, not an uncertain creation or automatic retry', async () => {
@@ -70,19 +52,19 @@ test('feature-disabled is a definite service state, not an uncertain creation or
  expect(screen.getAllByRole('button',{name:'Save Draft'})[0]).toBeDisabled();
 });
 
-test('publication is separately gated; an explicit Publish action validates all fields and never silently confirms timezone', async () => {
+test('with publication enabled the only submit action is Publish, which validates all fields', async () => {
  render(<MemoryRouter><ListingForm publicationEnabled /></MemoryRouter>);
  fireEvent.change(screen.getByLabelText('Item name'), {target:{value:'Shelf'}});
- const event = createEvent.submit(screen.getByRole('form')); Object.defineProperty(event, 'submitter', {value:screen.getAllByRole('button',{name:'Publish listing'})[0]}); fireEvent(screen.getByRole('form'), event);
+ expect(screen.queryByRole('button',{name:/Save draft/i})).not.toBeInTheDocument(); fireEvent.click(screen.getByRole('button',{name:'Publish'}));
  await waitFor(()=>expect(screen.getByLabelText('Description')).toHaveAttribute('aria-invalid','true'));
- expect(screen.getByLabelText('Confirm this pickup timezone')).not.toBeChecked(); expect(createOwnerListing).not.toHaveBeenCalled();
+ expect(createOwnerListing).not.toHaveBeenCalled();
  expect(screen.getByRole('alert')).toHaveTextContent('Choose a metro before publishing.');
 });
-test('explicit publication sends one versioned request while the ordinary Save Draft path stays private', async () => {
+test('Publish sends one versioned request', async () => {
  const complete = {...record, description:'Useful shelf',classification:{category:{id:'living-room'},itemType:{id:'bookshelf'}}};
  render(<MemoryRouter><ListingForm item={complete} publicationEnabled /></MemoryRouter>);
- const event = createEvent.submit(screen.getByRole('form')); Object.defineProperty(event, 'submitter', {value:screen.getAllByRole('button',{name:'Publish listing'})[0]}); fireEvent(screen.getByRole('form'), event);
+ fireEvent.click(screen.getByRole('button',{name:'Publish'}));
  await waitFor(()=>expect(updateOwnerListing).toHaveBeenCalledTimes(1));
  expect(updateOwnerListing.mock.calls[0]).toEqual([record.id,expect.objectContaining({publish:true,version:3,categoryId:'living-room',itemTypeId:'bookshelf'})]);
- expect(updateOwnerListing.mock.calls[0][1]).not.toHaveProperty('pickupTimeZoneConfirmed');
+ expect(updateOwnerListing.mock.calls[0][1]).toMatchObject({pickupTimeZone:'America/Los_Angeles',pickupTimeZoneConfirmed:true});
 });

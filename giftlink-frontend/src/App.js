@@ -16,7 +16,7 @@ import PublicItems from './components/Inventory/PublicItems';
 import { RequestPickup, PickupDashboard, PickupDetail } from './components/Pickups/Pickups';
 import Home from './components/Journeys/Home';
 import { useAppContext } from './context/AuthContext';
-import { MyListings, ListingDetail, ListingForm, ListingEditor } from './components/Listings/Listings';
+import { MyListings, ListingRedirect, ListingForm, ListingEditor } from './components/Listings/Listings';
 
 function RouteFocus() {
   const { pathname } = useLocation(); const previous = useRef(pathname);
@@ -48,7 +48,7 @@ function App() {
         <Route path="/app/register" element={<RegisterPage />} />
         <Route path="/app/listings" element={<RequireAuth><MyListings key={listingScope} /></RequireAuth>} />
         <Route path="/app/listings/new" element={<RequireAuth><ListingForm key={listingScope} /></RequireAuth>} />
-        <Route path="/app/listings/:itemId" element={<RequireAuth><ListingDetail key={listingScope} /></RequireAuth>} />
+        <Route path="/app/listings/:itemId" element={<RequireAuth><ListingRedirect /></RequireAuth>} />
         <Route path="/app/plans" element={<RequireAuth><MyPlans /></RequireAuth>} />
         <Route path="/app/plans/new" element={<RequireAuth><CreatePlan /></RequireAuth>} />
         <Route path="/app/plans/:planId" element={<RequireAuth><PlanDetail /></RequireAuth>} />

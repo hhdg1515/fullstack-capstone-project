@@ -44,20 +44,20 @@ test('independent draft photos: one save, private owner delivery, no plan, recov
     await page.getByLabel('Item name').fill('Synthetic photo lamp ' + width);
     await page.getByLabel('Choose photos').setInputFiles(files);
     await expect(page.getByAltText('Local preview of selected photo 2')).toBeVisible();
-    // No confirmed deadline yet: the files stay staged and nothing is sent.
-    await page.getByRole('button', { name: 'Save draft with 2 photos', exact: true }).first().click();
+    // No deadline yet: the files stay staged and nothing is sent.
+    await page.getByRole('button', { name: 'Save Draft', exact: true }).click();
     await expect(page.getByRole('link', { name: 'Add a pickup deadline to save photos.' })).toBeVisible();
     expect(posts).toHaveLength(0); await audit(page, 'deadline-required');
     await page.getByLabel('State', { exact: true }).selectOption('06'); await page.getByLabel('Metro area', { exact: true }).selectOption('31080');
-    await page.getByRole('button', { name: 'Use suggested timezone' }).click(); await page.getByLabel('Confirm this pickup timezone').check();
+    await expect(page.getByText(/timezone/i)).toHaveCount(0);
     await page.getByLabel('Pickup deadline', { exact: true }).fill(day(12)); await audit(page, 'staged');
-    await page.getByRole('button', { name: 'Save draft with 2 photos', exact: true }).first().click();
-    await expect(page).toHaveURL(/\/app\/listings\/[a-f0-9]{24}$/, { timeout: 60000 });
-    const itemId = new URL(page.url()).pathname.split('/').pop(); expect(posts).toHaveLength(1);
-    const saved = page.getByRole('list', { name: 'Saved photos' }).getByRole('img');
-    await expect(saved).toHaveCount(2); await expect(page.getByAltText('Saved photo 1, cover')).toBeVisible();
-    await expect.poll(() => page.getByAltText('Saved photo 1, cover').evaluate(node => node.complete && node.naturalWidth > 0)).toBe(true);
-    await audit(page, 'saved-detail');
+    await page.getByRole('button', { name: 'Save Draft', exact: true }).click();
+    // Saving returns to My Listings, which shows the private cover.
+    await expect(page).toHaveURL(deployment.origin + '/app/listings', { timeout: 60000 }); expect(posts).toHaveLength(1);
+    const itemId = (await deployment.db.collection('items').findOne({ name: 'Synthetic photo lamp ' + width }))._id.toHexString();
+    await expect(page.getByAltText('Synthetic photo lamp ' + width)).toBeVisible();
+    await expect.poll(() => page.getByAltText('Synthetic photo lamp ' + width).evaluate(node => node.complete && node.naturalWidth > 0)).toBe(true);
+    await audit(page, 'saved-listing');
     const rows = await deployment.db.collection('itemImages').find({ itemId: new ObjectId(itemId) }).toArray();
     expect(rows).toHaveLength(2); expect(rows.every(row => row.schemaVersion === 2 && !('planId' in row) && row.state === 'ready')).toBe(true);
     expect(await deployment.db.collection('moveOutPlans').countDocuments({ ownerId: new ObjectId(identity.id) })).toBe(0);
@@ -67,10 +67,8 @@ test('independent draft photos: one save, private owner delivery, no plan, recov
     try { expect((await anonymous.request.get('/api/item-images/' + imageId + '/thumbnail')).status()).toBe(404);
       expect((await anonymous.request.get('/api/items/' + itemId)).status()).toBe(404); } finally { await anonymous.close(); }
     expect((await other.request.get('/api/items/' + itemId + '/images')).status()).toBe(404);
-    // My Listings shows the private cover; editing manages saved photos.
-    await page.getByRole('link', { name: 'My Listings', exact: true }).last().click();
-    await expect(page.getByAltText('Synthetic photo lamp ' + width)).toBeVisible(); await audit(page, 'my-listings');
-    await page.getByRole('link', { name: 'Edit Synthetic photo lamp ' + width, exact: true }).click();
+    // Manage listing reopens the form, which manages saved photos.
+    await page.getByRole('link', { name: 'Manage Synthetic photo lamp ' + width, exact: true }).click();
     const manager = page.locator('#owner-photo-manager'); await expect(manager.getByAltText('Saved photo 2')).toBeVisible();
     await manager.getByRole('button', { name: 'Delete photo 2', exact: true }).click();
     await page.getByRole('button', { name: 'Delete photo', exact: true }).click();

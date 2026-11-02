@@ -70,7 +70,7 @@ test('legacy order compatibility, ordinary delete and cover fallback persist acr
     for (const [imageRevision, imageIds] of [[3, [photos[2], photos[0], photos[1]]], [4, [photos[2], photos[1], photos[0]]], [5, [photos[2], photos[0], photos[1]]]]) {
       await s.post(s.prefix + '/order', { imageRevision, imageIds });
     }
-    await panel.getByText('Photo tips', { exact: true }).click(); await panel.getByRole('button', { name: 'Refresh photos', exact: true }).click();
+    await expect(panel.getByText('Photo tips', { exact: true })).toHaveCount(0); await panel.getByRole('button', { name: 'Refresh photos', exact: true }).click();
     await expect.poll(() => ids(panel)).toEqual([photos[2], photos[0], photos[1]]);
     await expect(card.getByAltText('Uploaded photo 1', { exact: true })).toHaveAttribute('src', '/api/item-images/' + photos[2] + '/thumbnail');
     await evidence(page, info, 'reordered', card); await audit(page, 'reordered');

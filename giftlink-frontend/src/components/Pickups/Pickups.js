@@ -9,7 +9,7 @@ import { useUnsavedForm } from '../../forms/UnsavedChanges';
 import useFormErrors from '../../forms/useFormErrors';
 import PickupConversation from './PickupConversation';
 import PickupItemPhoto from './PickupItemPhoto';
-import PickupScheduling, { PickupTime, SchedulingEvent } from './PickupScheduling';
+import { PickupTime } from './PickupScheduling';
 import { useAppContext } from '../../context/AuthContext';
 import { PageHeader, Surface, Feedback } from '../../design-system/primitives';
 import { pickupMinimum, pastPickupSelection } from '../../forms/pickupTime';
@@ -18,7 +18,6 @@ import { placeLabel } from './placeLabel';
 export const pickupLabels = { pending: 'Pending', accepted: 'Accepted', declined: 'Declined', cancelled: 'Cancelled', completed: 'Completed', no_show: 'No-show' };
 const actionLabels = { accept: 'Accept pickup', decline: 'Decline request', cancel: 'Cancel request', complete: 'Confirm handoff', no_show: 'Record no-show' };
 const participant = request => ['giver', 'receiver'].includes(request.role);
-const conversationAvailable = request => participant(request) && request.item && Boolean(pickupLabels[request.status]);
 function Appointment({ request, compact = false }) {
   return <p className="pickup-appointment"><b>{request.status === 'pending' ? 'Proposed pickup' : request.status === 'accepted' ? 'Confirmed pickup' : 'Pickup time'}:</b><br />
     <PickupTime value={request} compact={compact} /></p>;
@@ -41,8 +40,8 @@ export function RequestPickup() {
   const submit = async event => {
     event.preventDefault(); if (busy) return; validation.reset();
     const issues = {};
-    if (!localDateTime) issues.localDateTime = 'Choose a pickup date and time in the giver’s timezone.';
-    else if (pastPickupSelection(localDateTime, item.pickupTimeZone)) issues.localDateTime = 'Choose a future pickup time in the giver’s timezone.';
+    if (!localDateTime) issues.localDateTime = 'Choose a pickup date and time.';
+    else if (pastPickupSelection(localDateTime, item.pickupTimeZone)) issues.localDateTime = 'Choose a future pickup time.';
     if (Array.from(note.trim()).length > 500) issues.note = 'Use at most 500 characters.';
     if (Object.keys(issues).length) { validation.show(issues); return; }
     setBusy(true);
@@ -60,13 +59,11 @@ export function RequestPickup() {
         <button className="ui-button ui-button--secondary" onClick={data.retry}>Check availability</button></div> : !item.pickupTimeZone ? <p role="alert">The giver must set a pickup timezone before requests can be submitted.</p> : <Surface as="form" ref={validation.formRef} noValidate className="pickup-request-form" onSubmit={submit} aria-busy={busy}>
         <p>A request does not reserve the item. Wait for the giver to accept. Each listing is one pickup unit, including groups of items.</p>
         {typeof item.isReserved !== 'boolean' && <p>Current pickup availability will be checked when you send a request.</p>}
-        {item.datePolicy === 'pickup-local' ? <p>Choose a local date from {item.availableFrom || 'today'} through {item.effectiveAvailableUntil} in {item.pickupTimeZone}. The listing ends at the end of that local date.</p> :
-          <p>Choose a local date from {item.availableFrom || 'today'} through {item.effectiveAvailableUntil}. Listings still expire at the end of that UTC date; late local appointments beyond that cutoff cannot be booked.</p>}
+        <p>Choose a date from {item.availableFrom || 'today'} through {item.effectiveAvailableUntil}.</p>
         <fieldset disabled={busy}><legend className="visually-hidden">Appointment details</legend>
           <div className="ui-field"><label htmlFor="pickup-time">Pickup date and time</label>
-            <input id="pickup-time" name="localDateTime" type="datetime-local" step="60" min={pickupMinimum(item.pickupTimeZone)} required value={localDateTime} onChange={event => { setTime(event.target.value); validation.clear('localDateTime'); }} {...validation.fieldProps('localDateTime', 'pickup-zone-help')} />
-            {errors.localDateTime && <p id="localDateTime-error" className="ui-field-error">{errors.localDateTime}</p>}
-            <small id="pickup-zone-help">Local time in <strong>{item.pickupTimeZone}</strong>, selected by the giver. Your browser timezone is not used. Times skipped or repeated by daylight saving must be avoided.</small></div>
+            <input id="pickup-time" name="localDateTime" type="datetime-local" step="60" min={pickupMinimum(item.pickupTimeZone)} required value={localDateTime} onChange={event => { setTime(event.target.value); validation.clear('localDateTime'); }} {...validation.fieldProps('localDateTime')} />
+            {errors.localDateTime && <p id="localDateTime-error" className="ui-field-error">{errors.localDateTime}</p>}</div>
           <div className="ui-field"><label htmlFor="pickup-note">Coordination note (optional, private)</label><textarea id="pickup-note" name="note" {...validation.fieldProps('note')} maxLength={500} value={note} onChange={event => { setNote(event.target.value); validation.clear('note'); }} />
             {errors.note && <p id="note-error" className="ui-field-error">{errors.note}</p>}</div>
           <p>Only you and the giver see this note. Suggest a general public meeting point or brief handoff instructions. Keep phone numbers, email and residential addresses out of it. After sending your request, use its pickup conversation to coordinate.</p>
@@ -98,14 +95,11 @@ export function PickupDashboard({ incoming = false }) {
           {!incoming && <Link className="ui-button" to="/app/items">Find free items</Link>}</>}</Surface>}
       <ul className="pickup-cards" aria-label="Pickup requests">{data.data.requests.map(request => <Surface as="li" className="pickup-request-card" key={request.id}>
         <div className="pickup-card-heading"><h2>{request.item ? <Link to={`/app/items/${request.item.id}`}>{request.item.name}</Link> : 'Former listing'}</h2>
-          <span className="ui-status">{pickupLabels[request.status] || 'Status unavailable'}</span></div>
-        <p>Applicant: {incoming ? request.counterpart.firstName : 'You'}</p>
-        {!incoming && <p>Giver: {request.counterpart.firstName}</p>}<Appointment request={request} compact />
+          {request.status !== 'pending' && <span className="ui-status">{pickupLabels[request.status] || 'Status unavailable'}</span>}</div>
+        <Appointment request={request} compact />
         {Number.isFinite(Date.parse(request.createdAt)) && <p className="pickup-help">Requested <time dateTime={request.createdAt}>{new Date(request.createdAt).toLocaleString()}</time></p>}
         <div className="pickup-actions"><Link className="ui-button" to={`/app/pickups/${request.id}`} state={state}
-          aria-label={`View request ${incoming ? 'from' : 'to'} ${request.counterpart.firstName} for ${request.item?.name || 'former listing'}`}>View request</Link>
-          {conversationAvailable(request) && <Link className="ui-button ui-button--secondary" to={`/app/pickups/${request.id}#conversation`} state={state}
-            aria-label={`Open conversation with ${request.counterpart.firstName} for ${request.item.name}`}>Open conversation</Link>}</div>
+          aria-label={`View request ${incoming ? 'from' : 'to'} ${request.counterpart.firstName} for ${request.item?.name || 'former listing'}`}>View request</Link></div>
         {request.note && <details className="pickup-request-details"><summary>Pickup note</summary><p className="pickup-note">{request.note}</p></details>}
         {!request.item && <p>The listing is no longer available. You can still review the request.</p>}
       </Surface>)}</ul>
@@ -133,14 +127,11 @@ function RequestDetail({ requestId }) {
   }, [loaded, location.hash, location.key]);
   const actions = request ? [
     ...(request.role === 'giver' && request.status === 'pending' ? ['accept', 'decline'] : []),
-    ...(request.role === 'giver' && request.status === 'accepted' ? ['complete', 'no_show'] : []),
-    ...(participant(request) && ['pending', 'accepted'].includes(request.status) ? ['cancel'] : [])
+    ...(participant(request) && (request.status === 'accepted' || (request.status === 'pending' && request.role === 'receiver')) ? ['cancel'] : [])
   ] : [];
   const action = async name => {
     if (flight.current || blocked || data.loading || data.error || !actions.includes(name)) return;
-    const warning = name === 'complete' ? 'Confirm the entire item or group was actually handed over? This clears the item and cancels competing requests.' :
-      name === 'no_show' ? 'Confirm the receiver did not arrive? This releases the reservation without clearing the item.' :
-      name === 'accept' ? 'Accept this appointment? Other requests will remain pending, and new requests will be blocked until it is released.' : `${actionLabels[name]}?`;
+    const warning = name === 'accept' ? 'Accept this appointment? Other requests will remain pending, and new requests will be blocked until it is released.' : `${actionLabels[name]}?`;
     if (!window.confirm(warning)) return;
     flight.current = true; setBusy(true); setError('');
     try {
@@ -154,18 +145,10 @@ function RequestDetail({ requestId }) {
       if (failure.status === 401) window.dispatchEvent(new Event('giftlink:unauthorized'));
     } finally { if (alive.current) { flight.current = false; setBusy(false); } }
   };
-  const [outcomeClock, setOutcomeClock] = useState(0);
-  useEffect(() => {
-    const remaining = Date.parse(request?.proposedAt) - Date.now();
-    if (request?.role !== 'giver' || request?.status !== 'accepted' || !Number.isFinite(remaining) || remaining < 0) return;
-    // Wake only the local affordance at the appointment boundary. This never
-    // records a handoff or replaces the backend's identity/time/version checks.
-    const timer = setTimeout(() => setOutcomeClock(value => value + 1), Math.min(remaining + 1, 2147483647));
-    return () => clearTimeout(timer);
-  }, [request?.proposedAt, request?.role, request?.status, outcomeClock]);
-  const outcomeReady = Number.isFinite(Date.parse(request?.proposedAt)) && Date.parse(request.proposedAt) <= Date.now();
-  const conversationPrimary = !actions.includes('accept') && !(actions.includes('complete') && outcomeReady);
-  const conversationLink = request && conversationAvailable(request) ? <Link className={`ui-button${conversationPrimary ? '' : ' ui-button--secondary'}`} to={{ hash: '#conversation', search: location.search }} state={location.state}>Open conversation</Link> : null;
+  const actionButton = name => <button key={name} className={`ui-button${name === 'accept' ? '' : ' ui-button--secondary'}`}
+    disabled={busy || blocked || data.loading || Boolean(data.error)} onClick={() => action(name)}>{actionLabels[name]}</button>;
+  // A requester's Cancel sits where the status would be; pending needs no badge.
+  const headingCancel = request?.role === 'receiver' && actions.includes('cancel');
   const returnQuery = new URLSearchParams(typeof location.state?.returnSearch === 'string' ? location.state.returnSearch : '');
   const backQuery = new URLSearchParams(); for (const name of ['status', 'cursor']) if (returnQuery.get(name)) backQuery.set(name, returnQuery.get(name));
   const back = ((request ? request.role === 'giver' : location.state?.journey === 'give') ? '/app/pickups/incoming' : '/app/pickups') + (backQuery.toString() ? `?${backQuery}` : '');
@@ -178,32 +161,23 @@ function RequestDetail({ requestId }) {
       <Surface as="article" className="pickup-summary" aria-label="Request summary">
         <div className="pickup-item-context">
           {request.item && participant(request) && pickupLabels[request.status] && request.id === requestId && !data.loading && !data.error && <PickupItemPhoto key={request.item.coverImage?.id || request.item.id} item={request.item} />}
-          <div className="pickup-item-identity pickup-card-heading"><h2>{request.item?.name || 'Former listing'}</h2><span className="ui-status">{pickupLabels[request.status] || 'Status unavailable'}</span></div>
+          <div className="pickup-item-identity pickup-card-heading"><h2>{request.item?.name || 'Former listing'}</h2>
+            {request.status !== 'pending' && <span className="ui-status">{pickupLabels[request.status] || 'Status unavailable'}</span>}{headingCancel && actionButton('cancel')}</div>
         </div>
-        <p>Applicant: {request.role === 'giver' ? request.counterpart.firstName : 'You'}</p>
-        {request.role === 'receiver' && <p>Giver: {request.counterpart.firstName}</p>}
         {request.item && <p>{placeLabel(request.item)}</p>}
         {request.status === 'pending' && <p>Not reserved. Waiting for the giver to accept a pickup time.</p>}
         {request.status === 'accepted' && <p>Pickup arranged. The item is reserved; handoff has not been recorded.</p>}
         {request.cancellationReason && <p>Cancellation reason: {request.cancellationReason.replace(/_/g, ' ')}.</p>}
-        <div className="pickup-actions">{conversationPrimary && conversationLink}{actions.map(name => <button key={name} className={`ui-button${(name === 'accept' || (name === 'complete' && outcomeReady)) ? '' : ' ui-button--secondary'}`}
-          disabled={busy || blocked || data.loading || Boolean(data.error) || (['complete', 'no_show'].includes(name) && !outcomeReady)} onClick={() => action(name)}>{actionLabels[name]}</button>)}
-          {!conversationPrimary && conversationLink}</div>
-        {request.role === 'giver' && request.status === 'accepted' && <p className="pickup-help">Record completion or no-show after the appointment time. Reload the request to update these controls.</p>}
+        {actions.some(name => !(headingCancel && name === 'cancel')) && <div className="pickup-actions">{actions.filter(name => !(headingCancel && name === 'cancel')).map(actionButton)}</div>}
       </Surface>
       <Surface aria-label="Pickup arrangement" className="pickup-arrangement" aria-busy={data.loading || false}>
         <h2 id="pickup-arrangement-heading" tabIndex={-1}>Pickup arrangement</h2><Appointment request={request} />
-        {request.item && <p className="pickup-help">Pickup window: {request.item.availableFrom || 'Now'} through {request.item.effectiveAvailableUntil} {request.item.datePolicy === 'pickup-local' ? '(local dates in ' + request.timeZone + ')' : '(UTC dates)'}. No address is disclosed automatically.</p>}
-        <PickupScheduling request={request} onRefresh={data.retry} disabled={busy || data.loading || Boolean(data.error) || blocked} />
+        {request.item && <p className="pickup-help">Pickup window: {request.item.availableFrom || 'Now'} through {request.item.effectiveAvailableUntil}.</p>}
       </Surface>
-      <PickupConversation requestId={request.id} requestStatus={request.status} itemName={request.item?.name} hasTimeProposal={request.status === 'accepted' && Boolean(request.rescheduling?.proposal)} />
-      <Surface className="pickup-secondary" aria-label="Request details and history">
+      <PickupConversation requestId={request.id} requestStatus={request.status} />
+      <Surface className="pickup-secondary" aria-label="Request details">
         {request.note && <details className="pickup-request-details"><summary>Pickup note</summary><p className="pickup-note">{request.note}</p></details>}
-        {request.item && <p><Link to={request.role === 'giver' && request.item.listingModel === 2 ? `/app/listings/${request.item.id}` : `/app/items/${request.item.id}`}>View item</Link></p>}
-        <details className="pickup-request-details"><summary>Request history</summary><ul>{request.history.map((entry, index) => <li key={index}>
-          {entry.action.startsWith('reschedule_') ? <SchedulingEvent entry={entry} /> : entry.action === 'pending' ? 'Request submitted' : pickupLabels[entry.action] || 'Request updated'}
-          {' — '}{entry.actor === 'receiver' ? 'requester' : entry.actor}, <PickupTime compact value={{ proposedAt: entry.at, timeZone: request.timeZone }} />
-        </li>)}</ul></details>
+        {request.item && <p><Link to={`/app/items/${request.item.id}`}>View item</Link></p>}
       </Surface>
     </>}
   </main>;

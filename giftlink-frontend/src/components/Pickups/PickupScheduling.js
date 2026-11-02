@@ -14,8 +14,7 @@ export function PickupTime({ value, compact = false }) {
     display = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short', timeZone: value.timeZone }).format(new Date(value.proposedAt)); }
   catch { return <span>Time unavailable. Reload the request.</span>; }
   const full = new Intl.DateTimeFormat('en', { dateStyle: 'full', timeStyle: 'long', timeZone: value.timeZone }).format(new Date(value.proposedAt));
-  return <><time dateTime={value.proposedAt} title={full} aria-label={`${full} (${value.timeZone})`}>{display}</time>{' '}
-    {compact ? `(${value.timeZone})` : <strong>{value.timeZone}</strong>}</>;
+  return <time dateTime={value.proposedAt} title={full} aria-label={full} data-compact={compact || undefined}>{display}</time>;
 }
 const reasonText = {
   appointment_passed: 'The confirmed pickup time has passed. Use the existing outcome or cancellation actions; it cannot be changed retrospectively.',
@@ -65,7 +64,7 @@ function TimeChange({ request, onRefresh, disabled = false }) {
     if (inFlight.current || locked || !(action === 'propose' ? canPropose : action === 'accept' ? canAccept : canDecline)) return;
     validation.reset(); setNotice('');
     if (action === 'propose' && !localDateTime) { validation.show({ localDateTime: 'Choose a new pickup date and time.' }); return; }
-    if (action === 'propose' && pastPickupSelection(localDateTime, request.timeZone)) { validation.show({ localDateTime: 'Choose a future pickup time in the giver’s timezone.' }); return; }
+    if (action === 'propose' && pastPickupSelection(localDateTime, request.timeZone)) { validation.show({ localDateTime: 'Choose a future pickup time.' }); return; }
     if (action === 'accept' && !window.confirm('Confirm this proposed pickup time? It will replace the current confirmed appointment.')) return;
     inFlight.current = true; setBusy(true);
     const root = `/api/pickup-requests/${encodeURIComponent(request.id)}/reschedule-proposals`;
@@ -118,8 +117,7 @@ function TimeChange({ request, onRefresh, disabled = false }) {
           readOnly={!canPropose || locked} {...validation.fieldProps('localDateTime', 'reschedule-zone-help')}
           onChange={event => { setTime(event.target.value); validation.clear('localDateTime'); }} />
         {validation.errors.localDateTime && <p id="localDateTime-error" className="ui-field-error">{validation.errors.localDateTime}</p>}
-        <small id="reschedule-zone-help">Local time in {request.timeZone}, the giver's pickup timezone. Your device timezone does not change it.
-          {' '}{request.item?.datePolicy === 'pickup-local' ? 'Choose a future time within the listing window, before the end of its last local pickup date.' : 'Choose a future time within the listing window and UTC cutoff.'} Avoid skipped or repeated daylight-saving times.</small>
+        <small id="reschedule-zone-help">Choose a future time within the pickup window.</small>
       </div>
       {!canPropose && localDateTime && <p>Your draft is kept, but cannot be submitted in the current request state.</p>}
       <div className="pickup-actions"><button type="submit" className="ui-button" disabled={locked || !canPropose}>Propose time change</button>

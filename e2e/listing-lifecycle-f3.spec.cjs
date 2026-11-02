@@ -57,19 +57,20 @@ for(const width of [1440,320,375]) test('F3 create/edit guards, history, reload,
   const name='F3 '+width+' '+'long-item-name'.repeat(9);
   const savedDialogs=[];const rejectSavedDialog=dialog=>{savedDialogs.push(dialog.type());dialog.dismiss();};page.on('dialog',rejectSavedDialog);
   await nameField(page).fill(name);await nameField(page).press('Tab');await expect(save(page)).toBeFocused();await save(page).press('Enter');
-  await expect(page.getByRole('heading',{name,exact:true})).toBeVisible();expect(new URL(page.url()).pathname).toMatch(/^\/app\/listings\/[a-f0-9]{24}$/);
+  await expect(page.getByRole('heading',{name,exact:true})).toBeVisible();expect(new URL(page.url()).pathname).toBe('/app/listings');
   page.off('dialog',rejectSavedDialog);expect(savedDialogs).toEqual([]);
   const row=await deployment.db.collection('items').findOne({name});expect(row.planId).toBeUndefined();
-  await page.getByRole('link',{name:'Edit listing',exact:true}).click();await page.getByLabel('Description',{exact:true}).fill('Unsaved description');
+  await page.getByRole('link',{name:'Manage '+name,exact:true}).click();await page.getByLabel('Description',{exact:true}).fill('Unsaved description');
   await s.menu();const nav=page.getByRole('navigation',{name:'Primary'});await expect(nav.getByRole('link',{name:'My Listings',exact:true})).toHaveAttribute('aria-current','location');await expect(nav.getByRole('link',{name:'Find Free Items',exact:true})).not.toHaveAttribute('aria-current');
   const closeMenu=page.getByRole('button',{name:'Close menu',exact:true});if(await closeMenu.isVisible())await closeMenu.click();
   await decide(page,()=>s.inventory(),false);await expect(page.getByLabel('Description',{exact:true})).toHaveValue('Unsaved description');
   await decide(page,()=>page.goBack(),false);await expect(page.getByLabel('Description',{exact:true})).toHaveValue('Unsaved description');
   await page.getByLabel('Description',{exact:true}).fill('Saved final description');page.on('dialog',rejectSavedDialog);await save(page).click();
-  await expect(page).toHaveURL(deployment.origin+'/app/listings/'+row._id);await expect(page.getByRole('heading',{name,exact:true})).toBeVisible();await expect(page.getByText('Saved final description',{exact:true})).toBeVisible();
-  await page.reload();await expect(page.getByText('Saved final description',{exact:true})).toBeVisible();
+  await expect(page).toHaveURL(deployment.origin+'/app/listings');await expect(page.getByRole('heading',{name,exact:true})).toBeVisible();
+  expect((await deployment.db.collection('items').findOne({_id:row._id})).description).toBe('Saved final description');
+  await page.reload();await expect(page.getByRole('heading',{name,exact:true})).toBeVisible();
   page.off('dialog',rejectSavedDialog);expect(savedDialogs).toEqual([]);
-  await page.getByRole('link',{name:'Edit listing',exact:true}).click();
+  await page.getByRole('link',{name:'Manage '+name,exact:true}).click();await expect(page.getByLabel('Description',{exact:true})).toHaveValue('Saved final description');
   if(width===1440){
    // Practical 200% text/reflow stress at a narrowed CSS viewport.
    // This does not claim native browser-chrome zoom or physical device testing.
@@ -115,8 +116,8 @@ for(const edit of [false,true]) for(const status of [200,401]) test('F3 late '+(
   await page.route(edit?'**/api/items/'+old.id:'**/api/items',async route=>{if(!['POST','PATCH'].includes(route.request().method()))return route.continue();mutations++;const response=await route.fetch();expect(response.status()).toBe(edit?200:201);const body=await response.body();entered();await gate;await route.fulfill(status===200?{response,body}:{status:401,contentType:'application/json',body:JSON.stringify({error:{code:'SESSION_EXPIRED',message:'Old session expired.'}})});},{times:1});
   await save(page).click();await arrived;await expect(page.getByRole('button',{name:'Saving…'}).first()).toBeDisabled();
   await s.menu();await decide(page,()=>page.getByRole('button',{name:'Logout',exact:true}).click(),true);
-  await s.menu();await page.getByRole('link',{name:'Account',exact:true}).click();await page.getByLabel('Email',{exact:true}).fill(b.email);await page.getByLabel('Password',{exact:true}).fill(b.password);await page.getByRole('button',{name:'Login',exact:true}).click();
-  await expect(page.getByText('Signed in as LifecycleB')).toHaveCount(1);await s.inventory();await expect(page.getByRole('link',{name:'Account B only',exact:true})).toBeVisible();
+  await s.menu();await page.getByRole('link',{name:'Log in',exact:true}).click();await page.getByLabel('Email',{exact:true}).fill(b.email);await page.getByLabel('Password',{exact:true}).fill(b.password);await page.getByRole('button',{name:'Login',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Logout',exact:true})).toHaveCount(1);await s.inventory();await expect(page.getByRole('link',{name:'Account B only',exact:true})).toBeVisible();
   await page.evaluate(()=>{window.f3Leaks=[];window.f3Observer=new MutationObserver(()=>{if(document.body.innerText.includes('A unresolved save'))window.f3Leaks.push('old-account-content');});window.f3Observer.observe(document.body,{childList:true,subtree:true,characterData:true});});
   const finished=page.waitForResponse(r=>r.request().method()===(edit?'PATCH':'POST')&&new URL(r.url()).pathname==='/api/items'+(edit?'/'+old.id:''));release();await finished;
   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
@@ -142,7 +143,7 @@ test('F3 real bounded inventory pagination, retained-page retry, cursor restart 
   await accessible(page);await noOverflow(page);
   await page.route('**/api/me/items',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:{code:'OWNER_LISTINGS_DISABLED',message:'Disabled'}})}),{times:1});
   await page.reload();await expect(page.getByRole('alert')).toContainText('temporarily unavailable');await expect(page.getByRole('list',{name:'Your listings'}).getByRole('listitem')).toHaveCount(0);await expect(page.getByRole('button',{name:'Retry',exact:true})).toHaveCount(0);
-  await expect(page.getByRole('link',{name:'Existing plan inventory',exact:true})).toHaveCount(1);
+  await expect(page.getByRole('link',{name:'Existing plan inventory',exact:true})).toHaveCount(0);
   await accessible(page);await shot(page,'f3-disabled-320');expect(await deployment.db.collection('moveOutPlans').countDocuments()).toBe(0);
  }finally{await s.context.close();}
 });

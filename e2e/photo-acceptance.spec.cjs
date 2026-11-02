@@ -82,7 +82,7 @@ test('the same real photo batch survives compression, uncertain publish, managem
     await expect(panel.getByRole('button', { name: /Make photo|Move photo/ })).toHaveCount(0);
     // Verify old C2 ordering is preserved without exposing ordering controls again.
     await post(owner, itemRoot + '/images/order', { imageRevision: 3, imageIds: [ready[2]._id.toString(), ready[1]._id.toString(), ready[0]._id.toString()] });
-    await panel.getByText('Photo tips', { exact: true }).click(); await panel.getByRole('button', { name: 'Refresh photos', exact: true }).click();
+    await expect(panel.getByText('Photo tips', { exact: true })).toHaveCount(0); await panel.getByRole('button', { name: 'Refresh photos', exact: true }).click();
     await expect(panel.getByRole('listitem', { name: 'Saved photo 1, Cover', exact: true }).getByRole('img')).toHaveAttribute('src', '/api/item-images/' + ready[2]._id + '/thumbnail');
     await panel.getByRole('button', { name: 'Delete photo 1', exact: true }).click(); await page.getByRole('dialog').getByRole('button', { name: 'Delete photo', exact: true }).click();
     await expect(panel.getByText('Photo deleted. Cleanup pending.', { exact: true })).toBeVisible(); await expect(text).toHaveValue('Independent unsaved acceptance text.');
@@ -110,7 +110,7 @@ test('the same real photo batch survives compression, uncertain publish, managem
     await receiver.getByLabel('Pickup date and time', { exact: true }).fill(day(2) + 'T12:00'); await receiver.getByRole('button', { name: 'Send pickup request', exact: true }).click();
     await expect(receiver.getByRole('heading', { name: 'Pickup request', exact: true })).toBeVisible();
     const requestId = new URL(receiver.url()).pathname.split('/').pop(), requestRoot = '/api/pickup-requests/' + requestId;
-    await receiver.getByLabel('Message', { exact: true }).fill('Synthetic integrated coordination.'); await receiver.getByRole('button', { name: 'Send message', exact: true }).click(); await expect(receiver.getByText('Message sent.', { exact: true })).toBeVisible();
+    await receiver.getByLabel('Message', { exact: true }).fill('Synthetic integrated coordination.'); await receiver.getByRole('button', { name: 'Send message', exact: true }).click(); await expect(receiver.getByLabel('Message', { exact: true })).toHaveValue('');
     await post(owner, itemRoot + '/actions', { action: 'unlist', version: saved.version, confirmCancelRequests: true });
     await receiver.getByRole('button', { name: 'Reload request', exact: true }).click(); await expect(receiver.getByText('Cancelled', { exact: true })).toBeVisible();
     await expect(receiver.getByRole('article', { name: 'Request summary' }).getByRole('img')).toHaveCount(0);
@@ -121,15 +121,13 @@ test('the same real photo batch survives compression, uncertain publish, managem
     let { request } = await post(requester, '/api/pickup-requests', { itemId: saved._id.toString(), localDateTime: day(2) + 'T12:00', timeZone: 'UTC' });
     const giverRequest = await owner.newPage(); giverRequest.on('dialog', dialog => dialog.accept());
     await giverRequest.goto('/app/pickups/' + request.id); await giverRequest.getByRole('button', { name: 'Accept pickup', exact: true }).click(); await expect(giverRequest.getByText('Accepted', { exact: true })).toBeVisible();
-    await receiver.goto('/app/pickups/' + request.id); await receiver.getByRole('button', { name: 'Propose new time', exact: true }).click();
-    await receiver.getByLabel('New pickup date and time', { exact: true }).fill(day(3) + 'T13:00'); await receiver.getByRole('button', { name: 'Propose time change', exact: true }).click();
-    await expect(receiver.getByRole('group', { name: 'Pending time change' })).toBeVisible();
-    await giverRequest.getByRole('button', { name: 'Reload request', exact: true }).click(); await giverRequest.getByRole('button', { name: 'Accept proposed time', exact: true }).click();
-    await expect(giverRequest.getByRole('button', { name: 'Propose new time', exact: true })).toBeVisible();
+    await receiver.goto('/app/pickups/' + request.id); await expect(receiver.getByRole('button', { name: 'Cancel request', exact: true })).toBeVisible();
+    await expect(giverRequest.getByRole('button', { name: /Propose new time|Confirm handoff|Record no-show/ })).toHaveCount(0);
     ({ request } = await get(owner, '/api/pickup-requests/' + request.id));
     await audit(giverRequest, 'accepted pickup'); await evidence(giverRequest, info, 'pickup');
     const after = Date.parse(request.proposedAt) + 1000; deployment.advance(after); await giverRequest.clock.install({ time: new Date(after) });
-    await giverRequest.getByRole('button', { name: 'Reload request', exact: true }).click(); await giverRequest.getByRole('button', { name: 'Confirm handoff', exact: true }).click(); await expect(giverRequest.getByText('Completed', { exact: true })).toBeVisible();
+    await post(owner, '/api/pickup-requests/' + request.id + '/actions', { action: 'complete', version: request.version });
+    await giverRequest.getByRole('button', { name: 'Reload request', exact: true }).click(); await expect(giverRequest.getByText('Completed', { exact: true })).toBeVisible();
     await receiver.getByRole('button', { name: 'Reload request', exact: true }).click(); await expect(receiver.getByText('Completed', { exact: true })).toBeVisible();
     await expect(receiver.getByRole('article', { name: 'Request summary' }).getByRole('img')).toHaveCount(0);
     expect((await requester.request.get('/api/item-images/' + expected[0] + '/thumbnail')).status()).toBe(404); expect((await owner.request.get('/api/item-images/' + expected[0] + '/thumbnail')).status()).toBe(200);

@@ -41,7 +41,7 @@ afterEach(() => jest.restoreAllMocks());
 
 test('requester sees local-date rules in the confirmed zone and submits that zone exactly', async () => {
   mount('/app/items/' + item.id + '/request');
-  expect(await screen.findByText(/through 2030-07-03 in America\/Los_Angeles\. The listing ends at the end of that local date\./)).toBeVisible();
+  expect(await screen.findByText(/through 2030-07-03\./)).toBeVisible();
   expect(screen.queryByText(/UTC date/)).not.toBeInTheDocument();
   expect(screen.getByText('Los Angeles-Long Beach-Anaheim, CA')).toBeVisible(); // no empty ", " when city/neighborhood are omitted
   fireEvent.change(screen.getByLabelText('Pickup date and time'), { target: { value: '2030-07-02T10:00' } });
@@ -59,11 +59,11 @@ test('owner of an independent listing is pointed to My Listings, never to a requ
   } finally { Object.assign(item, { isOwner: false }); }
 });
 
-test('giver detail links back to the private listing and labels local pickup dates', async () => {
+test('giver detail links to the public listing and shows its pickup dates', async () => {
   me = { ...me, id: 'giver', firstName: 'Giver' };
   mount('/app/pickups/64b000000000000000000002');
-  expect(await screen.findByText(/Pickup window: Now through 2030-07-03 \(local dates in America\/Los_Angeles\)/)).toBeVisible();
-  expect(screen.getByRole('link', { name: 'View item' })).toHaveAttribute('href', '/app/listings/' + item.id);
+  expect(await screen.findByText(/Pickup window: Now through 2030-07-03\./)).toBeVisible();
+  expect(screen.getByRole('link', { name: 'View item' })).toHaveAttribute('href', '/app/items/' + item.id);
 });
 
 test('requester detail links to the listing page instead of the owner view', async () => {
