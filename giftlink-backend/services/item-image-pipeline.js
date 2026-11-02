@@ -98,6 +98,11 @@ function createPipeline({ connectToDatabase, configuration: config, storage, cre
         } catch (error) {
             if (ticket) try { await metadata.fail(ticket); } catch (failure) { /* Durable processing/deletion ledger remains; no blind refund. */ }
             req.pause(); res.set('Connection', 'close');
+            // Diagnostic only: enumerated storage category/operation or a short error name,
+            // never messages, keys, credentials or provider response bodies.
+            if (!(error instanceof InventoryError) && req.log) req.log.warn({ event: 'photo_upload_failed',
+                category: typeof error.category === 'string' ? error.category : null, operation: typeof error.operation === 'string' ? error.operation : null,
+                errorName: typeof error.name === 'string' ? error.name.slice(0, 40) : null }, 'Photo upload failed');
             if (error instanceof InventoryError) return next(error);
             return next(new InventoryError(503, 'IMAGE_UPLOAD_UNCERTAIN', 'Photo processing could not finish. Check its operation status; cleanup may be pending.'));
         } finally {

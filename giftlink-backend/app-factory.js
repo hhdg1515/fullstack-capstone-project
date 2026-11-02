@@ -16,8 +16,9 @@ const { requestDiagnostics } = require('./middleware/diagnostics');
 
 function createApp({ connectToDatabase, appOrigin = 'http://localhost:3000', secureCookies = false,
     sessionTtlSeconds = 28800, authLimit = 30, discoveryLimit = 120, pickupNow, messageLimit,
-    ownerListingsEnabled = false, ownerListingPhotosEnabled = false, ownerListingPickupsEnabled = false, ownerListingPublicationEnabled = false, imageMetadata = null, imageControlLimit = 20, imagePipeline = null, logger = require('./logger') }) {
+    ownerListingsEnabled = false, ownerListingPhotosEnabled = false, ownerListingPickupsEnabled = false, ownerListingPublicationEnabled = false, imageMetadata = null, imageControlLimit = 20, imagePipeline = null, trustProxy = false, logger = require('./logger') }) {
     const app = express();
+    if (trustProxy) app.set('trust proxy', 1);
     const pipeline = imagePipeline ? require('./services/item-image-pipeline').pipelineBinding(imagePipeline, imageMetadata, connectToDatabase) : null;
     const identity = createIdentityService({ connectToDatabase, sessionTtlSeconds });
     const auth = createIdentityMiddleware({ identity, appOrigin, secureCookies, sessionTtlSeconds,
