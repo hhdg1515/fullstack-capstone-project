@@ -104,20 +104,20 @@ function createPipeline({ connectToDatabase, configuration: config, storage, cre
             if (uploadStorage) { closeStorage(uploadStorage); uploadClients.delete(uploadStorage); }
             if (inputBytes) inputBytes.fill(0); if (admitted) nativeActive = false; res.removeListener('close', onClose); }
     }
-    async function deliver(req, res, next, currentViewer, { independentPhotos = false } = {}) {
+    async function deliver(req, res, next, currentViewer, { independentPhotos = false, independentPublic = false } = {}) {
         let admitted = false;
         try {
             checkAvailable();
             if (Object.keys(req.query).length) throw unavailable();
             if (readsActive >= 8) throw new InventoryError(429, 'IMAGE_READ_BUSY', 'Photo service is busy. Try again shortly.', { retryAfterSeconds: 5 });
             readsActive++; admitted = true;
-            const initial = await authorize(req.params.imageId, req.params.variant, req.user && req.user._id, { independentPhotos }), v = initial.variant;
+            const initial = await authorize(req.params.imageId, req.params.variant, req.user && req.user._id, { independentPhotos, independentPublic }), v = initial.variant;
             let body;
             if (req.method === 'HEAD') {
                 const head = await storageCall(storage, 'headVariant', { key: v.key });
                 if (head.byteLength !== v.byteLength || head.sha256 !== v.sha256) throw new Error('Photo metadata mismatch');
             } else body = (await storageCall(storage, 'getVariant', { key: v.key, byteLength: v.byteLength, sha256: v.sha256 })).body;
-            const latest = await authorize(req.params.imageId, req.params.variant, await currentViewer(), { independentPhotos });
+            const latest = await authorize(req.params.imageId, req.params.variant, await currentViewer(), { independentPhotos, independentPublic });
             if (latest.row.generation !== initial.row.generation || JSON.stringify(latest.variant) !== JSON.stringify(v)) throw unavailable();
             checkAvailable();
             res.set({ 'Content-Type': 'image/webp', 'Content-Length': String(v.byteLength), 'X-Content-Type-Options': 'nosniff',

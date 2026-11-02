@@ -2,7 +2,7 @@ const { randomUUID, createHash } = require('node:crypto');
 const fs = require('node:fs'); const path = require('node:path');
 const sharp = require('../giftlink-backend/node_modules/sharp');
 const AxeBuilder = require('@axe-core/playwright').default;
-const { test: base, expect } = require('@playwright/test');
+const { test: base, expect } = require('./local-browser.cjs');
 const { localEnvironment } = require('./local.cjs');
 const test = base.extend({ deployment: [async ({}, use) => {
   if (process.env.E2E_APP_ORIGIN) throw Error('D1 fixtures are isolated local only');
@@ -56,7 +56,7 @@ async function evidence(page, info, name, target = page.locator('main')) {
 }
 const list = '/app/items?stateId=06&metroId=41860';
 const gallery = page => page.getByRole('region', { name: 'Item photos' });
-test('bounded covers and ordered galleries retain regional counts, owner actions and keyboard/mobile access', async ({ browser, deployment }, info) => {
+test('bounded covers and ordered galleries retain regional counts, owner actions and keyboard/mobile access', async ({ isolatedBrowser: browser, deployment }, info) => {
   const s = await scene(browser, deployment, info);
   try {
     const five = await s.create('Reading chair with five synthetic photos', 5), one = await s.create('Small chair with one synthetic photo', 1), none = await s.create('No-photo legacy-style chair', 0);
@@ -96,7 +96,7 @@ test('bounded covers and ordered galleries retain regional counts, owner actions
     expect(deployment.serverErrors).toEqual([]);
   } finally { await s.close(); }
 });
-test('authoritative cover changes, variant errors and stale URLs preserve item information and revocation', async ({ browser, deployment }, info) => {
+test('authoritative cover changes, variant errors and stale URLs preserve item information and revocation', async ({ isolatedBrowser: browser, deployment }, info) => {
   const s = await scene(browser, deployment, info);
   try {
     const item = await s.create('Gallery recovery chair', 5), page = await s.anonymous.newPage();

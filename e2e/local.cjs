@@ -9,13 +9,20 @@ const { createHostedApp } = require(root + '/giftlink-backend/index');
 const { createIsolatedMongo } = require(root + '/giftlink-backend/test/helpers/isolated-mongo');
 const { prepareDatabaseIndexes } = require(root + '/giftlink-backend/services/database-indexes');
 const { readPreparationTarget, inspectTarget } = require(root + '/giftlink-backend/util/database-target');
-async function localEnvironment({ photos = false, ownerListings = false, ownerListingPhotos = false, ownerListingPickups = false } = {}) {
-  if ((photos || ownerListings || ownerListingPhotos || ownerListingPickups) && process.env.E2E_APP_ORIGIN) throw Error('Photo fixtures are local only');
+async function localEnvironment({ photos = false, ownerListings = false, ownerListingPhotos = false, ownerListingPickups = false, ownerListingPublication = false, certificate, developmentOrigin, guardedPreparation = false, opensslPath = 'openssl' } = {}) {
+  if ((photos || ownerListings || ownerListingPhotos || ownerListingPickups || ownerListingPublication) && process.env.E2E_APP_ORIGIN) throw Error('Photo fixtures are local only');
   if (ownerListingPickups && !ownerListings) throw Error('Independent listing pickups need owner listings');
   if (ownerListingPhotos && (!photos || !ownerListings)) throw Error('Independent listing photos need the local photo pipeline and owner listings');
   let isolated, api, front, hosted, directory, storage, imagePipeline, imageMetadata;
   try {
-    isolated = await createIsolatedMongo(); await prepareDatabaseIndexes(isolated.db);
+    isolated = await createIsolatedMongo();
+    if (guardedPreparation) {
+      const { main } = require(root + '/giftlink-backend/util/prepare-database');
+      const env = { MONGO_URL: isolated.mongoUrl, MONGO_DB_NAME: isolated.dbName, DB_ENVIRONMENT: 'development' };
+      const preview = await main({ argv: ['--dry-run'], env, log: () => {} });
+      if (preview.target.remote || preview.target.database !== isolated.dbName) throw Error('Local preparation target refused');
+      await main({ argv: ['--apply', '--confirm-db', isolated.dbName, '--confirm-environment', 'development', '--confirm-target', preview.target.fingerprint], env, log: () => {} });
+    } else await prepareDatabaseIndexes(isolated.db);
     if (photos) {
       const { createIsolatedSeaweedFS } = require(root + '/giftlink-backend/test/helpers/isolated-seaweedfs');
       const { createLocalItemImagePipeline } = require(root + '/giftlink-backend/services/item-image-pipeline');
@@ -24,8 +31,9 @@ async function localEnvironment({ photos = false, ownerListings = false, ownerLi
         limits: { attempts: 50, successes: 20, accountBytes: 104857600, concurrent: 2, records: 1000 } };
       imagePipeline = createLocalItemImagePipeline({ connectToDatabase: async () => isolated.db, configuration: imageMetadata, storageConfig: storage.config });
     }
+    if (ownerListingPublication && (!ownerListings || !ownerListingPickups)) throw Error('Publication requires local listings and pickups');
     directory = fs.mkdtempSync(path.join(os.tmpdir(), 'moveout-e2e-'));
-    execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-keyout', path.join(directory, 'key.pem'), '-out', path.join(directory, 'cert.pem'), '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost,IP:127.0.0.1'], { stdio: 'ignore' });
+    if (!certificate) execFileSync(opensslPath, ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-keyout', path.join(directory, 'key.pem'), '-out', path.join(directory, 'cert.pem'), '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost,IP:127.0.0.1'], { stdio: 'ignore' });
     let online = true; let clock; const serverErrors = []; let nextPhotoResponse;
     const photoGates = new Set();
     const web = express();
@@ -48,13 +56,24 @@ async function localEnvironment({ photos = false, ownerListings = false, ownerLi
       });
       proxy.on('error', () => res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Service unavailable' } })); req.pipe(proxy);
     });
+    if (developmentOrigin) {
+      const target = new URL(developmentOrigin);
+      if (target.protocol !== 'http:' || target.hostname !== '127.0.0.1' || target.username || target.password || target.pathname !== '/' || target.search || target.hash) throw Error('Only a loopback development server is allowed');
+      web.use((req, res) => {
+        const proxy = http.request({ hostname: '127.0.0.1', port: target.port, path: req.originalUrl, method: req.method, headers: { ...req.headers, host: target.host } }, upstream => {
+          res.writeHead(upstream.statusCode, upstream.headers); upstream.pipe(res);
+        });
+        proxy.on('error', () => res.status(503).send('Local frontend unavailable')); req.pipe(proxy);
+      });
+    }
     web.use(express.static(root + '/giftlink-frontend/build')); web.get('*', (req, res) => res.sendFile(root + '/giftlink-frontend/build/index.html'));
-    front = https.createServer({ key: fs.readFileSync(path.join(directory, 'key.pem')), cert: fs.readFileSync(path.join(directory, 'cert.pem')) }, web).listen(0, '127.0.0.1');
+    front = https.createServer({ key: certificate?.key || fs.readFileSync(path.join(directory, 'key.pem')), cert: certificate?.cert || fs.readFileSync(path.join(directory, 'cert.pem')) }, web).listen(0, '127.0.0.1');
     await new Promise(resolve => front.once('listening', resolve)); const origin = 'https://127.0.0.1:' + front.address().port;
-    const env = { NODE_ENV: 'production', DB_ENVIRONMENT: 'staging', MONGO_URL: isolated.mongoUrl, MONGO_DB_NAME: isolated.dbName, APP_ORIGIN: origin };
+    const env = { NODE_ENV: 'production', DB_ENVIRONMENT: guardedPreparation ? 'development' : 'staging', MONGO_URL: isolated.mongoUrl, MONGO_DB_NAME: isolated.dbName, APP_ORIGIN: origin };
     if (ownerListings) env.OWNER_LISTINGS_ENABLED = 'true';
     if (ownerListingPhotos) env.OWNER_LISTING_PHOTOS_ENABLED = 'true';
     if (ownerListingPickups) env.OWNER_LISTING_PICKUPS_ENABLED = 'true';
+    if (ownerListingPublication) env.OWNER_LISTING_PUBLICATION_ENABLED = 'true';
     if (photos) Object.assign(env, { ITEM_IMAGE_METADATA_ENABLED: 'true', ITEM_IMAGE_STORAGE_TARGET: imageMetadata.storageBinding.fingerprint,
       ITEM_IMAGE_NAMESPACE: imageMetadata.storageBinding.namespace });
     hosted = createHostedApp({ env, databaseFactory: () => ({ connect: async () => isolated.db, close: async () => {} }),
@@ -63,7 +82,7 @@ async function localEnvironment({ photos = false, ownerListings = false, ownerLi
     api = hosted.listen(0, '127.0.0.1'); await new Promise(resolve => api.once('listening', resolve));
     const target = await inspectTarget(isolated.db, await readPreparationTarget(env, true));
     await hostNetworkSettled(); // after every fixture container and network exists, before any browser use
-    return { origin, db: isolated.db, fingerprint: target.fingerprint, local: true, serverErrors,
+    return { origin, certificatePath: certificate ? null : path.join(directory, 'cert.pem'), db: isolated.db, fingerprint: target.fingerprint, local: true, serverErrors,
       ...(photos ? { reconcilePhotos: async () => {
         if (process.env.E2E_APP_ORIGIN) throw Error('Photo maintenance is isolated local only');
         const { openLocalMaintenance } = require(root + '/giftlink-backend/util/local-image-maintenance');

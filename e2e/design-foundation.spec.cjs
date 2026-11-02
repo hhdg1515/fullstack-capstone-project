@@ -10,7 +10,7 @@ const test = base.extend({ deployment: [async ({}, use) => {
 }, { scope: 'worker', timeout: 180000 }] });
 test.skip(Boolean(process.env.E2E_APP_ORIGIN), 'Design evidence uses disposable local data only');
 
-test('shared Login and My Plans preserve keyboard, authoritative states and recovery', async ({ browser, deployment }, testInfo) => {
+test('shared Login and My Plans preserve keyboard, authoritative states and recovery', async ({ isolatedBrowser: browser, deployment }, testInfo) => {
   const options = { baseURL: deployment.origin, ignoreHTTPSErrors: true,
     viewport: { width: testInfo.project.name === 'mobile' ? 320 : 1440, height: 1000 },
     extraHTTPHeaders: { 'X-Deployment-Target': deployment.fingerprint } };

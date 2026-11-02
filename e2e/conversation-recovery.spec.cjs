@@ -8,7 +8,7 @@ const test = base.extend({ deployment: [async ({}, use) => {
 }, { scope: 'worker', timeout: 180000 }] });
 test.skip(Boolean(process.env.E2E_APP_ORIGIN), 'Conversation recovery never uses hosted resources');
 
-test('an uncertain committed send requires review, preserves drafts and closes read-only across layouts', async ({ browser, deployment }, testInfo) => {
+test('an uncertain committed send requires review, preserves drafts and closes read-only across layouts', async ({ isolatedBrowser: browser, deployment }, testInfo) => {
   const options = { ...testInfo.project.use, baseURL: deployment.origin, ignoreHTTPSErrors: true, extraHTTPHeaders: { 'X-Deployment-Target': deployment.fingerprint } };
   delete options.launchOptions; delete options.trace; delete options.screenshot; delete options.video;
   const contexts = [];

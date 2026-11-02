@@ -344,3 +344,15 @@ test('expired request sessions clear the thumbnail before returning to login', a
   await click(screen.getByRole('button', { name: 'Reload request' }));
   expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument(); expect(screen.queryByRole('img')).not.toBeInTheDocument();
 });
+
+test('a future accepted appointment enables handoff at its real boundary without polling or recording it', async () => {
+  jest.useFakeTimers('modern'); jest.setSystemTime(new Date('2029-07-01T08:59:59.000Z'));
+  fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { request: { ...base, role:'giver',status:'accepted',proposedAt:'2029-07-01T09:00:00.000Z' } }));
+  let view;
+  try {
+    view = mount('/app/pickups/' + base.id); const button = await screen.findByRole('button',{name:'Confirm handoff'});
+    expect(button).toBeDisabled(); const calls = fetch.mock.calls.length;
+    await act(async () => { jest.advanceTimersByTime(1100); }); expect(Date.now()).toBeGreaterThanOrEqual(Date.parse('2029-07-01T09:00:00Z')); expect(button).toBeEnabled();
+    expect(fetch).toHaveBeenCalledTimes(calls); expect(window.confirm).not.toHaveBeenCalled();
+  } finally { view?.unmount(); jest.useRealTimers(); }
+});

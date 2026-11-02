@@ -9,7 +9,7 @@ const test = base.extend({ deployment: [async ({}, use) => {
 }, { scope: 'worker', timeout: 180000 }] });
 test.skip(Boolean(process.env.E2E_APP_ORIGIN), 'Location/category fixtures never use hosted resources');
 
-test('regional discovery, structured items, counts and ownership work without changing plan location', async ({ browser, deployment }, testInfo) => {
+test('regional discovery, structured items, counts and ownership work without changing plan location', async ({ isolatedBrowser: browser, deployment }, testInfo) => {
   const options = { ...testInfo.project.use, baseURL: deployment.origin, ignoreHTTPSErrors: true,
     extraHTTPHeaders: { 'X-Deployment-Target': deployment.fingerprint }, ...(testInfo.project.name === 'mobile' ? { viewport: { width: 320, height: 740 } } : {}) };
   delete options.launchOptions; delete options.trace; delete options.screenshot; delete options.video;

@@ -2,7 +2,7 @@ const { randomUUID, createHash } = require('node:crypto');
 const fs = require('node:fs'); const path = require('node:path');
 const sharp = require('../giftlink-backend/node_modules/sharp');
 const AxeBuilder = require('@axe-core/playwright').default;
-const { test: base, expect } = require('@playwright/test');
+const { test: base, expect } = require('./local-browser.cjs');
 const { localEnvironment } = require('./local.cjs');
 const test = base.extend({ deployment: [async ({}, use) => {
   if (process.env.E2E_APP_ORIGIN) throw Error('D2 fixtures are isolated local only');
@@ -55,7 +55,7 @@ async function evidence(page, info, name) {
     await target.scrollIntoViewIfNeeded(); await target.screenshot({ path: path.join(directory, info.project.name + '-' + name + '.png') });
   } finally { await page.setViewportSize(viewport); }
 }
-test('participants recognize current covers through acceptance, scheduling, cover changes and closed history', async ({ browser, deployment }, info) => {
+test('participants recognize current covers through acceptance, scheduling, cover changes and closed history', async ({ isolatedBrowser: browser, deployment }, info) => {
   const s = await scene(browser, deployment, info);
   try {
     const fixture = await s.create('Reading chair for local pickup', 2), empty = await s.create('No-photo local chair', 0);
@@ -101,7 +101,7 @@ test('participants recognize current covers through acceptance, scheduling, cove
     expect(images.every(url => url.endsWith('/thumbnail'))).toBe(true); expect(deployment.serverErrors).toEqual([]);
   } finally { await s.close(); }
 });
-test('image and request refresh failures preserve actions, text, independent drafts and safe session recovery', async ({ browser, deployment }, info) => {
+test('image and request refresh failures preserve actions, text, independent drafts and safe session recovery', async ({ isolatedBrowser: browser, deployment }, info) => {
   const s = await scene(browser, deployment, info); let release;
   try {
     const fixture = await s.create('Recoverable local pickup chair', 1), page = await s.requester.newPage();

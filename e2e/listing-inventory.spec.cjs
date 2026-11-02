@@ -9,7 +9,7 @@ const test = base.extend({ deployment: [async ({}, use) => {
 }, { scope: 'worker', timeout: 180000 }] });
 test.skip(Boolean(process.env.E2E_APP_ORIGIN), 'Inventory evidence never uses hosted data');
 
-test('giver publishes a draft, distinguishes reservations and handoffs, and recovers unsaved/conflicting edits', async ({ browser, deployment }, testInfo) => {
+test('giver publishes a draft, distinguishes reservations and handoffs, and recovers unsaved/conflicting edits', async ({ isolatedBrowser: browser, deployment }, testInfo) => {
   const options = { baseURL: deployment.origin, ignoreHTTPSErrors: true,
     viewport: { width: testInfo.project.name === 'mobile' ? 320 : 1440, height: 1000 },
     extraHTTPHeaders: { 'X-Deployment-Target': deployment.fingerprint } };

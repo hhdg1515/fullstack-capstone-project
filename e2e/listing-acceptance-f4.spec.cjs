@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const AxeBuilder = require('@axe-core/playwright').default;
-const { test: base, expect } = require('@playwright/test');
+const { test: base, expect } = require('./local-browser.cjs');
 const { localEnvironment } = require('./local.cjs');
 const { selectItemType } = require('./item-type.cjs');
 const test = base.extend({ deployment: [async ({}, use) => {
@@ -19,7 +19,7 @@ async function evidence(page, width, state) {
     await page.screenshot({ path: path.join(process.env.B3_EVIDENCE_DIR, width + '-' + state + '.png'), fullPage: true });
   }
 }
-test('integrated independent drafts, explicit local deadlines, legacy compatibility and private gates', async ({ browser, deployment }, info) => {
+test('integrated independent drafts, explicit local deadlines, legacy compatibility and private gates', async ({ isolatedBrowser: browser, deployment }, info) => {
   for (const width of info.project.name === 'mobile' ? [375, 320] : [1440, 768]) {
     const options = { baseURL: deployment.origin, ignoreHTTPSErrors: true, viewport: { width, height: 1000 } };
     const owner = await browser.newContext(options), other = await browser.newContext(options), anonymous = await browser.newContext(options);

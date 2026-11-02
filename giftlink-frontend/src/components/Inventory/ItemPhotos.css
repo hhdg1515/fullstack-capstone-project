@@ -38,3 +38,5 @@
 
 .item-photo-delete { color: var(--ui-error); box-shadow: 0 0 0 1px var(--ui-border); }
 .item-photo-remove { z-index: 1; }
+.item-photo-order-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.item-photo-order-actions button { min-height: 44px; padding: .3rem; }

@@ -8,7 +8,7 @@ const test = base.extend({ deployment: [async ({}, use) => {
 }, { scope: 'worker', timeout: 180000 }] });
 test.skip(Boolean(process.env.E2E_APP_ORIGIN), 'Pickup UX fixtures cannot use hosted resources');
 
-test('participants enter canonical conversations and keep request context, decisions and private history', async ({ browser, deployment }, testInfo) => {
+test('participants enter canonical conversations and keep request context, decisions and private history', async ({ isolatedBrowser: browser, deployment }, testInfo) => {
   const options = { ...testInfo.project.use, baseURL: deployment.origin, ignoreHTTPSErrors: true, extraHTTPHeaders: { 'X-Deployment-Target': deployment.fingerprint } };
   delete options.launchOptions; delete options.trace; delete options.screenshot; delete options.video;
   const contexts = [];

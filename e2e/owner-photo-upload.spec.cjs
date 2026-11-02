@@ -4,12 +4,12 @@ const fs = require('node:fs'); const path = require('node:path');
 const AxeBuilder = require('@axe-core/playwright').default;
 const { root } = require('./policy.cjs');
 const sharp = require(root + '/giftlink-backend/node_modules/sharp');
-const { test: base, expect } = require('./fixtures.cjs');
+const { test: base, expect } = require('./local-browser.cjs');
 const { localEnvironment } = require('./local.cjs');
-const test = base.extend({ deployment: [async ({}, use) => {
+const test = base.extend({ fixturePhotos: [true, { option: true }], deployment: [async ({ fixturePhotos }, use) => {
   if (process.env.E2E_APP_ORIGIN) throw Error('Owner photo fixtures are isolated local only');
-  const local = await localEnvironment({ photos: true }); try { await use(local); } finally { await local.close(); }
-}, { scope: 'worker', timeout: 180000 }] });
+  const local = await localEnvironment({ photos: fixturePhotos }); try { await use(local); } finally { await local.close(); }
+}, { timeout: 180000 }] });
 test.skip(Boolean(process.env.E2E_APP_ORIGIN), 'C1 never activates hosted photos');
 
 async function account(browser, deployment, testInfo, label) {
@@ -67,7 +67,7 @@ async function audit(page, state) {
   await test.step('Photo UI ' + state + ' WCAG: ' + (violations.join(', ') || 'none'), async () => expect(violations).toEqual([]));
 }
 
-test('one explicit item submit sequences the real photo batch and preserves correctly associated ready cards', async ({ browser, deployment }, testInfo) => {
+test('one explicit item submit sequences the real photo batch and preserves correctly associated ready cards', async ({ isolatedBrowser: browser, deployment }, testInfo) => {
   const giver = await account(browser, deployment, testInfo, 'Photo owner'), other = await account(browser, deployment, testInfo, 'Other user');
   let gate;
   try {
@@ -162,8 +162,8 @@ test('one explicit item submit sequences the real photo batch and preserves corr
   } finally { gate?.discard(); await giver.close(); await other.close(); }
 });
 
-test('a lost item save preserves staged photos, prevents another create and binds only after explicit owner review', async ({ browser }, testInfo) => {
-  const local = await localEnvironment({ photos: true }); let context, gate;
+test('a lost item save preserves staged photos, prevents another create and binds only after explicit owner review', async ({ isolatedBrowser: browser, deployment }, testInfo) => {
+  const local = deployment; let context, gate;
   try {
     context = await account(browser, local, testInfo, 'Save recovery owner'); const { plan } = await setup(context, local, false);
     const page = await context.newPage(); page.on('dialog', async dialog => dialog.accept());
@@ -194,11 +194,11 @@ test('a lost item save preserves staged photos, prevents another create and bind
     const operation = await local.db.collection('itemImages').findOne({ state: 'ready' });
     expect(operation.intent.byteLength).toBeLessThanOrEqual(3 * 1024 * 1024);
     expect(operation.intent.sha256).not.toBe(createHash('sha256').update(bytes).digest('hex')); expect(local.serverErrors).toEqual([]);
-  } finally { gate?.discard(); if (context) await context.close(); await local.close(); }
+  } finally { gate?.discard(); if (context) await context.close(); }
 });
 
-test('session expiry after the first batch upload clears private drafts and never sends later files', async ({ browser }, testInfo) => {
-  const local = await localEnvironment({ photos: true }); let context, gate;
+test('session expiry after the first batch upload clears private drafts and never sends later files', async ({ isolatedBrowser: browser, deployment }, testInfo) => {
+  const local = deployment; let context, gate;
   try {
     context = await account(browser, local, testInfo, 'Expired batch owner'); const { plan } = await setup(context, local, false);
     const page = await context.newPage(); let contents = 0, reservations = 0;
@@ -219,11 +219,11 @@ test('session expiry after the first batch upload clears private drafts and neve
     await expect(page.getByAltText(/Local preview|Uploaded photo/)).toHaveCount(0);
     expect(contents).toBe(1); expect(reservations).toBe(1); expect(await local.db.collection('itemImages').countDocuments({ state: 'ready' })).toBe(1);
     expect(local.serverErrors).toEqual([]);
-  } finally { gate?.discard(); if (context) await context.close(); await local.close(); }
+  } finally { gate?.discard(); if (context) await context.close(); }
 });
 
-test('public partial success and accessible navigation preserve the single submit and safe recovery across remounts', async ({ browser }, testInfo) => {
-  const local = await localEnvironment({ photos: true }); let context, firstGate, secondGate;
+test('public partial success and accessible navigation preserve the single submit and safe recovery across remounts', async ({ isolatedBrowser: browser, deployment }, testInfo) => {
+  const local = deployment; let context, firstGate, secondGate;
   try {
     context = await account(browser, local, testInfo, 'Public batch owner'); const { plan } = await setup(context, local, false);
     const page = await context.newPage(); let creations = 0, contents = 0, nativeDialogs = 0;
@@ -278,11 +278,13 @@ test('public partial success and accessible navigation preserve the single submi
     await expect(page.getByAltText(/Local preview/)).toHaveCount(0); expect(contents).toBe(3); expect(nativeDialogs).toBe(0);
     const unloadBlocked = await page.evaluate(() => { const event = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(event); return event.defaultPrevented; });
     expect(unloadBlocked).toBe(false); expect(local.serverErrors).toEqual([]);
-  } finally { firstGate?.discard(); secondGate?.discard(); if (context) await context.close(); await local.close(); }
+  } finally { firstGate?.discard(); secondGate?.discard(); if (context) await context.close(); }
 });
 
-test('default deployed gates show disabled photo controls while text-only inventory remains usable', async ({ browser }, testInfo) => {
-  const local = await localEnvironment(); let context;
+test.describe('default disabled photo fixture', () => {
+ test.use({ fixturePhotos: false });
+test('default deployed gates show disabled photo controls while text-only inventory remains usable', async ({ isolatedBrowser: browser, deployment }, testInfo) => {
+  const local = deployment; let context;
   try {
     context = await account(browser, local, testInfo, 'Disabled photo owner'); const { plan, item } = await setup(context, local);
     const page = await context.newPage(); await page.goto('/app/plans/' + plan.id + '/items');
@@ -293,5 +295,6 @@ test('default deployed gates show disabled photo controls while text-only invent
     await expect(page.getByRole('button', { name: 'Photos for ' + item.name })).toHaveCount(0);
     await expect(page.getByLabel('Item name', { exact: true })).toHaveValue(item.name);
     expect(local.serverErrors).toEqual([]);
-  } finally { if (context) await context.close(); await local.close(); }
+  } finally { if (context) await context.close(); }
+});
 });

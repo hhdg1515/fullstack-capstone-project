@@ -2,7 +2,7 @@ const fs = require('node:fs'), path = require('node:path');
 const { randomUUID, createHash } = require('node:crypto');
 const sharp = require('../giftlink-backend/node_modules/sharp');
 const AxeBuilder = require('@axe-core/playwright').default;
-const { test: base, expect } = require('@playwright/test');
+const { test: base, expect } = require('./local-browser.cjs');
 const { localEnvironment } = require('./local.cjs');
 const test = base.extend({ deployment: [async ({}, use) => {
   if (process.env.E2E_APP_ORIGIN) throw Error('UX-1 is local only');
@@ -30,7 +30,7 @@ async function audit(page, label) {
   const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations.map(v => v.id);
   await test.step('UX1 ' + label + ' WCAG: ' + (violations.join(', ') || 'none'), async () => expect(violations).toEqual([]));
 }
-test('item-centered creation, owner editing, visible filters and private request context', async ({ browser, deployment }, info) => {
+test('item-centered creation, owner editing, visible filters and private request context', async ({ isolatedBrowser: browser, deployment }, info) => {
   for (const width of info.project.name === 'mobile' ? [320, 375] : [1440]) {
     const context = await browser.newContext({ baseURL: deployment.origin, ignoreHTTPSErrors: true, viewport: { width, height: 950 }, deviceScaleFactor: 1,
       extraHTTPHeaders: { 'X-Deployment-Target': deployment.fingerprint } });

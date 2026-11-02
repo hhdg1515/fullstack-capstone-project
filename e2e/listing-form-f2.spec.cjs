@@ -1,9 +1,9 @@
 const { randomUUID } = require('node:crypto');
 const AxeBuilder = require('@axe-core/playwright').default;
-const { test: base, expect } = require('@playwright/test');
+const { test: base, expect } = require('./local-browser.cjs');
 const { localEnvironment } = require('./local.cjs');
 const test = base.extend({ deployment: [async ({}, use) => { if (process.env.E2E_APP_ORIGIN) throw Error('F2 is local only'); const d = await localEnvironment({ownerListings:true}); try { await use(d); } finally { await d.close(); } }, {timeout:180000}] });
-for (const width of [1440,320,375]) test('draft form timezone, accessible errors and stable submit at ' + width, async ({browser,deployment})=>{
+for (const width of [1440,320,375]) test('draft form timezone, accessible errors and stable submit at ' + width, async ({isolatedBrowser: browser,deployment})=>{
  const context=await browser.newContext({baseURL:deployment.origin,ignoreHTTPSErrors:true,viewport:{width,height:900}});
  try {
   const headers={Origin:deployment.origin,'X-CSRF-Protection':'1'};

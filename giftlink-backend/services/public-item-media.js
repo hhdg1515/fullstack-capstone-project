@@ -1,5 +1,5 @@
 const { ObjectId } = require('mongodb');
-const { assertLegacyOperation: assertOperation, integer, validateImageConfig } = require('./item-image-policy');
+const { assertOperation, integer, validateImageConfig } = require('./item-image-policy');
 
 const variant = (image, name) => ({ url: '/api/item-images/' + image._id.toHexString() + '/' + name,
     width: image.variants[name].width, height: image.variants[name].height });
@@ -10,12 +10,12 @@ function mediaSummary(row, original, binding, detail = false) {
     const fallback = empty(detail, 'unavailable');
     try {
         if (!row || !(row._id instanceof ObjectId) || !row._id.equals(original._id) ||
-            !(row.planId instanceof ObjectId) || !(row.ownerId instanceof ObjectId) ||
-            !row.ownerId.equals(original.ownerId) || !row.planId.equals(original.planId) ||
+            (row.listingSchemaVersion === 2 ? row.planId !== undefined || original.planId !== undefined : !(row.planId instanceof ObjectId) || !row.planId.equals(original.planId)) || !(row.ownerId instanceof ObjectId) ||
+            !row.ownerId.equals(original.ownerId) ||
             !integer(row.imageRevision === undefined ? 0 : row.imageRevision) || row.photos.length > 5) return fallback;
         row.photos.forEach((image, position) => {
             assertOperation(image);
-            if (!image.itemId.equals(row._id) || !image.planId.equals(row.planId) || !image.ownerId.equals(row.ownerId) || image.sortPosition !== position ||
+            if (image.schemaVersion !== (row.listingSchemaVersion === 2 ? 2 : 1) || !image.itemId.equals(row._id) || (image.schemaVersion === 1 && !image.planId.equals(row.planId)) || !image.ownerId.equals(row.ownerId) || image.sortPosition !== position ||
                 image.storageBinding.fingerprint !== binding.fingerprint || image.storageBinding.namespace !== binding.namespace) throw Error('Invalid media binding');
         });
         return row.photos.length ? Object.assign({ imageAvailability: 'ready' }, detail ? { images: row.photos.map(image => photo(image, true)) } : { coverImage: photo(row.photos[0], false) }) : empty(detail, 'none');
@@ -41,7 +41,7 @@ function createPublicItemMedia({ connectToDatabase, configuration, visibilityPip
                     { $match: { $expr: { $eq: ['$itemId', '$$item'] }, state: 'ready' } },
                     { $sort: { sortPosition: 1, _id: 1 } }, { $limit: 6 }
                 ], as: 'photos' } },
-                { $project: { _id: 1, planId: 1, ownerId: 1, imageRevision: 1, photos: 1 } }
+                { $project: { _id: 1, listingSchemaVersion: 1, planId: 1, ownerId: 1, imageRevision: 1, photos: 1 } }
             ]), { readConcern: { level: 'snapshot' }, collation: { locale: 'simple' }, maxTimeMS: 5000, allowDiskUse: false }).toArray();
             const byId = new Map(rows.map(row => [row._id.toHexString(), row]));
             return selected.map(original => {

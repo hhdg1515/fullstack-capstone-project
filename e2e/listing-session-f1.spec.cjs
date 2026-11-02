@@ -1,5 +1,5 @@
 const { randomUUID } = require('node:crypto');
-const { test: base, expect } = require('@playwright/test');
+const { test: base, expect } = require('./local-browser.cjs');
 const { localEnvironment } = require('./local.cjs');
 const test = base.extend({ deployment: [async ({}, use) => {
   if (process.env.E2E_APP_ORIGIN) throw Error('F1 is disposable local only');
@@ -23,7 +23,7 @@ async function setup(browser, d) {
   const login = async account => { if (page.url() === 'about:blank') await page.goto('/app/login'); else { await openNav(); await page.getByRole('link', { name: 'Account', exact: true }).click(); } await page.getByLabel('Email', { exact: true }).fill(account.email); await page.getByLabel('Password', { exact: true }).fill(account.password); await page.getByRole('button', { name: 'Login', exact: true }).click(); await expect(page.getByText('Signed in as ' + account.firstName)).toHaveCount(1); };
   return { context, page, login, logout, openNav, a, b, one, two, legacy, plan, post };
 }
-for (const status of [200, 401]) test('late A response ' + status + ' cannot contaminate authenticated B; URLs and history retain ownership', async ({ browser, deployment }) => {
+for (const status of [200, 401]) test('late A response ' + status + ' cannot contaminate authenticated B; URLs and history retain ownership', async ({ isolatedBrowser: browser, deployment }) => {
   const s = await setup(browser, deployment); let release;
   try {
     await s.login(s.a); await s.page.goto('/app/listings'); await expect(s.page.getByRole('link', { name: 'Private A item', exact: true })).toBeVisible();
@@ -55,7 +55,7 @@ for (const status of [200, 401]) test('late A response ' + status + ' cannot con
     expect(await deployment.db.collection('moveOutPlans').countDocuments()).toBe(1);
   } finally { release?.(); await s.context.close(); }
 });
-test('legacy edits remain plan-scoped; v2 saves use the independent endpoint and foreign editors deny', async ({ browser, deployment }) => {
+test('legacy edits remain plan-scoped; v2 saves use the independent endpoint and foreign editors deny', async ({ isolatedBrowser: browser, deployment }) => {
   const s = await setup(browser, deployment); const patches = [];
   try {
     await s.login(s.a); s.page.on('request', r => { if (r.method() === 'PATCH') patches.push(new URL(r.url()).pathname); });

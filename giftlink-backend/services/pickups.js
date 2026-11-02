@@ -11,8 +11,8 @@ const conflict = (code, message) => new InventoryError(409, code, message);
 const isId = value => typeof value === 'string' && /^[a-fA-F0-9]{24}$/.test(value);
 const participant = (id, userId) => ({ _id: new ObjectId(id), $or: [{ giverId: userId }, { receiverId: userId }] });
 
-function createPickupService({ connectToDatabase, now = () => new Date(), imageMetadata = null, imageRead = false, independentPickups = false }) {
-    const media = imageMetadata && imageRead ? require('./pickup-item-media').createPickupItemMedia({ connectToDatabase, configuration: imageMetadata }) : null;
+function createPickupService({ connectToDatabase, now = () => new Date(), imageMetadata = null, imageRead = false, independentPickups = false, independentMedia = false }) {
+    const media = imageMetadata && imageRead ? require('./pickup-item-media').createPickupItemMedia({ connectToDatabase, configuration: imageMetadata, independentMedia }) : null;
     // One write boundary per request reference format: v1 keeps the plan fence
     // (plan then item); v2 fences only its own item. Neither falls back to the other.
     function transaction(db, reference, operation, missingError = missing) {
@@ -24,11 +24,17 @@ function createPickupService({ connectToDatabase, now = () => new Date(), imageM
     const itemFor = (db, row, options) => db.collection('items').findOne(referenceVersion(row) === 2 ? independentItem(row.giverId, row.itemId) :
         Object.assign(legacyMatch(), { _id: row.itemId, planId: row.planId, ownerId: row.giverId }), options);
     async function serialize(db, row, userId, session) {
+        // V2 notes/history share conversation integrity checks. V1 retains its
+        // explicit historical-text contract when old parents are missing; its
+        // media/conversation authorization is independently stricter.
+        const format = referenceVersion(row);
+        if (format === null || format === 2 && !originalParticipants(row)) throw missing();
         const giver = row.giverId.equals(userId);
         const options = session ? { session } : {};
         const independent = referenceVersion(row) === 2;
         const item = await itemFor(db, row, options);
         const plan = independent ? null : await db.collection('moveOutPlans').findOne({ _id: row.planId, ownerId: row.giverId }, options);
+        if (independent && !item) throw missing();
         const person = await db.collection('users').findOne({ _id: giver ? row.receiverId : row.giverId }, Object.assign({}, options, { projection: { firstName: 1 } }));
         const result = { id: row._id.toString(), role: giver ? 'giver' : 'receiver', status: row.status, version: row.version,
             proposedAt: row.proposedAt.toISOString(), localDateTime: row.localDateTime, timeZone: row.timeZone, note: row.note,

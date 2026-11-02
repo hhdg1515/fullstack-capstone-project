@@ -8,7 +8,7 @@ const test = base.extend({ deployment: [async ({}, use) => {
 }, { scope: 'worker', timeout: 180000 }] });
 test.skip(Boolean(process.env.E2E_APP_ORIGIN), 'Discovery UX fixtures never use hosted resources');
 
-test('expanded areas, responsive filters, truthful cards and recovery preserve server regional counts', async ({ browser, deployment }, testInfo) => {
+test('expanded areas, responsive filters, truthful cards and recovery preserve server regional counts', async ({ isolatedBrowser: browser, deployment }, testInfo) => {
   const options = { ...testInfo.project.use, baseURL: deployment.origin, ignoreHTTPSErrors: true,
     extraHTTPHeaders: { 'X-Deployment-Target': deployment.fingerprint } };
   delete options.launchOptions; delete options.trace; delete options.screenshot; delete options.video;

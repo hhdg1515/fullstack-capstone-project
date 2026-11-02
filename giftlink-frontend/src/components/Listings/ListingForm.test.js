@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, createEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import ListingForm from './ListingForm';
 import { createOwnerListing, updateOwnerListing } from '../../api/ownerListings';
@@ -68,4 +68,21 @@ test('feature-disabled is a definite service state, not an uncertain creation or
  await screen.findByText(/Listing tools are temporarily unavailable/); expect(screen.queryByText(/The save result is uncertain/)).not.toBeInTheDocument();
  expect(screen.getByLabelText('Item name')).toHaveValue('Keep name'); expect(createOwnerListing).toHaveBeenCalledTimes(1);
  expect(screen.getAllByRole('button',{name:'Save Draft'})[0]).toBeDisabled();
+});
+
+test('publication is separately gated; an explicit Publish action validates all fields and never silently confirms timezone', async () => {
+ render(<MemoryRouter><ListingForm publicationEnabled /></MemoryRouter>);
+ fireEvent.change(screen.getByLabelText('Item name'), {target:{value:'Shelf'}});
+ const event = createEvent.submit(screen.getByRole('form')); Object.defineProperty(event, 'submitter', {value:screen.getAllByRole('button',{name:'Publish listing'})[0]}); fireEvent(screen.getByRole('form'), event);
+ await waitFor(()=>expect(screen.getByLabelText('Description')).toHaveAttribute('aria-invalid','true'));
+ expect(screen.getByLabelText('Confirm this pickup timezone')).not.toBeChecked(); expect(createOwnerListing).not.toHaveBeenCalled();
+ expect(screen.getByRole('alert')).toHaveTextContent('Choose a metro before publishing.');
+});
+test('explicit publication sends one versioned request while the ordinary Save Draft path stays private', async () => {
+ const complete = {...record, description:'Useful shelf',classification:{category:{id:'living-room'},itemType:{id:'bookshelf'}}};
+ render(<MemoryRouter><ListingForm item={complete} publicationEnabled /></MemoryRouter>);
+ const event = createEvent.submit(screen.getByRole('form')); Object.defineProperty(event, 'submitter', {value:screen.getAllByRole('button',{name:'Publish listing'})[0]}); fireEvent(screen.getByRole('form'), event);
+ await waitFor(()=>expect(updateOwnerListing).toHaveBeenCalledTimes(1));
+ expect(updateOwnerListing.mock.calls[0]).toEqual([record.id,expect.objectContaining({publish:true,version:3,categoryId:'living-room',itemTypeId:'bookshelf'})]);
+ expect(updateOwnerListing.mock.calls[0][1]).not.toHaveProperty('pickupTimeZoneConfirmed');
 });

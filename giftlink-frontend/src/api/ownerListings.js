@@ -18,3 +18,5 @@ export function listOwnerListings({ cursor, status, limit } = {}) {
 export const getOwnerListing = id => apiRequest(pathFor(id), { validate: itemEnvelope });
 export const createOwnerListing = body => apiRequest('/api/items', { method: 'POST', body, validate: itemEnvelope });
 export const updateOwnerListing = (id, body) => apiRequest(`/api/items/${encodeURIComponent(id)}`, { method: 'PATCH', body, validate: itemEnvelope });
+
+export const actOnOwnerListing = (id, body) => apiRequest(`/api/items/${encodeURIComponent(id)}/actions`, { method: 'POST', body, validate: itemEnvelope });

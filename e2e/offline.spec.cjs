@@ -1,5 +1,5 @@
 const { test, expect } = require('./fixtures.cjs');
-test('frontend remains usable when the backend returns HTML', async ({ browser, deployment }) => {
+test('frontend remains usable when the backend returns HTML', async ({ isolatedBrowser: browser, deployment }) => {
   test.skip(!deployment.local, 'Fault injection is confined to the local proxy, never a deployed backend');
   const context = await browser.newContext({ ignoreHTTPSErrors: true }); const page = await context.newPage(); const errors = [];
   page.on('pageerror', error => errors.push(error.message)); deployment.setOnline(false);

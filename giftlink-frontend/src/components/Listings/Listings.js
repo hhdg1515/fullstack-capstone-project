@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, Navigate, useParams } from 'react-router-dom';
 import ListingFormView from './ListingForm';
-import { listOwnerListings, getOwnerListing } from '../../api/ownerListings';
+import { listOwnerListings, getOwnerListing, actOnOwnerListing } from '../../api/ownerListings';
 import Inventory from '../Inventory/Inventory';
 import { PageHeader, Surface, Feedback } from '../../design-system/primitives';
 import { urlConfig } from '../../config';
@@ -53,6 +53,15 @@ export function MyListings() {
 }
 export function ListingDetail() {
   const { itemId } = useParams(); const [state, setState] = useState({}); const [attempt, setAttempt] = useState(0);
+  const [actionError, setActionError] = useState(null), [acting, setActing] = useState(false), [confirmation, setConfirmation] = useState(null);
+  const active = useRef(true), actionPending = useRef(false);
+  useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
+  const act = async (action, confirmed = false) => {
+    if (actionPending.current || !state.item) return; actionPending.current = true; setActing(true); setActionError(null);
+    try { const result = await actOnOwnerListing(itemId, { action, version: state.item.version, ...(confirmed ? { confirmCancelRequests: true } : {}) }); if (active.current) { setState(result); setConfirmation(null); } }
+    catch (error) { if (active.current) { if (error.code === 'PICKUP_CONFIRMATION_REQUIRED') setConfirmation(error); else { setActionError(error); setConfirmation(null); } } }
+    finally { actionPending.current = false; if (active.current) setActing(false); }
+  };
   useEffect(() => { let active = true; setState({}); getOwnerListing(itemId).then(result => active && setState(result)).catch(error => active && setState({ error })); return () => { active = false; }; }, [itemId, attempt]);
   const item = state.item;
   return <main className="ui-page"><Link to="/app/listings">My Listings</Link>{state.error ? <Failure error={state.error} retry={() => setAttempt(n => n + 1)} /> : !item ? <p role="status">Loading listing…</p> : <>
@@ -64,7 +73,18 @@ export function ListingDetail() {
     <p>Pickup deadline: {item.pickup.availableUntil || 'Not selected'}{item.pickup.datePolicy === 'utc-calendar' ? ' (UTC)' : ''}</p>
     <p>Pickup timezone: {item.pickup.timeZone || 'Not selected'}{item.pickup.datePolicy !== 'utc-calendar' && item.pickup.timeZone ? item.pickup.timeZoneConfirmed ? ' · Confirmed' : ' · Confirmation needed' : ''}</p>
     {(item.capabilities.editDraft || item.capabilities.legacyEditor) && <Link className="ui-button" to={'/app/items/' + item.id + '/edit'}>Edit listing</Link>}
-    {!item.capabilities.legacyEditor && <><p>Private draft. Public publishing is not available yet.</p><h2>Photos</h2><ListingPhotos item={item} /></>}
+    {!item.capabilities.legacyEditor && <>
+      {actionError && <Feedback error>{actionError.message}{actionError.fields?.map(field => <p key={field.field}>{field.message}</p>)} <button className="ui-button ui-button--secondary" onClick={() => setAttempt(n => n + 1)}>Refresh listing</button></Feedback>}
+      {item.capabilities.publish && <button className="ui-button" disabled={acting} onClick={() => act('publish')}>Publish listing</button>}
+      {item.status === 'draft' && !item.capabilities.publish && <p>Private draft. Public publishing is not available yet.</p>}
+      {item.status === 'available' && <p><Link to={'/app/items/' + item.id}>View public listing</Link> · <Link to="/app/pickups/incoming">Incoming requests</Link></p>}
+      {item.capabilities.withdraw && <button className="ui-button ui-button--secondary" disabled={acting} onClick={() => act('withdraw')}>Withdraw listing</button>}
+      {confirmation && <Surface role="alert" aria-label="Confirm withdrawal"><p>{confirmation.message}</p>
+        <button className="ui-button" disabled={acting} onClick={() => act('withdraw', true)}>Withdraw and cancel requests</button>
+        <button className="ui-button ui-button--secondary" disabled={acting} onClick={() => setConfirmation(null)}>Keep listing</button></Surface>}
+      <h2>Photos</h2><ListingPhotos item={item} />
+    </>}
+
   </>}</main>;
 }
 export function ListingEditor() {
@@ -73,7 +93,8 @@ export function ListingEditor() {
   if (state.item?.capabilities.legacyEditor || state.error?.code === 'OWNER_LISTINGS_DISABLED') return <Inventory />;
   if (state.error) return <main className="ui-page"><Failure error={state.error} /></main>;
   if (!state.item) return <p role="status">Loading listing…</p>;
-  return <ListingFormView key={itemId} item={state.item} photoCapabilities={state.photoCapabilities || null} />;
+  if (!state.item.capabilities.editDraft) return <Navigate replace to={'/app/listings/' + itemId} />;
+  return <ListingFormView key={itemId} item={state.item} photoCapabilities={state.photoCapabilities || null} publicationEnabled={state.publicationEnabled === true} />;
 }
 // Owner-only private thumbnails of an independent draft (UX-2C1); no public URL.
 function ListingPhotos({ item }) {
@@ -89,7 +110,7 @@ function ListingPhotos({ item }) {
 // Create Listing learns the server's independent-photo capability; the form
 // renders immediately and photos appear only if the server allows them.
 export function ListingForm() {
-  const [photoCapabilities, setPhotoCapabilities] = useState(null);
-  useEffect(() => { let active = true; listOwnerListings({ limit: 1 }).then(result => active && setPhotoCapabilities(result.photoCapabilities || null)).catch(() => {}); return () => { active = false; }; }, []);
-  return <ListingFormView photoCapabilities={photoCapabilities} />;
+  const [photoCapabilities, setPhotoCapabilities] = useState(null), [publicationEnabled, setPublicationEnabled] = useState(false);
+  useEffect(() => { let active = true; listOwnerListings({ limit: 1 }).then(result => { if (active) { setPhotoCapabilities(result.photoCapabilities || null); setPublicationEnabled(result.publicationEnabled === true); } }).catch(() => {}); return () => { active = false; }; }, []);
+  return <ListingFormView photoCapabilities={photoCapabilities} publicationEnabled={publicationEnabled} />;
 }

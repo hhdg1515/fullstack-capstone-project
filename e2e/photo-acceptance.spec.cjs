@@ -2,7 +2,7 @@ const { randomUUID, randomBytes, createHash } = require('node:crypto');
 const fs = require('node:fs'); const path = require('node:path');
 const sharp = require('../giftlink-backend/node_modules/sharp');
 const AxeBuilder = require('@axe-core/playwright').default;
-const { test: base, expect } = require('@playwright/test');
+const { test: base, expect } = require('./local-browser.cjs');
 const { localEnvironment } = require('./local.cjs');
 const { selectItemType } = require('./item-type.cjs');
 const test = base.extend({ deployment: [async ({}, use) => {
@@ -26,7 +26,7 @@ async function evidence(page, info, state, target = page.locator('main')) {
     await target.scrollIntoViewIfNeeded(); await pixels(target); await target.screenshot({ path: path.join(directory, info.project.name + '-' + state + '.png') });
   } finally { await page.setViewportSize(viewport); }
 }
-test('the same real photo batch survives compression, uncertain publish, management, discovery, pickup and cleanup', async ({ browser, deployment }, info) => {
+test('the same real photo batch survives compression, uncertain publish, management, discovery, pickup and cleanup', async ({ isolatedBrowser: browser, deployment }, info) => {
   const contexts = []; let firstGate, secondGate;
   const actor = async firstName => {
     const context = await browser.newContext({ baseURL: deployment.origin, ignoreHTTPSErrors: true,

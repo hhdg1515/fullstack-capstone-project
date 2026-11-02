@@ -14,7 +14,7 @@ const test = base.extend({ deployment: [async ({}, use) => {
 }, { scope: 'worker', timeout: 180000 }] });
 test.skip(Boolean(process.env.E2E_APP_ORIGIN), 'MVP acceptance never uses hosted resources');
 
-test('two independent users complete the integrated marketplace journey with truthful history and recovery', async ({ browser, deployment }, testInfo) => {
+test('two independent users complete the integrated marketplace journey with truthful history and recovery', async ({ isolatedBrowser: browser, deployment }, testInfo) => {
   const mobile = testInfo.project.name === 'mobile';
   const options = { baseURL: deployment.origin, ignoreHTTPSErrors: true,
     viewport: { width: mobile ? 320 : 1440, height: 1000 },

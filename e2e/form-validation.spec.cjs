@@ -2,7 +2,7 @@ const { randomUUID } = require('node:crypto');
 const AxeBuilder = require('@axe-core/playwright').default;
 const { test, expect } = require('./fixtures.cjs');
 test.skip(Boolean(process.env.E2E_APP_ORIGIN), 'Form validation uses only disposable local fixtures');
-test('field errors are linked, focusable and recoverable in real forms', async ({ browser, deployment }, testInfo) => {
+test('field errors are linked, focusable and recoverable in real forms', async ({ isolatedBrowser: browser, deployment }, testInfo) => {
   const options = { ...testInfo.project.use, baseURL: deployment.origin, ignoreHTTPSErrors: true,
     extraHTTPHeaders: { 'X-Deployment-Target': deployment.fingerprint } };
   delete options.launchOptions; delete options.trace; delete options.screenshot; delete options.video;

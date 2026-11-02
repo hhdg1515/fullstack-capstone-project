@@ -12,6 +12,6 @@ async function initializeApplication(config, { database, logger, appFactory = cr
     onPhase('app_construction');
     return appFactory({ connectToDatabase: database.connect, appOrigin: config.appOrigin,
         secureCookies: config.secureCookies, sessionTtlSeconds: config.sessionTtlSeconds, imageMetadata: config.imageMetadata, ownerListingsEnabled: config.ownerListingsEnabled === true, ownerListingPhotosEnabled: config.ownerListingPhotosEnabled === true,
-        ownerListingPickupsEnabled: config.ownerListingPickupsEnabled === true, logger });
+        ownerListingPickupsEnabled: config.ownerListingPickupsEnabled === true, ownerListingPublicationEnabled: config.ownerListingPublicationEnabled === true, logger });
 }
 module.exports = { initializeApplication };

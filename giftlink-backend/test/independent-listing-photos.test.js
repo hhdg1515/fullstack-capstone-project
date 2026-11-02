@@ -175,4 +175,51 @@ describe('UX-2C1 independent listing photos with owned MongoDB and real private 
         assert.throws(() => readServerConfig(Object.assign({}, base, { OWNER_LISTING_PHOTOS_ENABLED: 'true' })), /requires OWNER_LISTINGS_ENABLED/);
         assert.throws(() => readServerConfig(Object.assign({}, base, { OWNER_LISTING_PHOTOS_ENABLED: 'true', OWNER_LISTINGS_ENABLED: 'true' })), /ITEM_IMAGE_METADATA_ENABLED/);
     });
+    it('C3 publishes private photos, preserves cover order, and revokes fresh public media on withdrawal', async function () {
+        const publicApp = createApp({ connectToDatabase: async () => db, imageMetadata: config, imagePipeline: pipeline, ownerListingsEnabled: true,
+            ownerListingPhotosEnabled: true, ownerListingPickupsEnabled: true, ownerListingPublicationEnabled: true,
+            imageControlLimit: 10000, discoveryLimit: 10000, logger: pino({ level: 'silent' }) });
+        let item = await draft(confirmed({ description: 'Clean shelf', categoryId: 'living-room', itemTypeId: 'bookshelf' }));
+        const first = (await reserve(item.id).expect(201)).body.upload.id; await upload(item.id, first).expect(201);
+        const second = (await reserve(item.id, owner, 1).expect(201)).body.upload.id; await upload(item.id, second).expect(201);
+        await view(first).expect(404);
+        item = (await write(request(publicApp).post('/api/items/' + item.id + '/actions')).set('Cookie', owner.cookie).send({ action: 'publish', version: item.version }).expect(200)).body.item;
+        assert.deepEqual(item.photoPreview.images.map(photo => photo.id), [first, second]);
+        assert.equal((await itemRow(item.id)).ownerPhotos, undefined);
+        let result = (await request(publicApp).get('/api/items/' + item.id).expect(200)).body.item;
+        assert.equal(result.imageAvailability, 'ready'); assert.deepEqual(result.images.map(row => row.id), [first, second]);
+        const response = await view(first, null, publicApp).expect(200); assert.equal(response.headers['content-type'], 'image/webp'); assert.match(response.headers['cache-control'], /no-store/);
+        await request(publicApp).head('/api/item-images/' + first + '/thumbnail').expect(200);
+        const browse = (await request(publicApp).get('/api/items?stateId=06&metroId=41860').expect(200)).body;
+        assert.equal(browse.total, 1); assert.equal(browse.items[0].coverImage.id, first);
+        assert.doesNotMatch(JSON.stringify(result), /storageBinding|ownerId|clientUploadId|sha256|variants/);
+        await write(request(app).post(root(item.id) + '/order')).set('Cookie', owner.cookie).send({ imageRevision: 2, imageIds: [second, first] }).expect(200);
+        result = (await request(publicApp).get('/api/items/' + item.id).expect(200)).body.item; assert.deepEqual(result.images.map(row => row.id), [second, first]);
+        await write(request(app).post(root(item.id) + '/' + second + '/actions')).set('Cookie', owner.cookie).send({ imageRevision: 3, action: 'delete' }).expect(202);
+        await view(second, null, publicApp).expect(404);
+        result = (await request(publicApp).get('/api/items/' + item.id).expect(200)).body.item; assert.deepEqual(result.images.map(row => row.id), [first]);
+        const held = (await quota()).retainedBytes;
+        const withdrawn = (await write(request(publicApp).post('/api/items/' + item.id + '/actions')).set('Cookie', owner.cookie).send({ action: 'withdraw', version: item.version }).expect(200)).body.item;
+        assert.deepEqual(withdrawn.photoPreview.images.map(photo => photo.id), [first]);
+        await view(first, null, publicApp).expect(404); await view(first, other, publicApp).expect(404); await view(first, owner, publicApp).expect(200);
+        await request(publicApp).get('/api/items/' + item.id).expect(404); assert.equal((await quota()).retainedBytes, held);
+        assert.equal(await db.collection('itemImages').countDocuments({ itemId: new ObjectId(item.id) }), 2);
+    });
+    it('C3 request history grants no permanent photo rights after withdrawal or completion', async function () {
+        const publicApp = createApp({ connectToDatabase: async () => db, imageMetadata: config, imagePipeline: pipeline, ownerListingsEnabled: true,
+            ownerListingPhotosEnabled: true, ownerListingPickupsEnabled: true, ownerListingPublicationEnabled: true,
+            imageControlLimit: 10000, discoveryLimit: 10000, logger: pino({ level: 'silent' }) });
+        let item = await draft(confirmed({ description: 'Clean shelf', categoryId: 'living-room', itemTypeId: 'bookshelf' }));
+        const imageId = (await reserve(item.id).expect(201)).body.upload.id; await upload(item.id, imageId).expect(201);
+        item = (await write(request(publicApp).post('/api/items/' + item.id + '/actions')).set('Cookie', owner.cookie).send({ action: 'publish', version: item.version }).expect(200)).body.item;
+        const req = (await write(request(publicApp).post('/api/pickup-requests')).set('Cookie', other.cookie).send({ itemId: item.id, timeZone: 'America/Los_Angeles', localDateTime: day(3) + 'T10:00' }).expect(201)).body.request;
+        const before = (await request(publicApp).get('/api/pickup-requests/' + req.id).set('Cookie', other.cookie).expect(200)).body.request;
+        assert.equal(before.item.coverImage.id, imageId);
+        await write(request(publicApp).post('/api/items/' + item.id + '/actions')).set('Cookie', owner.cookie).send({ action: 'withdraw', version: item.version, confirmCancelRequests: true }).expect(200);
+        const closed = (await request(publicApp).get('/api/pickup-requests/' + req.id).set('Cookie', other.cookie).expect(200)).body.request;
+        assert.equal(closed.status, 'cancelled'); assert.equal(closed.item.coverImage, null);
+        await view(imageId, other, publicApp).expect(404);
+        assert.equal((await request(publicApp).get('/api/pickup-requests/' + req.id).set('Cookie', owner.cookie).expect(200)).body.request.item.coverImage.id, imageId);
+    });
+
 });
