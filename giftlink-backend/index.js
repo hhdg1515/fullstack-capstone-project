@@ -36,7 +36,7 @@ function createHostedApp({ env = process.env, databaseFactory = createDatabase,
                 pipeline = require('./services/item-image-pipeline').createR2ItemImagePipeline(photos);
             }
             const appDatabase = photos ? { connect: photos.applicationConnectToDatabase } : database;
-            const api = await initializeApplication(config, { database: appDatabase, logger, appFactory, imagePipeline: pipeline || null, onPhase: value => { phase = value; } });
+            const api = await initializeApplication(config, { database: appDatabase, logger, appFactory, imagePipeline: pipeline || null, trustProxy: true, onPhase: value => { phase = value; } });
             phase = 'target_verification';
             const inspected = await inspectTarget(await database.connect(), target);
             logger.info({ event: 'hosted_startup_ready', durationMs: Math.max(0, now() - started), requestId: id }, 'Hosted service ready');
