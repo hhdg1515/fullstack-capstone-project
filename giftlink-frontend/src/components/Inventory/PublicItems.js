@@ -237,7 +237,7 @@ function Discovery() {
       <div className="discovery-results-head">
         {!visible.loading && !visible.error && Number.isSafeInteger(visible.total) && <h2 className="discovery-results-heading"><span className="discovery-count">{visible.total}</span> available {visible.total === 1 ? 'item' : 'items'}</h2>}
         {visible.loading && <p role="status" className="discovery-loading">Loading listings…</p>}
-        <p className="discovery-summary" aria-label="Applied filters">{applied.length ? applied.join(' · ') : 'No account needed to browse.'}</p>
+        {applied.length > 0 && <p className="discovery-summary" aria-label="Applied filters">{applied.join(' · ')}</p>}
       </div>
       {visible.refreshedAvailability && <Feedback>Availability changed. Results have been refreshed.</Feedback>}
       {visible.loading && !visible.items?.length && <ul className="discovery-grid discovery-skeleton" aria-hidden="true">{[1, 2, 3, 4, 5, 6, 7, 8].map(n => <li key={n}><span /><span /><span /></li>)}</ul>}
@@ -291,14 +291,14 @@ function PublicItemDetail({ itemId }) {
         <section className="public-item-about"><h2>Description</h2><p className="public-item-description">{item.description || 'No additional description provided.'}</p></section>
       </div>
       <aside className="public-item-aside">
-        <div className="public-item-chips"><AvailabilityChip item={item} />{owner && <span className="ui-status ui-status--owner">Your listing</span>}</div>
+        <div className="public-item-chips">{item.free !== false && <span className="ui-status ui-status--free">Free</span>}<AvailabilityChip item={item} />{owner && <span className="ui-status ui-status--owner">Your listing</span>}</div>
         <div className="public-item-heading"><h1>{item.name}</h1><p>{placeLabel(item)}</p></div>
         <Specs item={item} />
         <PickupWindow item={item} />
         <div className="public-item-action">
           {owner && auth?.status === 'authenticated' && <Link className="ui-button public-item-cta" to={`/app/items/${item.id}/edit`}>{item.listingModel === 2 ? 'Manage listing' : 'Edit item'}</Link>}
-          {owner ? <p role="status">Your listing.</p> : item.isReserved === true ? <p role="status">This item has an accepted pickup. Check back if it becomes available.</p> : item.pickupTimeZone ? <><Link className="ui-button public-item-cta" to={`/app/items/${item.id}/request`} state={{ discoverySearch: previous }}>Request pickup<span aria-hidden="true">→</span></Link>
-            <p>A request does not reserve the item. The giver must accept an appointment.</p></> : <p>The giver needs to set a pickup timezone before this listing can receive requests.</p>}
+          {owner ? <p role="status">Your listing.</p> : item.isReserved === true ? <p role="status">This item has an accepted pickup. Check back if it becomes available.</p> : item.pickupTimeZone ? <><Link className="ui-button public-item-cta" to={`/app/items/${item.id}/request`} state={{ discoverySearch: previous }}>{"I'm interested"}<span aria-hidden="true">→</span></Link>
+            <p>Suggest a pickup time, then chat with the giver. Nothing is reserved until they accept.</p></> : <p>The giver needs to set a pickup timezone before this listing can receive requests.</p>}
           {typeof item.isReserved !== 'boolean' && <p>Current pickup availability will be checked when you send a request.</p>}
         </div>
         <div className="public-item-share">

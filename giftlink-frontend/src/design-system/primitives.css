@@ -46,6 +46,7 @@
 .ui-feedback--error { background: var(--ui-error-surface); color: var(--ui-error); border-color: var(--ui-error); }
 .ui-feedback > :last-child { margin-bottom: 0; }
 .ui-status { display: inline-flex; align-items: center; gap: .4rem; min-height: 1.75rem; padding: 0 .75rem; font-size: .8125rem; font-weight: 600; color: var(--ui-ink); background: var(--ui-fill); border-radius: var(--ui-radius-pill); }
+.ui-status--free { background: var(--ui-primary); color: var(--ui-on-primary); font-weight: 700; }
 .ui-status--owner { background: var(--ui-ink); color: var(--ui-on-primary); }
 /* Availability is shown by shape as well as color: a filled dot (now) or a ring (later). */
 .ui-status--now::before, .ui-status--later::before { content: ''; width: 7px; height: 7px; border-radius: 50%; flex: none; }

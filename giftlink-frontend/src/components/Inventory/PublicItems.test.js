@@ -62,7 +62,7 @@ test('authoritative refresh removes a revoked gallery and its request action', a
   await click('Refresh listings');
   expect(await screen.findByRole('alert')).toHaveTextContent('This listing is no longer available.');
   expect(screen.queryByRole('img')).not.toBeInTheDocument();
-  expect(screen.queryByRole('link', { name: 'Request pickup' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: "I'm interested" })).not.toBeInTheDocument();
 });
 
 test('uses the server owner flag to replace the public request action without hiding the listing', async () => {
@@ -70,7 +70,7 @@ test('uses the server owner flag to replace the public request action without hi
   mount('/app/items/' + a.id);
   expect(await screen.findByText('Your listing.')).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: a.name })).toBeInTheDocument();
-  expect(screen.queryByRole('link', { name: 'Request pickup' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: "I'm interested" })).not.toBeInTheDocument();
 });
 
 test.each(['/app/items/' + a.id])('reserved items never promise immediate availability at %s', async path => {
@@ -80,14 +80,14 @@ test.each(['/app/items/' + a.id])('reserved items never promise immediate availa
   expect(await screen.findByText('Pickup arranged')).toBeInTheDocument();
   const content = path === '/app/items' ? within(screen.getByRole('list', { name: 'Available items' })) : screen;
   expect(content.queryByText('Available Now')).not.toBeInTheDocument();
-  expect(screen.queryByRole('link', { name: 'Request pickup' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: "I'm interested" })).not.toBeInTheDocument();
 });
 test('refreshing a released listing restores its request action from the new server response', async () => {
   let isReserved = true;
   handler = async () => reply(200, { item: { ...a, pickupTimeZone: 'UTC', isReserved } });
   mount('/app/items/' + a.id); await screen.findByText('Pickup arranged');
   isReserved = false; await click('Refresh listings');
-  expect(await screen.findByRole('link', { name: 'Request pickup' })).toBeInTheDocument();
+  expect(await screen.findByRole('link', { name: "I'm interested" })).toBeInTheDocument();
   expect(screen.getByText('Available Now')).toBeInTheDocument();
 });
 test('a listing awaiting giver setup does not advertise immediate pickup', async () => {
@@ -95,7 +95,7 @@ test('a listing awaiting giver setup does not advertise immediate pickup', async
   mount('/app/items/' + a.id);
   expect(await screen.findByText('Pickup setup needed')).toBeInTheDocument();
   expect(screen.queryByText('Available Now')).not.toBeInTheDocument();
-  expect(screen.queryByRole('link', { name: 'Request pickup' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: "I'm interested" })).not.toBeInTheDocument();
 });
 test('an older response without reservation data describes a window rather than inventing availability', async () => {
   handler = async () => reply(200, { item: { ...a, pickupTimeZone: 'UTC', isReserved: undefined } });
@@ -406,7 +406,7 @@ test('cards expose real type/category, optional condition, location and pickup w
   expect(card.getByRole('heading', { level: 3 })).toHaveTextContent(b.name);
   expect(card.getByText('Lamp · Office & Lighting')).toBeVisible();
   expect(card.getByText('Rockridge, Oakland, CA')).toBeVisible();
-  expect(card.queryByText('Free')).not.toBeInTheDocument(); expect(card.queryByText('(UTC)')).not.toBeInTheDocument();
+  expect(card.getByText('Free')).toBeVisible(); expect(card.queryByText('(UTC)')).not.toBeInTheDocument();
   expect(card.getByText(formatDate(b.availableFrom))).toHaveAttribute('datetime', b.availableFrom);
   expect(card.queryByText(/Condition:/)).not.toBeInTheDocument();
   expect(card.queryByRole('img')).not.toBeInTheDocument();

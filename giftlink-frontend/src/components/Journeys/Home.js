@@ -32,6 +32,7 @@ function ListingBelt() {
     return <li key={(copy ? 'copy-' : '') + item.id} aria-hidden={copy || undefined}>
       <Link className="home-belt-card" to={`/app/items/${item.id}`} tabIndex={copy ? -1 : undefined} aria-label={copy ? undefined : item.name}>
         <img src={publicImageUrl(cover)} width={cover.width} height={cover.height} alt="" crossOrigin="use-credentials" loading="lazy" decoding="async" />
+        {item.free !== false && <span className="home-belt-free">Free</span>}
         <span className="home-belt-caption"><strong>{item.name}</strong><span>{[item.neighborhood, item.city].filter(Boolean).join(', ')}</span></span>
       </Link>
     </li>;

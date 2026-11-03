@@ -72,10 +72,10 @@ function readCursor(token, query, now, mixed = false) {
     if (now.getTime() - value.at > cursorLifetime || todayUTC(new Date(value.at)) !== todayUTC(now)) throw staleCursor();
     return value;
 }
-const projection = { listingSchemaVersion: 1, deadlineSortAt: 1, stateId: 1, metroId: 1, city: 1, neighborhood: 1, pickupTimeZone: 1, expiresAt: 1, localToday: 1, readNow: 1, planId: 1, name: 1, description: 1, category: 1, categoryId: 1, itemTypeId: 1, customItemType: 1, condition: 1, status: 1, availableFrom: 1, availableUntil: 1,
+const projection = { listingSchemaVersion: 1, deadlineSortAt: 1, stateId: 1, metroId: 1, city: 1, neighborhood: 1, pickupTimeZone: 1, expiresAt: 1, localToday: 1, readNow: 1, planId: 1, name: 1, description: 1, category: 1, categoryId: 1, itemTypeId: 1, customItemType: 1, condition: 1, free: 1, status: 1, availableFrom: 1, availableUntil: 1,
     publishedAt: 1, effectiveAvailableUntil: 1, isReserved: 1, ownerId: 1, 'plan.stateId': 1, 'plan.metroId': 1, 'plan.city': 1, 'plan.neighborhood': 1, 'plan.moveOutDeadline': 1, 'plan.pickupTimeZone': 1 };
 function publicItem(row, today, viewerId) {
-    return Object.assign({ id: row._id.toString(), name: row.name, description: row.description, category: row.category, classification: classificationResponse(row),
+    return Object.assign({ id: row._id.toString(), name: row.name, description: row.description, category: row.category, free: row.free !== false, classification: classificationResponse(row),
         status: 'available', isReserved: row.isReserved, availability: row.availableFrom && row.availableFrom > today ? 'later' : 'now',
         availableFrom: row.availableFrom || null, availableUntil: row.availableUntil || null,
         effectiveAvailableUntil: row.effectiveAvailableUntil, city: normalizeLabel(row.plan.city),
@@ -131,7 +131,7 @@ const normalizedField = input => ({ $reduce: {
 // direct ID read, never part of browse, counts, cursors or location options
 // (UX-2C3 owns v2 discovery). V2 public media stays withheld.
 function independentPublicItem(row, window, viewerId, current) {
-    return Object.assign({ id: row._id.toString(), name: row.name, description: row.description, category: row.category || '', classification: classificationResponse(row),
+    return Object.assign({ id: row._id.toString(), name: row.name, description: row.description, category: row.category || '', free: row.free !== false, classification: classificationResponse(row),
         status: 'available', isReserved: row.isReserved, availability: row.availableFrom && row.availableFrom > row.localToday ? 'later' : 'now',
         availableFrom: row.availableFrom || null, availableUntil: row.availableUntil, effectiveAvailableUntil: row.availableUntil,
         city: normalizeLabel(row.city || ''), neighborhood: normalizeLabel(row.neighborhood || ''), moveOutDeadline: row.availableUntil,

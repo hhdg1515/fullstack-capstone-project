@@ -7,7 +7,7 @@ const { validTimeZone } = require('./pickup-policy');
 const { isCalendarDate } = require('./calendar');
 const { deriveDeadline, resolveDeadline } = require('./listing-deadline');
 const editable = ['name', 'description', 'categoryId', 'itemTypeId', 'customItemType', 'condition', 'stateId', 'metroId',
-    'city', 'neighborhood', 'pickupTimeZone', 'pickupTimeZoneConfirmed', 'availableFrom', 'availableUntil'];
+    'city', 'neighborhood', 'pickupTimeZone', 'pickupTimeZoneConfirmed', 'availableFrom', 'availableUntil', 'free'];
 const tuple = ['deadlinePolicyVersion', 'expiresAt', 'deadlineTimeZone', 'timeZoneRulesVersion'];
 const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 const bad = (field, message) => new InventoryError(400, 'INVALID_LISTING_DRAFT', 'Check the listing details.', { fields: [{ field, message }] });
@@ -41,6 +41,7 @@ function applyDraft(previous, input, now) {
         if (has(input, field)) item[field] = text(input[field], field, max, required, multiline);
     }
     Object.assign(item, classificationChanges(previous, input));
+    if (has(input, 'free')) { if (typeof input.free !== 'boolean') throw bad('free', 'Choose whether the item is free.'); item.free = input.free; }
     for (const field of ['stateId', 'metroId', 'pickupTimeZone', 'availableFrom', 'availableUntil']) if (has(input, field)) item[field] = input[field];
     validateOptional(item);
     const contextChanged = ['stateId', 'metroId', 'city', 'neighborhood', 'pickupTimeZone'].some(field => item[field] !== previous[field]);

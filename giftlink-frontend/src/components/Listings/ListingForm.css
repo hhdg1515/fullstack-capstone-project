@@ -6,3 +6,6 @@
 .listing-editor p, .listing-editor a { overflow-wrap: anywhere; }
 .listing-form-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-3, .75rem); margin-block: var(--space-3, .75rem); }
 .listing-editor button, .listing-editor select { min-height: 44px; }
+.listing-free legend { font-size: var(--ui-text-body); font-weight: 600; margin-bottom: var(--ui-space-2); }
+.listing-free label { display: inline-flex; align-items: center; gap: var(--ui-space-2); min-height: 44px; margin-right: var(--ui-space-6); cursor: pointer; }
+.listing-editor .listing-free input { width: auto; margin: 0; accent-color: var(--ui-ink); }

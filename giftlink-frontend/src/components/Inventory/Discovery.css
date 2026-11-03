@@ -9,10 +9,12 @@
 .discovery-bar { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: center; background: var(--ui-fill); border-radius: var(--ui-radius-pill); padding: 6px; }
 .discovery-where { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; border-right: 1px solid #d5d9d6; }
 .discovery-segment { position: relative; display: flex; flex-direction: column; justify-content: center; gap: 2px; min-height: 64px; padding: 0 1.5rem; border-radius: var(--ui-radius-pill); min-width: 0; transition: background .2s, box-shadow .2s; }
-.discovery-segment:focus-within { background: var(--ui-surface); box-shadow: inset 0 0 0 2px var(--ui-ink), 0 2px 10px rgb(13 20 17 / 12%); }
-.discovery-segment label { margin: 0; font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ui-muted); }
-.discovery-segment select, .discovery-segment input { width: 100%; min-width: 0; min-height: 1.75rem; border: 0; padding: 0; background-color: transparent; font: 650 1.0625rem/1.4 var(--ui-font); color: var(--ui-ink); outline: none; text-overflow: ellipsis; }
-.discovery-segment input { font-weight: 500; }
+.discovery-segment:focus-within { background: var(--ui-surface); box-shadow: 0 2px 12px rgb(13 20 17 / 14%); }
+.discovery-segment label { margin: 0; font-size: .875rem; font-weight: 700; color: var(--ui-ink); }
+.discovery-segment select, .discovery-segment input { width: 100%; min-width: 0; min-height: 1.75rem; border: 0; padding: 0; background-color: transparent; font: 400 .875rem/1.4 var(--ui-font); color: var(--ui-ink); outline: none; text-overflow: ellipsis; }
+/* The segment or pill shows focus; the control itself gets no second outline. */
+.ui-page .discovery-segment select:focus-visible, .ui-page .discovery-segment input:focus-visible, .ui-page .discovery-pill select:focus-visible { outline: none; }
+.discovery-feed select option { font: 400 .875rem/1.4 var(--ui-font); color: var(--ui-ink); }
 .discovery-segment input::placeholder { color: var(--ui-muted); opacity: 1; }
 .discovery-feed select { appearance: none; -webkit-appearance: none; padding-right: 1.25rem; cursor: pointer; background-repeat: no-repeat; background-position: right center; background-size: 12px 8px;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%230d1411' stroke-width='1.8'/%3E%3C/svg%3E"); }
@@ -31,9 +33,9 @@
 .discovery-type-chips .discovery-chip[aria-pressed="true"] { background: var(--ui-primary); color: #ffffff; box-shadow: none; }
 .discovery-pills { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
 .discovery-pill { display: inline-flex; align-items: center; gap: .375rem; min-height: 44px; padding: 0 .875rem 0 1rem; border-radius: var(--ui-radius-pill); background: var(--ui-fill); }
-.discovery-pill:focus-within { box-shadow: inset 0 0 0 2px var(--ui-ink); }
-.discovery-pill label { margin: 0; font: 600 .9375rem/1 var(--ui-font); color: var(--ui-muted); white-space: nowrap; }
-.discovery-pill select { min-height: 44px; border: 0; background-color: transparent; font: 650 .9375rem/1 var(--ui-font); color: var(--ui-ink); outline: none; }
+.discovery-pill:focus-within { background: var(--ui-surface); box-shadow: 0 2px 12px rgb(13 20 17 / 14%); }
+.discovery-pill label { margin: 0; font: 500 .875rem/1 var(--ui-font); color: var(--ui-muted); white-space: nowrap; }
+.discovery-pill select { min-height: 44px; border: 0; background-color: transparent; font: 600 .875rem/1 var(--ui-font); color: var(--ui-ink); outline: none; }
 .discovery-reset { min-height: 44px; padding: 0 .875rem; border: 0; border-radius: var(--ui-radius-pill); background: transparent; color: var(--ui-ink); font: 650 .9375rem/1 var(--ui-font); cursor: pointer; }
 .discovery-reset:hover { background: var(--ui-fill); }
 

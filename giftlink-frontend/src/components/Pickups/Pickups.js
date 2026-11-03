@@ -53,7 +53,7 @@ export function RequestPickup() {
       else validation.failure(failure, ['localDateTime', 'note'], { proposedAt: 'localDateTime' }); }
     finally { setBusy(false); }
   };
-  return <main className="ui-page pickup-page"><JourneyNav journey="find" discoverySearch={discoverySearch} /><Link to={`/app/items/${itemId}`} state={{ discoverySearch }}>Back to listing</Link><PageHeader title="Request pickup" /><LoadState data={data} />
+  return <main className="ui-page pickup-page"><JourneyNav journey="find" discoverySearch={discoverySearch} /><Link to={`/app/items/${itemId}`} state={{ discoverySearch }}>Back to listing</Link><PageHeader title="I'm interested" /><LoadState data={data} />
     {item && <><div className="pickup-item-context"><PickupItemPhoto key={item.images?.[0]?.id || item.id} item={item} detail /><div className="pickup-item-identity"><h2>{item.name}</h2><p>{placeLabel(item)}</p></div></div>
       {item.isOwner === true ? <p role="status">Your listing. You cannot request your own item. Manage it from {item.listingModel === 2 ? 'My Listings' : 'My plans'}.</p> : item.isReserved === true ? <div role="status"><p>This item has an accepted pickup. Check back if it becomes available.</p>
         <button className="ui-button ui-button--secondary" onClick={data.retry}>Check availability</button></div> : !item.pickupTimeZone ? <p role="alert">The giver must set a pickup timezone before requests can be submitted.</p> : <Surface as="form" ref={validation.formRef} noValidate className="pickup-request-form" onSubmit={submit} aria-busy={busy}>
@@ -67,7 +67,7 @@ export function RequestPickup() {
           <div className="ui-field"><label htmlFor="pickup-note">Coordination note (optional, private)</label><textarea id="pickup-note" name="note" {...validation.fieldProps('note')} maxLength={500} value={note} onChange={event => { setNote(event.target.value); validation.clear('note'); }} />
             {errors.note && <p id="note-error" className="ui-field-error">{errors.note}</p>}</div>
           <p>Only you and the giver see this note. Suggest a general public meeting point or brief handoff instructions. Keep phone numbers, email and residential addresses out of it. After sending your request, use its pickup conversation to coordinate.</p>
-          <button className="ui-button">{busy ? 'Sending…' : 'Send pickup request'}</button>
+          <button className="ui-button">{busy ? 'Sending…' : 'Send to the giver'}</button>
         </fieldset>
       </Surface>}
       {error && <div ref={validation.summaryRef} tabIndex={-1} role="alert"><p>{error}</p><button onClick={data.retry}>Reload listing</button></div>}

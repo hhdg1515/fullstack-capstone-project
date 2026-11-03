@@ -18,7 +18,7 @@ export default function ListingForm({ item, photoCapabilities = null, publicatio
   const navigate = useNavigate(), catalog = usePublicCatalog('/api/item-taxonomy'), directory = usePublicCatalog('/api/regions');
   const initial = { name: item?.name || '', description: item?.description || '', categoryId: item?.classification?.category?.id || '', itemTypeId: item?.classification?.itemType?.id || '',
     customItemType: item?.classification?.customItemType || '', condition: item?.classification?.condition?.id || '', stateId: item?.location.stateId || '', metroId: item?.location.metroId || '',
-    city: item?.location.city || '', neighborhood: item?.location.neighborhood || '', availableFrom: item?.pickup.availableFrom || '', availableUntil: item?.pickup.availableUntil || '' };
+    city: item?.location.city || '', neighborhood: item?.location.neighborhood || '', availableFrom: item?.pickup.availableFrom || '', availableUntil: item?.pickup.availableUntil || '', free: item ? item.free !== false : true };
   const [values, setValues] = useState(initial), [busy, setBusy] = useState(false), [uncertain, setUncertain] = useState(false), [stale, setStale] = useState(false), [disabled, setDisabled] = useState(false);
   const validation = useFormErrors(busy), guard = useUnsavedForm(values, initial), pending = useRef(false), alive = useRef(true);
   // UX-2C1: staged photos live only in this tab until one explicit save authorizes
@@ -107,6 +107,9 @@ export default function ListingForm({ item, photoCapabilities = null, publicatio
         <ItemTypeSelector categories={catalog.data?.categories || []} categoryId={values.categoryId} itemTypeId={values.itemTypeId} disabled={locked || catalog.loading || Boolean(catalog.error)} fieldProps={validation.fieldProps('itemTypeId')} onChange={(categoryId,itemTypeId) => { change({ categoryId,itemTypeId,customItemType:'' }); validation.clear('customItemType'); }} onSearch={() => {}} />{message('itemTypeId')}
         {chosenType?.custom && field('customItemType','Custom item type (optional)','text',60)}
         {field('description','Description')}<div className="ui-field"><label htmlFor="listing-condition">Condition (optional)</label><select id="listing-condition" name="condition" value={values.condition} onChange={e => change({ condition: e.target.value })} {...validation.fieldProps('condition')}><option value="">Not selected</option>{catalog.data?.conditions.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select>{message('condition')}</div>
+        <fieldset className="listing-free"><legend>Is it free?</legend>
+          <label><input type="radio" name="free" checked={values.free} onChange={() => change({ free: true })} />Yes</label>
+          <label><input type="radio" name="free" checked={!values.free} onChange={() => change({ free: false })} />No, discuss the price in chat</label></fieldset>
       </fieldset><fieldset disabled={locked}><legend>Pickup location</legend><RegionFields directory={directory} values={values} onChange={change} validation={validation} prefix="listing-region" showHelp={false} fieldClassName="ui-field" />{field('city','City (optional)','text',100)}{field('neighborhood','Neighborhood (optional)','text',100)}</fieldset>
       <fieldset disabled={locked}><legend>Pickup availability</legend>{field('availableFrom','Available from (optional)','date')}{field('availableUntil','Pickup deadline','date')}</fieldset>
       </div>
