@@ -58,20 +58,20 @@ test('anonymous homepage exposes both intentions immediately while the session c
   fetch.mockReturnValue(new Promise(() => {})); mount();
   expect(screen.getByRole('heading', { name: /Move lighter.*Settle smarter/ , level: 1 })).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Start Giving' })).toHaveAttribute('href', '/app/listings');
-  expect(screen.getByRole('link', { name: 'Explore Free Items' })).toHaveAttribute('href', '/app/items');
-  expect(screen.getByText(/Everything is free/)).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Explore Items' })).toHaveAttribute('href', '/app/items');
+  expect(screen.getByText(/One account lets you donate and find/)).toBeInTheDocument();
   // Only the session check and the public listing belt are read; nothing private.
   const urls = fetch.mock.calls.map(([url]) => url);
   expect(urls).toHaveLength(2); expect(urls.filter(url => /\/api\/me$/.test(url))).toHaveLength(1);
   expect(urls).toContain('/api/items?stateId=06&metroId=41860');
 });
 test('Find Free Items opens anonymously without a plan and asks for a metro area', async () => {
-  mount(); const homeReads = fetch.mock.calls.length; await click(screen.getByRole('link', { name: 'Explore Free Items' }));
+  mount(); const homeReads = fetch.mock.calls.length; await click(screen.getByRole('link', { name: 'Explore Items' }));
   expect(await screen.findByRole('heading', { name: 'Choose a metro area' })).toBeInTheDocument();
   expect(screen.getByLabelText('Metro area', { exact: true })).toHaveValue('');
   expect(fetch.mock.calls.slice(homeReads).some(([url]) => url.includes('/api/items?'))).toBe(false);
-  expect(primary().getByRole('link', { name: 'Find Free Items' })).toHaveAttribute('aria-current', 'location');
-  expect(context('Find Free Items').getByRole('link', { name: 'My pickup requests' })).toHaveAccessibleDescription('Sign in required');
+  expect(primary().getByRole('link', { name: 'Find' })).toHaveAttribute('aria-current', 'location');
+  expect(context('Find').getByRole('link', { name: 'My pickup requests' })).toHaveAccessibleDescription('Sign in required');
   expect(fetch.mock.calls.some(([url]) => url.includes('/api/move-out-plans'))).toBe(false);
   expect(screen.queryByLabelText(/account type|role/i)).not.toBeInTheDocument();
 });
@@ -102,17 +102,17 @@ test('a protected shared pickup action survives login and registration navigatio
   await click(screen.getByRole('link', { name: 'Login', exact: true })); await login();
   expect(await screen.findByLabelText('Pickup date and time')).toBeInTheDocument();
   expect(screen.getByTestId('route')).toHaveTextContent(path);
-  expect(context('Find Free Items').getByRole('link', { name: 'My pickup requests' })).toHaveAttribute('href', '/app/pickups');
+  expect(context('Find').getByRole('link', { name: 'My pickup requests' })).toHaveAttribute('href', '/app/pickups');
 });
 test('one account gives in Pasadena and searches Irvine without copying or enforcing its plan location', async () => {
   sessionUser = user; mount('/app/plans');
   expect(await screen.findByRole('link', { name: 'Pasadena move' })).toBeInTheDocument();
-  await click(primary().getByRole('link', { name: 'Find Free Items' }));
+  await click(primary().getByRole('link', { name: 'Find' }));
   await act(async () => fireEvent.change(screen.getByLabelText('Metro area'), { target: { value: '31080' } }));
   await screen.findByRole('option', { name: 'Irvine' }); expect(screen.getByLabelText('City', { exact: true })).toHaveValue('');
   fireEvent.change(screen.getByLabelText('City', { exact: true }), { target: { value: 'Irvine' } });
   await waitFor(() => expect(screen.getByTestId('route')).toHaveTextContent('/app/items?stateId=06&metroId=31080&city=Irvine'));
-  await click(primary().getByRole('link', { name: 'My Listings' })); await screen.findByRole('heading', { name: 'My Listings' });
+  await click(primary().getByRole('link', { name: 'Donate' })); await screen.findByRole('heading', { name: 'My Listings' });
   await click(screen.getByRole('button', { name: 'Browser Back' }));
   expect(await screen.findByLabelText('City', { exact: true })).toHaveValue('Irvine');
   expect(screen.getByRole('button', { name: 'Logout' })).toBeInTheDocument();
@@ -122,15 +122,15 @@ test('Give Away provides consolidated incoming requests and per-plan inventory/c
   sessionUser = user; mount('/app/plans');
   await click(await screen.findByRole('link', { name: 'Manage items & clearance progress' }));
   expect(await screen.findByText('0 of 1 items cleared')).toBeInTheDocument();
-  expect(context('Give Away').getByRole('link', { name: 'Items & clearance progress' })).toHaveAttribute('aria-current', 'location');
-  await click(context('Give Away').getByRole('link', { name: 'Incoming requests' }));
+  expect(context('Donate').getByRole('link', { name: 'Items & clearance progress' })).toHaveAttribute('aria-current', 'location');
+  await click(context('Donate').getByRole('link', { name: 'Incoming requests' }));
   expect(await screen.findByRole('heading', { name: 'Incoming pickup requests' })).toBeInTheDocument();
   expect(fetch.mock.calls.some(([url]) => url.includes('/api/pickup-requests/received'))).toBe(true);
   detailRole = 'giver'; await click(await screen.findByRole('link', { name: /^View request from/ }));
   expect(await screen.findByRole('button', { name: 'Accept pickup' })).toBeInTheDocument();
-  expect(primary().getByRole('link', { name: 'My Listings' })).toHaveAttribute('aria-current', 'location');
-  await click(primary().getByRole('link', { name: 'Find Free Items' }));
-  await click(context('Find Free Items').getByRole('link', { name: 'My pickup requests' }));
+  expect(primary().getByRole('link', { name: 'Donate' })).toHaveAttribute('aria-current', 'location');
+  await click(primary().getByRole('link', { name: 'Find' }));
+  await click(context('Find').getByRole('link', { name: 'My pickup requests' }));
   expect(await screen.findByRole('heading', { name: 'My pickup requests' })).toBeInTheDocument();
   expect(fetch.mock.calls.some(([url]) => url.includes('/api/pickup-requests/sent'))).toBe(true);
 });
@@ -138,7 +138,7 @@ test('public details and browser Back/Forward preserve shared discovery filters'
   mount('/app/items?stateId=06&metroId=31080&city=Irvine&neighborhood=Woodbridge&q=table');
   await click(await screen.findByRole('link', { name: item.name }));
   expect(await screen.findByRole('heading', { name: item.name })).toBeInTheDocument();
-  expect(context('Find Free Items').getByRole('link', { name: 'Browse listings' })).toHaveAttribute('href', '/app/items?stateId=06&metroId=31080&city=Irvine&neighborhood=Woodbridge&q=table');
+  expect(context('Find').getByRole('link', { name: 'Browse listings' })).toHaveAttribute('href', '/app/items?stateId=06&metroId=31080&city=Irvine&neighborhood=Woodbridge&q=table');
   await click(screen.getByRole('button', { name: 'Browser Back' }));
   expect(await screen.findByLabelText('Search items')).toHaveValue('table');
   expect(screen.getByLabelText('City', { exact: true })).toHaveValue('Irvine');
@@ -146,7 +146,7 @@ test('public details and browser Back/Forward preserve shared discovery filters'
   expect(await screen.findByRole('heading', { name: item.name })).toBeInTheDocument();
   expect(screen.getByLabelText('Share this listing')).toHaveValue('http://localhost/app/items/' + item.id);
 });
-test.each([['giver', 'Give Away', 'Incoming requests'], ['receiver', 'Find Free Items', 'My pickup requests']])('direct private request links use the server-reported %s context', async (role, label, link) => {
+test.each([['giver', 'Donate', 'Incoming requests'], ['receiver', 'Find', 'My pickup requests']])('direct private request links use the server-reported %s context', async (role, label, link) => {
   sessionUser = user; detailRole = role; mount('/app/pickups/' + pickup.id);
   await screen.findByRole('heading', { name: item.name });
   await screen.findByText('Conversation loaded.');
@@ -157,17 +157,17 @@ test('mobile menu exposes its state, supports Escape/focus return, and closes af
   sessionUser = user; mount(); await screen.findByRole('button', { name: 'Logout' });
   const button = screen.getByRole('button', { name: 'Menu' }); expect(button).toHaveAttribute('aria-expanded', 'false');
   await click(button); expect(button).toHaveAttribute('aria-expanded', 'true'); expect(button).toHaveAttribute('aria-controls', 'primary-navigation');
-  fireEvent.keyDown(primary().getByRole('link', { name: 'My Listings' }), { key: 'Escape' });
+  fireEvent.keyDown(primary().getByRole('link', { name: 'Donate' }), { key: 'Escape' });
   expect(button).toHaveAttribute('aria-expanded', 'false'); expect(button).toHaveFocus();
-  await click(button); await click(primary().getByRole('link', { name: 'My Listings' }));
+  await click(button); await click(primary().getByRole('link', { name: 'Donate' }));
   expect(await screen.findByRole('heading', { name: 'My Listings' })).toBeInTheDocument();
   expect(button).toHaveAttribute('aria-expanded', 'false'); expect(document.getElementById('main-content')).toHaveFocus();
 });
 test('private item editors keep My Listings active instead of public discovery', async () => {
   sessionUser = user; mount('/app/items/' + item.id + '/edit');
   await screen.findByRole('button', { name: 'Logout' });
-  expect(primary().getByRole('link', { name: 'My Listings' })).toHaveAttribute('aria-current', 'location');
-  expect(primary().getByRole('link', { name: 'Find Free Items' })).not.toHaveAttribute('aria-current');
+  expect(primary().getByRole('link', { name: 'Donate' })).toHaveAttribute('aria-current', 'location');
+  expect(primary().getByRole('link', { name: 'Find' })).not.toHaveAttribute('aria-current');
 });
 test('brand and logout navigation return to the two-path homepage', async () => {
   sessionUser = user; mount('/app/profile'); await screen.findByRole('heading', { name: 'Your account' });
@@ -189,6 +189,6 @@ test('existing demo routes and item detail links remain usable outside the prima
 });
 test.each(['https://example.invalid/', '//example.invalid', '/app/login?again=1', '/app/register#again'])('unsafe or looping login destination %s returns to the homepage', async from => {
   mount({ pathname: '/app/login', state: { from } }); await screen.findByRole('heading', { name: 'Login' }); await login();
-  expect(await screen.findByRole('link', { name: 'Explore Free Items' })).toBeInTheDocument();
+  expect(await screen.findByRole('link', { name: 'Explore Items' })).toBeInTheDocument();
   expect(screen.getByTestId('route')).toHaveTextContent('/');
 });

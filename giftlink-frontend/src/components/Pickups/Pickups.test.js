@@ -51,7 +51,7 @@ test('anonymous receivers go to login before fetching the private pickup form', 
 test('public details offer a real request action while browsing stays anonymous', async () => {
   fetch.mockImplementation(async url => url.endsWith('/api/me') ? error('Sign in', 'UNAUTHENTICATED', 401) : response({ item }));
   mount('/app/items/' + item.id);
-  await click(await screen.findByRole('link', { name: 'Request pickup' }));
+  await click(await screen.findByRole('link', { name: "I'm interested" }));
   expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument();
 });
 test('the direct request form shows the server owner state instead of accepting appointment input', async () => {
@@ -59,7 +59,7 @@ test('the direct request form shows the server owner state instead of accepting 
   mount();
   expect(await screen.findByText('Your listing. You cannot request your own item. Manage it from My plans.')).toBeInTheDocument();
   expect(screen.queryByLabelText('Pickup date and time')).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Send pickup request' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Send to the giver' })).not.toBeInTheDocument();
 });
 test('form uses the giver timezone explicitly, never prepopulates browser local time, and sends no identities', async () => {
   mount(); const control = await screen.findByLabelText('Pickup date and time');
@@ -67,7 +67,7 @@ test('form uses the giver timezone explicitly, never prepopulates browser local 
   expect(screen.getByText(/does not reserve/)).toBeInTheDocument();
   fireEvent.change(control, { target: { value: '2030-07-01T14:30' } });
   fireEvent.change(screen.getByLabelText('Coordination note (optional, private)'), { target: { value: ' Meet by the library ' } });
-  await submit(screen.getByRole('button', { name: 'Send pickup request' }).closest('form'));
+  await submit(screen.getByRole('button', { name: 'Send to the giver' }).closest('form'));
   expect(await screen.findByRole('heading', { name: 'Pickup request' })).toBeInTheDocument();
   const [, options] = fetch.mock.calls.find(([, options]) => options.method === 'POST');
   expect(JSON.parse(options.body)).toEqual({ itemId: item.id, localDateTime: '2030-07-01T14:30', timeZone: 'Asia/Kolkata', note: 'Meet by the library' });
@@ -79,7 +79,7 @@ test('a direct request URL stops at a known reservation and can recover after it
   mount();
   const refresh = await screen.findByRole('button', { name: 'Check availability' });
   expect(screen.queryByLabelText('Pickup date and time')).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Send pickup request' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Send to the giver' })).not.toBeInTheDocument();
   expect(fetch.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true);
   isReserved = false; await click(refresh);
   expect(await screen.findByLabelText('Pickup date and time')).toHaveValue('');
@@ -88,17 +88,17 @@ test('missing reservation metadata does not silently claim that a pickup is avai
   fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { item: { ...item, isReserved: undefined } }));
   mount();
   expect(await screen.findByText('Current pickup availability will be checked when you send a request.')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Send pickup request' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Send to the giver' })).toBeInTheDocument();
 });
 test('missing giver timezone prevents request submission without guessing another zone', async () => {
   fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { item: { ...item, pickupTimeZone: null } }));
   mount(); expect(await screen.findByRole('alert')).toHaveTextContent('giver must set a pickup timezone');
-  expect(screen.queryByRole('button', { name: 'Send pickup request' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Send to the giver' })).not.toBeInTheDocument();
 });
 test.each(['INVALID_APPOINTMENT', 'OUTSIDE_PICKUP_WINDOW', 'ITEM_RESERVED', 'DUPLICATE_PICKUP', 'LISTING_UNAVAILABLE'])('form preserves the draft on %s', async code => {
   fetch.mockImplementation(async (url, options) => options.method === 'POST' ? error('Review the pickup time or listing.', code) : response(url.endsWith('/api/me') ? { user } : { item }));
   mount(); fireEvent.change(await screen.findByLabelText('Pickup date and time'), { target: { value: '2030-07-01T14:30' } });
-  await submit(screen.getByRole('button', { name: 'Send pickup request' }).closest('form'));
+  await submit(screen.getByRole('button', { name: 'Send to the giver' }).closest('form'));
   expect(await screen.findByRole('alert')).toHaveTextContent('Review the pickup time or listing.');
   expect(screen.getByLabelText('Pickup date and time')).toHaveValue('2030-07-01T14:30');
   if (['INVALID_APPOINTMENT', 'OUTSIDE_PICKUP_WINDOW'].includes(code)) {
@@ -113,7 +113,7 @@ test('private dashboards provide loading, empty/error/retry and role navigation'
   expect(await screen.findByRole('alert')).toHaveTextContent('Temporary failure');
   fetch.mockResolvedValue(response({ requests: [], nextCursor: null })); await click(screen.getByRole('button', { name: 'Retry requests' }));
   expect(await screen.findByText('No pickup requests here yet.')).toBeInTheDocument();
-  expect(screen.getByRole('navigation', { name: 'Give Away' })).toBeInTheDocument();
+  expect(screen.getByRole('navigation', { name: 'Donate' })).toBeInTheDocument();
 });
 test('giver dashboard displays appointment timezone and plan, and filters accepted appointments with bounded next pages', async () => {
   fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { requests: [{ ...base, role: 'giver', plan: { id: 'plan', title: 'Summer move' } }], nextCursor: base.id }));

@@ -32,12 +32,12 @@ function ListingBelt() {
     return <li key={(copy ? 'copy-' : '') + item.id} aria-hidden={copy || undefined}>
       <Link className="home-belt-card" to={`/app/items/${item.id}`} tabIndex={copy ? -1 : undefined} aria-label={copy ? undefined : item.name}>
         <img src={publicImageUrl(cover)} width={cover.width} height={cover.height} alt="" crossOrigin="use-credentials" loading="lazy" decoding="async" />
-        <span className="home-belt-free">Free</span>
+        {item.free !== false && <span className="home-belt-free">Free</span>}
         <span className="home-belt-caption"><strong>{item.name}</strong><span>{[item.neighborhood, item.city].filter(Boolean).join(', ')}</span></span>
       </Link>
     </li>;
   };
-  return <section className="home-belt" aria-label="Recently listed free items">
+  return <section className="home-belt" aria-label="Recently listed items">
     <ul className="home-belt-track">{items.map(item => card(item, false))}{items.map(item => card(item, true))}</ul>
   </section>;
 }
@@ -45,16 +45,16 @@ export default function Home() {
   return <main className="journey-home">
     <section className="home-hero">
       <div className="home-hero-inner">
-        <p className="journey-kicker">Free things. A little closer to home.</p>
+        <p className="journey-kicker">Useful things. A little closer to home.</p>
         <h1>Move lighter.<br /><span>Settle smarter.</span></h1>
         <div className="home-hero-row">
-          <p className="home-lead">Neighbors who are moving out give away furniture, kitchenware and lamps. Browse by area, request a pickup time, chat privately. Always free.</p>
+          <p className="home-lead">Neighbors who are moving out pass on furniture, kitchenware and lamps. Browse by area, request a pickup time, chat privately.</p>
           <div className="home-actions">
             <div className="home-action-row">
-              <Link className="home-action home-action--primary" to="/app/items">Explore Free Items<span aria-hidden="true">→</span></Link>
+              <Link className="home-action home-action--primary" to="/app/items">Explore Items<span aria-hidden="true">→</span></Link>
               <Link className="home-action home-action--ghost" to="/app/listings">Start Giving</Link>
             </div>
-            <small>Browse freely. Sign in to request a pickup or to give.</small>
+            <small>Browse without an account. Sign in to request a pickup or to donate.</small>
           </div>
         </div>
       </div>
@@ -63,7 +63,6 @@ export default function Home() {
     <section className="home-how" aria-labelledby="home-how-title">
       <div className="home-how-head">
         <h2 id="home-how-title">How it works</h2>
-        <p>Three steps. No payments, no shipping, and never a street address on the site.</p>
       </div>
       <ol className="home-steps">
         <li><span aria-hidden="true">01</span><h3>List</h3><p>Givers add photos, a general area and a pickup deadline.</p></li>
@@ -71,6 +70,6 @@ export default function Home() {
         <li><span aria-hidden="true">03</span><h3>Pick up</h3><p>Settle the details in a private chat, then meet at the agreed time.</p></li>
       </ol>
     </section>
-    <p className="home-reassurance">Everything is free. One account lets you give and find, wherever life takes you.</p>
+    <p className="home-reassurance">One account lets you donate and find, wherever life takes you.</p>
   </main>;
 }

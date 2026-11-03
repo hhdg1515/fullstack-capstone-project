@@ -40,7 +40,8 @@ describe('anonymous neighborhood discovery on verified isolated MongoDB', functi
         assert.equal(visible.city, 'Oakland'); assert.equal(visible.neighborhood, 'North Temescal');
         assert.equal(visible.availability, 'now');
         assert.deepEqual(Object.keys(visible).sort(), ['id', 'name', 'description', 'category', 'classification', 'stateId', 'metroId', 'stateLabel', 'metroLabel', 'isOwner', 'status', 'availability', 'availableFrom',
-            'availableUntil', 'effectiveAvailableUntil', 'city', 'neighborhood', 'moveOutDeadline', 'publishedAt', 'pickupTimeZone', 'isReserved'].sort());
+            'availableUntil', 'effectiveAvailableUntil', 'city', 'neighborhood', 'moveOutDeadline', 'publishedAt', 'pickupTimeZone', 'isReserved', 'free'].sort());
+        assert.equal(visible.free, true); // listings saved before the free flag count as free
         assert.equal(visible.isReserved, false);
         for (const secret of [plan.ownerId.toString(), plan._id.toString(), 'private-plan@example.test', 'Private plan title',
             'private-street', 'private-item@example.test', 'private-token', 'hash-secret', 'unit-secret', 'version']) {

@@ -33,8 +33,8 @@ export default function Navbar() {
       <button className="site-menu-button" ref={menuButton} aria-expanded={open} aria-controls="primary-navigation" onClick={() => setOpen(value => !value)}>{open ? 'Close menu' : 'Menu'}</button>
       <nav id="primary-navigation" className={`site-navigation ${open ? 'is-open' : ''}`} aria-label="Primary">
         <ul onClick={() => setOpen(false)}>
-          <li><Link to={location.pathname === '/app/items' ? location.pathname + location.search : '/app/items'} aria-current={find ? 'location' : undefined}>Find Free Items</Link></li>
-          <li><Link to="/app/listings" aria-current={give ? 'location' : undefined}>My Listings</Link></li>
+          <li><Link to={location.pathname === '/app/items' ? location.pathname + location.search : '/app/items'} aria-current={find ? 'location' : undefined}>Find</Link></li>
+          <li><Link to="/app/listings" aria-current={give ? 'location' : undefined}>Donate</Link></li>
         </ul>
         <div className="site-session">
           {status === 'loading' ? <span role="status">Checking session…</span> : isLoggedIn ? <>

@@ -16,8 +16,8 @@ export default function JourneyNav({ journey, planId, discoverySearch = '' }) {
     { to: `/app/items${browse}`, label: 'Browse listings', active: pathname.startsWith('/app/items') },
     { to: '/app/pickups', label: 'My pickup requests', active: pathname.startsWith('/app/pickups'), requiresAuth: true }
   ];
-  return <nav className="journey-nav" aria-label={giving ? 'Give Away' : 'Find Free Items'}>
-    <p className="journey-kicker">{giving ? 'Give Away' : 'Find Free Items'}</p>
+  return <nav className="journey-nav" aria-label={giving ? 'Donate' : 'Find'}>
+    <p className="journey-kicker">{giving ? 'Donate' : 'Find'}</p>
     <ul>{links.map(link => <li key={link.label}><Link to={link.to} aria-current={link.active ? 'location' : undefined}
       aria-describedby={anonymous && link.requiresAuth ? 'journey-sign-in' : undefined}>{link.label}</Link>
       {anonymous && link.requiresAuth && <small className="journey-sign-in" id="journey-sign-in">Sign in required</small>}</li>)}</ul>

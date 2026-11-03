@@ -80,7 +80,7 @@ function createOwnerListingService({ connectToDatabase, imageMetadata = null, im
         const v2 = ctx.modelVersion === 2;
         // V2 previews use only the item's own schema 2 rows, never a plan join.
         const preview = v2 && !independentPhotos ? { availability: 'disabled', images: [] } : legacy.ownerPhotoPreview(item, v2 ? null : plan);
-        return { id: item._id.toHexString(), name: item.name, description: item.description || '', classification: classificationResponse(item),
+        return { id: item._id.toHexString(), name: item.name, description: item.description || '', free: item.free !== false, classification: classificationResponse(item),
             status: item.status === 'available' && ctx.expired ? 'expired' : item.status, version: item.version,
             location: Object.assign(regionResponse(v2 ? item : plan), { city: ctx.region.city || '', neighborhood: ctx.region.neighborhood || '' }),
             pickup: { availableFrom: ctx.availableFrom, availableUntil: ctx.availableUntil, timeZone: ctx.pickupTimeZone,
@@ -107,7 +107,7 @@ function createOwnerListingService({ connectToDatabase, imageMetadata = null, im
                 if (!clock) throw missing();
                 const now = clock.now;
                 let item = applyDraft({ _id: itemId, ownerId, listingSchemaVersion: 2, status: 'draft', version: 1, coordinationRevision: 0, imageRevision: 0,
-                    createdAt: now, updatedAt: now, publishedAt: null, name: '', description: '', categoryId: null, itemTypeId: null, customItemType: null, condition: null,
+                    createdAt: now, updatedAt: now, publishedAt: null, name: '', description: '', categoryId: null, itemTypeId: null, customItemType: null, condition: null, free: true,
                     stateId: null, metroId: null, city: '', neighborhood: '', pickupTimeZone: null, timeZoneConfirmedAt: null, availableFrom: null, availableUntil: null }, input, now);
                 if (input.publish) item = require('./listing-publication').publish(item, now);
                 const result = response(item, null, now);

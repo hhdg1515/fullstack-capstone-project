@@ -63,7 +63,7 @@ function App() {
         <Route path="/app/pickups/:requestId" element={<RequireAuth><PickupDetail /></RequireAuth>} />
       </Routes>
       </div>
-      <footer className="site-footer"><p>Useful things, shared freely. One account for giving and finding.</p>
+      <footer className="site-footer"><p>Useful things, passed on to neighbors. One account for donating and finding.</p>
       </footer>
     </>
   );

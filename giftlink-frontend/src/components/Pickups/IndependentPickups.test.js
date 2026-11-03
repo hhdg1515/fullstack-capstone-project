@@ -45,7 +45,7 @@ test('requester sees local-date rules in the confirmed zone and submits that zon
   expect(screen.queryByText(/UTC date/)).not.toBeInTheDocument();
   expect(screen.getByText('Los Angeles-Long Beach-Anaheim, CA')).toBeVisible(); // no empty ", " when city/neighborhood are omitted
   fireEvent.change(screen.getByLabelText('Pickup date and time'), { target: { value: '2030-07-02T10:00' } });
-  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send pickup request' })); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send to the giver' })); });
   const sent = records.find(([method, url]) => method === 'POST' && url.endsWith('/api/pickup-requests'));
   expect(sent[2]).toEqual({ itemId: item.id, localDateTime: '2030-07-02T10:00', timeZone: zone, note: '' });
 });
