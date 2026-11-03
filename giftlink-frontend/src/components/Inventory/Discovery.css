@@ -1,4 +1,4 @@
-/* Find free items and item detail (redesign v2): white page, ink actions, pill controls. */
+/* Find items and item detail (redesign v2): white page, ink actions, pill controls. */
 .ui-page.discovery-page { max-width: 80rem; padding: 3rem 2rem 5rem; box-sizing: border-box; color: var(--ui-ink); }
 .discovery-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 1.5rem; margin-bottom: 2rem; }
 .discovery-head h1 { font-size: clamp(2.5rem, 5vw, 4rem); line-height: 1; letter-spacing: -.045em; }

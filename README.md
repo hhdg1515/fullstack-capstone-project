@@ -1,12 +1,12 @@
 # Move-Out Marketplace
 
-**Give away what you can't take with you. Find what you need for free.**
+**Pass on what you can't take with you. Find what you need nearby.**
 
 When people move out they throw away furniture, kitchenware and lamps that a neighbor would happily pick up. Move-Out Marketplace is a full-stack web app for exactly that handoff:
 
 - **Givers** list items with photos, a pickup area and a pickup deadline.
 - **Neighbors** browse by metro, city and neighborhood, request a pickup time and coordinate in a private chat.
-- **Everything is free.** There are no payments, no shipping and no addresses on the site.
+- **Handed over in person.** Givers and neighbors settle the details in a private chat; street addresses never appear on the site.
 
 The project started from the IBM Full-Stack capstone ("GiftLink") and was rebuilt into an item-first marketplace. The rebuild added real accounts, transactional pickups, a private photo pipeline, and accessibility and browser test coverage.
 
@@ -20,15 +20,15 @@ The demo runs on free tiers (Vercel, MongoDB Atlas and Cloudflare R2), so the fi
 
 The full handoff needs two accounts, so use a normal browser window and a private (incognito) window side by side:
 
-1. **Window A, the giver.** Register, open **My Listings → Create Listing**, add a name, a photo or two, a pickup area and a deadline, then **Publish**.
-2. **Window B, the neighbor.** Without signing in, open **Find Free Items**, choose the same metro area and open the listing. Click **Request pickup**, choose **Register Here** on the sign-in page to create a second account, then pick a time inside the pickup window and send the request.
-3. **Window A.** Go to **My Listings → Incoming requests** and choose **Accept pickup**. The item is now reserved for everyone else.
+1. **Window A, the giver.** Register, open **Donate → Create Listing**, add a name, a photo or two, a pickup area and a deadline, then **Publish**.
+2. **Window B, the neighbor.** Without signing in, open **Find**, choose the same metro area and open the listing. Click **Request pickup**, choose **Register Here** on the sign-in page to create a second account, then pick a time inside the pickup window and send the request.
+3. **Window A.** Go to **Donate → Incoming requests** and choose **Accept pickup**. The item is now reserved for everyone else.
 4. **Both windows.** Open the request with **Open conversation** and exchange a few messages in the private chat.
-5. **Optional.** Cancel the request from window B, or withdraw the listing from **Manage listing** in window A and watch it disappear from Find Free Items.
+5. **Optional.** Cancel the request from window B, or withdraw the listing from **Manage listing** in window A and watch it disappear from Find.
 
 ## What you can do
 
-| Giver (My Listings) | Neighbor (Find Free Items) |
+| Giver (Donate) | Neighbor (Find) |
 | --- | --- |
 | Create a listing: name, type, condition, description, up to 5 photos, pickup area and deadline | Browse anonymously by **metro area → city → neighborhood** |
 | Publish it, then edit it in place or withdraw it from **Manage listing** | Search and filter (category, item type, condition, sort); results update as you type |
@@ -55,7 +55,7 @@ flowchart LR
   S -- "Sharp re-encode,<br/>private objects only" --> OBJ[("S3-compatible storage<br/>SeaweedFS locally · Cloudflare R2 adapter")]
 ```
 
-- **Frontend (`giftlink-frontend`)**: a Create React App SPA. Pages are grouped by journey: Find Free Items, My Listings, and Pickups. Shared form, feedback and unsaved-changes guards live in `src/forms` and `src/design-system`.
+- **Frontend (`giftlink-frontend`)**: a Create React App SPA. Pages are grouped by journey: Find, Donate (My Listings), and Pickups. Shared form, feedback and unsaved-changes guards live in `src/forms` and `src/design-system`.
 - **API (`giftlink-backend`)**: Express with thin routes and domain services (`services/`).
   - It runs as a long-lived server locally and on Vercel's Express runtime in staging (`vercel.json`).
   - It refuses to start against a standalone MongoDB, because every coordinated write uses a transaction.

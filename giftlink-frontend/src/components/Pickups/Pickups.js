@@ -92,7 +92,7 @@ export function PickupDashboard({ incoming = false }) {
     {data.data && <>
       {!data.data.requests.length && <Surface className="ui-empty">{status ? <><h2>No requests match this status.</h2>
         <button className="ui-button ui-button--secondary" onClick={() => setStatus('')}>Clear status filter</button></> : <><h2>No pickup requests here yet.</h2>
-          {!incoming && <Link className="ui-button" to="/app/items">Find free items</Link>}</>}</Surface>}
+          {!incoming && <Link className="ui-button" to="/app/items">Find items</Link>}</>}</Surface>}
       <ul className="pickup-cards" aria-label="Pickup requests">{data.data.requests.map(request => <Surface as="li" className="pickup-request-card" key={request.id}>
         <div className="pickup-card-heading"><h2>{request.item ? <Link to={`/app/items/${request.item.id}`}>{request.item.name}</Link> : 'Former listing'}</h2>
           {request.status !== 'pending' && <span className="ui-status">{pickupLabels[request.status] || 'Status unavailable'}</span>}</div>

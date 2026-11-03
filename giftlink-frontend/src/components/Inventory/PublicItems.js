@@ -186,7 +186,7 @@ function Discovery() {
   const chip = (label, pressed, onClick) => <button type="button" key={label} className="discovery-chip" aria-pressed={pressed} disabled={filtersOff} onClick={onClick}>{label}</button>;
   return <main className="ui-page discovery-page discovery-feed">
     <div className="discovery-head">
-      <h1>Find free items</h1>
+      <h1>Find items</h1>
       <JourneyNav journey="find" />
     </div>
     {directory.error && <Feedback error><p>Region options are unavailable.</p><button className="ui-button ui-button--secondary" onClick={directory.retry}>Retry region options</button></Feedback>}
@@ -227,7 +227,7 @@ function Discovery() {
       </div>}
       {invalidRegion && <p role="status" className="discovery-help">This area is not supported. Choose a listed metro area.</p>}
     </form>
-    {!selected && !directory.loading && !directory.error && <div className="discovery-first"><h2>Choose a metro area</h2><p>Pick a metro area above to see free items near you.</p></div>}
+    {!selected && !directory.loading && !directory.error && <div className="discovery-first"><h2>Choose a metro area</h2><p>Pick a metro area above to see items near you.</p></div>}
     {selected && <>
     {catalog.error && <Feedback error><p>Item filter options are unavailable.</p><button className="ui-button ui-button--secondary" onClick={catalog.retry}>Retry item filters</button></Feedback>}
     {places.loading && <p role="status" className="discovery-help">Loading location options…</p>}
@@ -281,7 +281,7 @@ function PublicItemDetail({ itemId }) {
   const owner = item?.isOwner === true;
   return <main className="ui-page discovery-page public-item-page">
     <JourneyNav journey="find" discoverySearch={previous || ''} />
-    <Link className="public-item-back" to={`/app/items${typeof previous === 'string' && previous.startsWith('?') ? previous : ''}`}><span aria-hidden="true">←</span>Back to free items</Link>
+    <Link className="public-item-back" to={`/app/items${typeof previous === 'string' && previous.startsWith('?') ? previous : ''}`}><span aria-hidden="true">←</span>Back to items</Link>
     {current.loading && <p role="status">Loading listing…</p>}
     {current.error && <div role="alert"><p>{current.error.status === 404 ? 'This listing is no longer available.' : current.error.message}</p>
       <button className="ui-button ui-button--secondary" onClick={() => setAttempt(value => value + 1)}>Retry listing</button></div>}
@@ -291,8 +291,8 @@ function PublicItemDetail({ itemId }) {
         <section className="public-item-about"><h2>Description</h2><p className="public-item-description">{item.description || 'No additional description provided.'}</p></section>
       </div>
       <aside className="public-item-aside">
-        <div className="public-item-chips"><span className="ui-status ui-status--free">Free</span><AvailabilityChip item={item} />{owner && <span className="ui-status ui-status--owner">Your listing</span>}</div>
-        <div className="public-item-heading"><h1>{item.name}</h1><p>{placeLabel(item)} · Free</p></div>
+        <div className="public-item-chips"><AvailabilityChip item={item} />{owner && <span className="ui-status ui-status--owner">Your listing</span>}</div>
+        <div className="public-item-heading"><h1>{item.name}</h1><p>{placeLabel(item)}</p></div>
         <Specs item={item} />
         <PickupWindow item={item} />
         <div className="public-item-action">

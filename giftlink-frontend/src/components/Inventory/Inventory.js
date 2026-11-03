@@ -31,7 +31,7 @@ function OwnerItemEditor({ itemId, user }) {
   if (!value || value.itemId !== itemId.toLowerCase() || !/^[a-f0-9]{24}$/.test(value.planId)) return <main className="ui-page">
     <Feedback error><p>{[403, 404].includes(context.error?.status) || !context.error ? 'This item is unavailable.' : context.error.message}</p>
       {context.error && ![403, 404].includes(context.error.status) && <button className="ui-button ui-button--secondary" onClick={context.retry}>Retry item</button>}</Feedback>
-    <Link to="/app/items">Back to free items</Link></main>;
+    <Link to="/app/items">Back to items</Link></main>;
   return <InventorySession key={user.id + ':' + itemId} planId={value.planId} user={user} focusedItemId={value.itemId} />;
 }
 function InventorySession({ planId, user, focusedItemId }) {

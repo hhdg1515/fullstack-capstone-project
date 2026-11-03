@@ -246,7 +246,7 @@ test('detail navigation returns to the applied filters and direct unavailable li
   handler = async url => url.includes(a.id) ? reply(200, { item: a }) : feed([a]);
   mount('/app/items?city=Oakland&availability=now'); await ready(); await act(async () => { fireEvent.click(screen.getByRole('link', { name: a.name })); });
   expect(await screen.findByRole('heading', { name: a.name, level: 1 })).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Back to free items' })).toHaveAttribute('href', '/app/items?city=Oakland&availability=now&stateId=06&metroId=41860');
+  expect(screen.getByRole('link', { name: 'Back to items' })).toHaveAttribute('href', '/app/items?city=Oakland&availability=now&stateId=06&metroId=41860');
   handler = async () => reply(404, { error: { message: 'Listing unavailable' } });
   await click('Refresh listings');
   expect(await screen.findByRole('alert')).toHaveTextContent('This listing is no longer available');
@@ -261,7 +261,7 @@ test('focus refresh keeps an unsubmitted search draft while checking current pub
 });
 test('filters stay visible and apply shortly after typing, with no submit button', async () => {
   mount(); await ready();
-  expect(screen.queryByRole('button', { name: /^Filters/ })).not.toBeInTheDocument(); expect(screen.queryByRole('button', { name: 'Find free items' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /^Filters/ })).not.toBeInTheDocument(); expect(screen.queryByRole('button', { name: 'Find items' })).not.toBeInTheDocument();
   const count = apiCalls().length;
   fireEvent.change(screen.getByLabelText('Search items'), { target: { value: 'kitchen' } });
   expect(apiCalls()).toHaveLength(count); expect(screen.getByLabelText('Search items')).toHaveValue('kitchen');
@@ -353,7 +353,7 @@ test('owner cards remain visible with compact authoritative type and condition l
 
 test('location-first hierarchy keeps the page title short, all filter controls visible', async () => {
   mount(); await ready();
-  expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/^Find free items$/);
+  expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/^Find items$/);
   expect(screen.queryByRole('region', { name: 'Browsing area' })).not.toBeInTheDocument(); expect(screen.queryByRole('button', { name: 'Change region' })).not.toBeInTheDocument();
   for (const name of ['Condition', 'Sort items']) expect(screen.getByLabelText(name)).toBeVisible();
   expect(within(screen.getByRole('group', { name: 'Category' })).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
@@ -406,7 +406,7 @@ test('cards expose real type/category, optional condition, location and pickup w
   expect(card.getByRole('heading', { level: 3 })).toHaveTextContent(b.name);
   expect(card.getByText('Lamp · Office & Lighting')).toBeVisible();
   expect(card.getByText('Rockridge, Oakland, CA')).toBeVisible();
-  expect(card.getByText('Free')).toBeVisible(); expect(card.queryByText('(UTC)')).not.toBeInTheDocument();
+  expect(card.queryByText('Free')).not.toBeInTheDocument(); expect(card.queryByText('(UTC)')).not.toBeInTheDocument();
   expect(card.getByText(formatDate(b.availableFrom))).toHaveAttribute('datetime', b.availableFrom);
   expect(card.queryByText(/Condition:/)).not.toBeInTheDocument();
   expect(card.queryByRole('img')).not.toBeInTheDocument();

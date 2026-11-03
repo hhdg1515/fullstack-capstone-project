@@ -13,7 +13,7 @@ export default function PublicItemCard({ item, search, stateCode }) {
     <Link className="public-item-card-link" aria-label={item.name} to={`/app/items/${item.id}`} state={{ discoverySearch: search ? `?${search}` : '' }}>
       <span className="discovery-listing-media">
         <PublicItemCover key={item.coverImage?.id || item.imageAvailability || 'legacy'} item={item} />
-        <span className="discovery-listing-status"><span className="ui-status ui-status--free">Free</span>
+        <span className="discovery-listing-status">
           <span className={`ui-status ${later ? 'ui-status--later' : 'ui-status--now'}`}>{later ? 'Available Later' : 'Available Now'}</span>
           {item.isOwner === true && <span className="ui-status ui-status--owner">Your listing</span>}</span>
       </span>
