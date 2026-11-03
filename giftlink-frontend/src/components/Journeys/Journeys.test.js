@@ -60,13 +60,16 @@ test('anonymous homepage exposes both intentions immediately while the session c
   expect(screen.getByRole('link', { name: 'Start Giving' })).toHaveAttribute('href', '/app/listings');
   expect(screen.getByRole('link', { name: 'Explore Free Items' })).toHaveAttribute('href', '/app/items');
   expect(screen.getByText(/Everything is free/)).toBeInTheDocument();
-  expect(fetch).toHaveBeenCalledTimes(1); expect(fetch.mock.calls[0][0]).toMatch(/\/api\/me$/);
+  // Only the session check and the public listing belt are read; nothing private.
+  const urls = fetch.mock.calls.map(([url]) => url);
+  expect(urls).toHaveLength(2); expect(urls.filter(url => /\/api\/me$/.test(url))).toHaveLength(1);
+  expect(urls).toContain('/api/items?stateId=06&metroId=41860');
 });
 test('Find Free Items opens anonymously without a plan and asks for a metro area', async () => {
-  mount(); await click(screen.getByRole('link', { name: 'Explore Free Items' }));
+  mount(); const homeReads = fetch.mock.calls.length; await click(screen.getByRole('link', { name: 'Explore Free Items' }));
   expect(await screen.findByRole('heading', { name: 'Choose a metro area' })).toBeInTheDocument();
   expect(screen.getByLabelText('Metro area', { exact: true })).toHaveValue('');
-  expect(fetch.mock.calls.some(([url]) => url.includes('/api/items?'))).toBe(false);
+  expect(fetch.mock.calls.slice(homeReads).some(([url]) => url.includes('/api/items?'))).toBe(false);
   expect(primary().getByRole('link', { name: 'Find Free Items' })).toHaveAttribute('aria-current', 'location');
   expect(context('Find Free Items').getByRole('link', { name: 'My pickup requests' })).toHaveAccessibleDescription('Sign in required');
   expect(fetch.mock.calls.some(([url]) => url.includes('/api/move-out-plans'))).toBe(false);

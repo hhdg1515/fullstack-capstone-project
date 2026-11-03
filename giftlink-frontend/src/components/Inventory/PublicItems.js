@@ -7,8 +7,7 @@ import './Inventory.css';
 import JourneyNav from '../Journeys/JourneyNav';
 import { useAppContext } from '../../context/AuthContext';
 import usePublicCatalog from '../../api/usePublicCatalog';
-import ItemLabels from './ItemLabels';
-import { PageHeader, Surface, Feedback } from '../../design-system/primitives';
+import { Feedback } from '../../design-system/primitives';
 import './Discovery.css';
 import PublicItemCard from './PublicItemCard';
 import PublicItemGallery from './PublicItemPhotos';
@@ -19,15 +18,25 @@ const normalize = value => value.trim().replace(/\s+/g, ' ');
 const key = value => normalize(value).toLowerCase();
 const fieldsFrom = params => ({ categoryId: params.get('categoryId') || '', itemTypeId: params.get('itemTypeId') || '', condition: params.get('condition') || '', q: params.get('q') || '', city: params.get('city') || '', neighborhood: params.get('neighborhood') || '',
   sort: params.get('sort') || 'newest' });
+const laterPickup = item => (item.availability || (item.availableFrom && item.availableFrom > utcToday() ? 'later' : 'now')) === 'later';
+function AvailabilityChip({ item }) {
+  const later = laterPickup(item), known = item.isReserved !== true && item.pickupTimeZone !== null && typeof item.isReserved === 'boolean';
+  return <span className={`ui-status${known ? (later ? ' ui-status--later' : ' ui-status--now') : ''}`}>
+    {item.isReserved === true ? 'Pickup arranged' : item.pickupTimeZone === null ? 'Pickup setup needed' : typeof item.isReserved !== 'boolean' ? 'Pickup window' : later ? 'Available Later' : 'Available Now'}
+  </span>;
+}
 function PickupWindow({ item }) {
-  const later = (item.availability || (item.availableFrom && item.availableFrom > utcToday() ? 'later' : 'now')) === 'later';
-  return <>
-    <p><span className={`plan-status ${later ? 'pickup-later' : 'pickup-now'}`}>
-      {item.isReserved === true ? 'Pickup arranged' : item.pickupTimeZone === null ? 'Pickup setup needed' : typeof item.isReserved !== 'boolean' ? 'Pickup window' : later ? 'Available Later' : 'Available Now'}
-    </span></p>
-    <p>Pickup from: {item.availableFrom ? <time dateTime={item.availableFrom}>{formatDeadline(item.availableFrom)}</time> : 'Immediately'}</p>
-    <p>Pickup until: <time dateTime={item.effectiveAvailableUntil}>{formatDeadline(item.effectiveAvailableUntil)}</time></p>
-  </>;
+  return <div className="public-item-window">
+    <p><span>Pickup from</span>{item.availableFrom ? <time dateTime={item.availableFrom}>{formatDeadline(item.availableFrom)}</time> : <strong>Immediately</strong>}</p>
+    <span className="public-item-window-arrow" aria-hidden="true">→</span>
+    <p><span>Pickup until</span><time dateTime={item.effectiveAvailableUntil}>{formatDeadline(item.effectiveAvailableUntil)}</time></p>
+  </div>;
+}
+function Specs({ item }) {
+  const classification = item.classification || {};
+  const rows = [['Type', classification.customItemType || classification.itemType?.label], ['Category', classification.category?.label || item.category], ['Condition', classification.condition?.label]]
+    .filter(([, value]) => typeof value === 'string' && value);
+  return rows.length ? <dl className="public-item-specs">{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl> : null;
 }
 const preferenceKey = 'moveout.browse-region.v1';
 const selectedMetro = (directory, stateId, metroId) => directory?.states.some(state => state.id === stateId) &&
@@ -173,53 +182,70 @@ function Discovery() {
     const { name, value } = event.target;
     setFields(previous => ({ ...previous, [name]: value, ...(name === 'city' ? { neighborhood: '' } : {}), ...(name === 'categoryId' ? { itemTypeId: '' } : {}) }));
   };
+  const filtersOff = !selected || catalog.loading || Boolean(catalog.error);
+  const chip = (label, pressed, onClick) => <button type="button" key={label} className="discovery-chip" aria-pressed={pressed} disabled={filtersOff} onClick={onClick}>{label}</button>;
   return <main className="ui-page discovery-page discovery-feed">
-    <JourneyNav journey="find" />
-    <PageHeader title="Find free items" />
+    <div className="discovery-head">
+      <h1>Find free items</h1>
+      <JourneyNav journey="find" />
+    </div>
     {directory.error && <Feedback error><p>Region options are unavailable.</p><button className="ui-button ui-button--secondary" onClick={directory.retry}>Retry region options</button></Feedback>}
-    <Surface as="form" aria-label="Search and filters" className="discovery-filters" onSubmit={submit} noValidate>
-      <div className="ui-field discovery-search"><label htmlFor="browse-q">Search items</label>
-        <input id="browse-q" name="q" maxLength={100} placeholder="Name, description or item type" value={fields.q} onChange={change} disabled={!selected} /></div>
-      <div id="discovery-common-options" className="discovery-common-options">
-        <div className="ui-field"><label htmlFor="browse-category">Category</label><select id="browse-category" name="categoryId" value={fields.categoryId} onChange={change} disabled={!selected || catalog.loading || Boolean(catalog.error)}>
-          <option value="">All categories</option>{catalog.data?.categories.map(entry => <option value={entry.id} key={entry.id}>{entry.label}</option>)}
-        </select></div>
-        <div className="ui-field discovery-type-option"><label htmlFor="browse-type">Item type</label><select id="browse-type" name="itemTypeId" value={fields.itemTypeId} onChange={change} disabled={!selected || !category || catalog.loading || Boolean(catalog.error)}>
-          <option value="">{category ? 'All item types' : 'Choose a category first'}</option>{category?.itemTypes.map(entry => <option value={entry.id} key={entry.id}>{entry.label}</option>)}
-        </select></div>
-        <div className="ui-field"><label htmlFor="browse-condition">Condition</label><select id="browse-condition" name="condition" value={fields.condition} onChange={change} disabled={!selected || catalog.loading || Boolean(catalog.error)}>
-          <option value="">Any condition</option>{catalog.data?.conditions.map(entry => <option value={entry.id} key={entry.id}>{entry.label}</option>)}
-        </select></div>
-        <div className="ui-field"><label htmlFor="browse-sort">Sort items</label><select id="browse-sort" name="sort" value={fields.sort} onChange={change} disabled={!selected}>
-          <option value="newest">Newest publication</option><option value="deadline">Earliest pickup deadline</option></select></div>
+    {directory.loading && <p role="status" className="discovery-help">Loading region options…</p>}
+    <form aria-label="Search and filters" className="discovery-filters" onSubmit={submit} noValidate>
+      {/* Where (metro → city → neighborhood) and search share one command bar. */}
+      <div className="discovery-bar">
+        <div className="discovery-where" role="group" aria-label="Where">
+          <div className="discovery-segment"><label htmlFor="browse-metro">Metro area</label><select id="browse-metro" name="metroId" value={selected ? selected.id : ''} onChange={changeMetro} disabled={directory.loading || Boolean(directory.error)}>
+            <option value="">{directory.loading ? 'Loading metro areas…' : 'Choose a metro area'}</option>{metros.map(metro => <option key={metro.id} value={metro.id}>{metro.label}</option>)}</select></div>
+          <div className="discovery-segment"><label htmlFor="browse-city">City</label><select id="browse-city" name="city" value={city} onChange={change} disabled={!selected}><option value="">All cities</option>
+            {cities.map(value => <option key={key(value)} value={value}>{value}</option>)}</select></div>
+          <div className="discovery-segment"><label htmlFor="browse-neighborhood">Neighborhood</label><select id="browse-neighborhood" name="neighborhood" value={neighborhood} onChange={change} disabled={!selected}><option value="">All neighborhoods</option>
+            {neighborhoods.map(value => <option key={key(value)} value={value}>{value}</option>)}</select></div>
+        </div>
+        <div className="discovery-segment discovery-search"><label htmlFor="browse-q">Search items</label>
+          <input id="browse-q" name="q" maxLength={100} placeholder="Name, description or item type" value={fields.q} onChange={change} disabled={!selected} /></div>
       </div>
-      <div id="discovery-filter-options" className="discovery-options">
-        <div className="ui-field"><label htmlFor="browse-metro">Metro area</label><select id="browse-metro" name="metroId" value={selected ? selected.id : ''} onChange={changeMetro} disabled={directory.loading || Boolean(directory.error)}>
-          <option value="">{directory.loading ? 'Loading metro areas…' : 'Choose a metro area'}</option>{metros.map(metro => <option key={metro.id} value={metro.id}>{metro.label}</option>)}</select></div>
-        <div className="ui-field"><label htmlFor="browse-city">City</label><select id="browse-city" name="city" value={city} onChange={change} disabled={!selected}><option value="">All cities</option>
-          {cities.map(value => <option key={key(value)} value={value}>{value}</option>)}</select></div>
-        <div className="ui-field"><label htmlFor="browse-neighborhood">Neighborhood</label><select id="browse-neighborhood" name="neighborhood" value={neighborhood} onChange={change} disabled={!selected}><option value="">All neighborhoods</option>
-          {neighborhoods.map(value => <option key={key(value)} value={value}>{value}</option>)}</select></div>
+      <div className="discovery-row">
+        <div className="discovery-chips" role="group" aria-label="Category">
+          {chip('All', !fields.categoryId, () => setFields(previous => ({ ...previous, categoryId: '', itemTypeId: '' })))}
+          {catalog.data?.categories.map(entry => chip(entry.label, fields.categoryId === entry.id,
+            () => setFields(previous => ({ ...previous, categoryId: previous.categoryId === entry.id ? '' : entry.id, itemTypeId: '' }))))}
+        </div>
+        <div className="discovery-pills">
+          <div className="discovery-pill"><label htmlFor="browse-condition">Condition</label><select id="browse-condition" name="condition" value={fields.condition} onChange={change} disabled={filtersOff}>
+            <option value="">Any</option>{catalog.data?.conditions.map(entry => <option value={entry.id} key={entry.id}>{entry.label}</option>)}
+          </select></div>
+          <div className="discovery-pill"><label htmlFor="browse-sort">Sort items</label><select id="browse-sort" name="sort" value={fields.sort} onChange={change} disabled={!selected}>
+            <option value="newest">Newest</option><option value="deadline">Earliest deadline</option></select></div>
+          {selected && canReset && <button type="button" className="discovery-reset" onClick={reset}>Reset</button>}
+        </div>
       </div>
+      {category && <div className="discovery-chips discovery-type-chips" role="group" aria-label="Item type">
+        <span aria-hidden="true">Item type</span>
+        {chip('All item types', !fields.itemTypeId, () => setFields(previous => ({ ...previous, itemTypeId: '' })))}
+        {category.itemTypes.map(entry => chip(entry.label, fields.itemTypeId === entry.id, () => setFields(previous => ({ ...previous, itemTypeId: entry.id }))))}
+      </div>}
       {invalidRegion && <p role="status" className="discovery-help">This area is not supported. Choose a listed metro area.</p>}
-      {selected && canReset && <div className="discovery-search-actions"><button type="button" className="ui-button ui-button--secondary" onClick={reset}>Reset</button></div>}
-    </Surface>
-    {!selected && !directory.loading && !directory.error && <Surface className="discovery-empty"><h2>Choose a metro area</h2><p>Pick a metro area above to see free items near you.</p></Surface>}
+    </form>
+    {!selected && !directory.loading && !directory.error && <div className="discovery-first"><h2>Choose a metro area</h2><p>Pick a metro area above to see free items near you.</p></div>}
     {selected && <>
-    <p className="discovery-summary" aria-label="Applied filters">{applied.length ? applied.join(' · ') : 'No account needed to browse.'}</p>
     {catalog.error && <Feedback error><p>Item filter options are unavailable.</p><button className="ui-button ui-button--secondary" onClick={catalog.retry}>Retry item filters</button></Feedback>}
     {places.loading && <p role="status" className="discovery-help">Loading location options…</p>}
     {places.error && <Feedback error><p>Location options could not be loaded. You can still browse this metro.</p><button className="ui-button ui-button--secondary" onClick={() => setLocationAttempt(value => value + 1)}>Retry location options</button></Feedback>}
     {places.truncated && <p>Location suggestions are limited. Shared city/neighborhood filters still work beyond these suggestions.</p>}
     <section aria-label="Search results" aria-busy={visible.loading || visible.moreLoading || false}>
-      {!visible.loading && !visible.error && Number.isSafeInteger(visible.total) && <h2 className="discovery-results-heading">{visible.total} available {visible.total === 1 ? 'item' : 'items'}</h2>}
+      <div className="discovery-results-head">
+        {!visible.loading && !visible.error && Number.isSafeInteger(visible.total) && <h2 className="discovery-results-heading"><span className="discovery-count">{visible.total}</span> available {visible.total === 1 ? 'item' : 'items'}</h2>}
+        {visible.loading && <p role="status" className="discovery-loading">Loading listings…</p>}
+        <p className="discovery-summary" aria-label="Applied filters">{applied.length ? applied.join(' · ') : 'No account needed to browse.'}</p>
+      </div>
       {visible.refreshedAvailability && <Feedback>Availability changed. Results have been refreshed.</Feedback>}
-      {visible.loading && <Feedback>Loading listings…</Feedback>}
-      {visible.error && <Feedback error><h2>Could not load items</h2><p>{visible.error.message}</p>{visible.moreError && <p>Previously loaded items are shown below. Refresh to confirm availability.</p>}<button className="ui-button ui-button--secondary" onClick={() => visible.moreError && !['STALE_CURSOR', 'INVALID_CURSOR'].includes(visible.error.code) ? loadMore() : restart()}>
-        {['STALE_CURSOR', 'INVALID_CURSOR'].includes(visible.error.code) ? 'Start again' : 'Retry results'}</button></Feedback>}
-      {!visible.loading && !visible.error && visible.total === 0 && <Surface className="discovery-empty"><h3>{applied.length ? 'Try a different filter' : 'No items here yet'}</h3><p>{applied.length ? 'No available items match these filters. Reset or try another search.' : 'No available items in this metro yet. Try another region or check back later.'}</p></Surface>}
-      {Boolean(visible.items?.length) && !visible.error && <p role="status" className="discovery-loaded">Showing {visible.items.length} {visible.items.length === 1 ? 'item' : 'items'}</p>}
+      {visible.loading && !visible.items?.length && <ul className="discovery-grid discovery-skeleton" aria-hidden="true">{[1, 2, 3, 4, 5, 6, 7, 8].map(n => <li key={n}><span /><span /><span /></li>)}</ul>}
+      {visible.error && <div role="alert" className="discovery-error"><h2>Could not load items</h2><p>{visible.error.message}</p>{visible.moreError && <p>Previously loaded items are shown below. Refresh to confirm availability.</p>}<button className="ui-button" onClick={() => visible.moreError && !['STALE_CURSOR', 'INVALID_CURSOR'].includes(visible.error.code) ? loadMore() : restart()}>
+        {['STALE_CURSOR', 'INVALID_CURSOR'].includes(visible.error.code) ? 'Start again' : 'Retry results'}</button></div>}
+      {!visible.loading && !visible.error && visible.total === 0 && <div className="discovery-empty"><h3>{applied.length ? 'Try a different filter' : 'No items here yet'}</h3><p>{applied.length ? 'No available items match these filters. Reset or try another search.' : 'No available items in this metro yet. Try another region or check back later.'}</p></div>}
       <ul className="discovery-grid" aria-label="Available items">{visible.items?.map(item => <PublicItemCard key={item.id} item={item} search={query} stateCode={directory.data.states.find(row => row.id === item.stateId)?.code} />)}</ul>
+      {Boolean(visible.items?.length) && !visible.error && <p role="status" className="discovery-loaded">Showing {visible.items.length} {visible.items.length === 1 ? 'item' : 'items'}</p>}
       {visible.page?.hasMore && <button className="ui-button discovery-more" disabled={visible.moreLoading} onClick={loadMore}>{visible.moreLoading ? 'Loading more…' : 'Load more'}</button>}
     </section>
     </>}
@@ -250,27 +276,39 @@ function PublicItemDetail({ itemId }) {
     try { await navigator.clipboard.writeText(shareUrl); setMessage('Link copied.'); }
     catch { setMessage('Copy the link from the field above.'); }
   };
-  return <main className="ui-page plans-page discovery-page">
+  // The copy confirmation is a short toast.
+  useEffect(() => { if (!message) return undefined; const timer = setTimeout(() => setMessage(''), 2500); return () => clearTimeout(timer); }, [message]);
+  const owner = item?.isOwner === true;
+  return <main className="ui-page discovery-page public-item-page">
     <JourneyNav journey="find" discoverySearch={previous || ''} />
-    <Link to={`/app/items${typeof previous === 'string' && previous.startsWith('?') ? previous : ''}`}>Back to free items</Link>
+    <Link className="public-item-back" to={`/app/items${typeof previous === 'string' && previous.startsWith('?') ? previous : ''}`}><span aria-hidden="true">←</span>Back to free items</Link>
     {current.loading && <p role="status">Loading listing…</p>}
     {current.error && <div role="alert"><p>{current.error.status === 404 ? 'This listing is no longer available.' : current.error.message}</p>
-      <button className="btn btn-outline-secondary ui-button ui-button--secondary" onClick={() => setAttempt(value => value + 1)}>Retry listing</button></div>}
-    {item && <article className="plan-panel">
-      <div className="public-item-heading"><h1>{item.name}</h1>{item.isOwner === true && auth?.status === 'authenticated' && (item.listingModel === 2 ? <Link className="btn btn-primary ui-button" to={`/app/items/${item.id}/edit`}>Manage listing</Link> :
-        <Link className="btn btn-primary ui-button" to={`/app/items/${item.id}/edit`}>Edit item</Link>)}</div><p>{placeLabel(item)} · Free</p>
-      <ItemLabels item={item} />
-      <PublicItemGallery key={`${scope}:${attempt}`} item={item} />
-      <PickupWindow item={item} />
-      <h2>Description</h2><p className="public-item-description">{item.description || 'No additional description provided.'}</p>
-      {item.isOwner === true ? <p role="status">Your listing.</p> : item.isReserved === true ? <p role="status">This item has an accepted pickup. Check back if it becomes available.</p> : item.pickupTimeZone ? <><Link className="btn btn-primary ui-button" to={`/app/items/${item.id}/request`} state={{ discoverySearch: previous }}>Request pickup</Link>
-        <p>A request does not reserve the item. The giver must accept an appointment.</p></> : <p>The giver needs to set a pickup timezone before this listing can receive requests.</p>}
-      {typeof item.isReserved !== 'boolean' && <p>Current pickup availability will be checked when you send a request.</p>}
-      {item.publishedAt && <p>First published: <time dateTime={item.publishedAt}>{formatDeadline(item.publishedAt.slice(0, 10))}</time>. Publication is separate from pickup dates.</p>}
-      <div className="plan-field"><label htmlFor="share-listing">Share this listing</label><input id="share-listing" type="url" readOnly value={shareUrl} onFocus={event => event.target.select()} /></div>
-      <button className="btn btn-outline-primary ui-button ui-button--secondary" onClick={copy}>Copy link</button>
-      <button className="btn btn-outline-secondary ui-button ui-button--secondary" onClick={() => setAttempt(value => value + 1)}>Refresh listings</button>
-      {message && <p role="status">{message}</p>}
+      <button className="ui-button ui-button--secondary" onClick={() => setAttempt(value => value + 1)}>Retry listing</button></div>}
+    {item && <article className="public-item-layout">
+      <div className="public-item-main">
+        <PublicItemGallery key={`${scope}:${attempt}`} item={item} />
+        <section className="public-item-about"><h2>Description</h2><p className="public-item-description">{item.description || 'No additional description provided.'}</p></section>
+      </div>
+      <aside className="public-item-aside">
+        <div className="public-item-chips"><span className="ui-status ui-status--free">Free</span><AvailabilityChip item={item} />{owner && <span className="ui-status ui-status--owner">Your listing</span>}</div>
+        <div className="public-item-heading"><h1>{item.name}</h1><p>{placeLabel(item)} · Free</p></div>
+        <Specs item={item} />
+        <PickupWindow item={item} />
+        <div className="public-item-action">
+          {owner && auth?.status === 'authenticated' && <Link className="ui-button public-item-cta" to={`/app/items/${item.id}/edit`}>{item.listingModel === 2 ? 'Manage listing' : 'Edit item'}</Link>}
+          {owner ? <p role="status">Your listing.</p> : item.isReserved === true ? <p role="status">This item has an accepted pickup. Check back if it becomes available.</p> : item.pickupTimeZone ? <><Link className="ui-button public-item-cta" to={`/app/items/${item.id}/request`} state={{ discoverySearch: previous }}>Request pickup<span aria-hidden="true">→</span></Link>
+            <p>A request does not reserve the item. The giver must accept an appointment.</p></> : <p>The giver needs to set a pickup timezone before this listing can receive requests.</p>}
+          {typeof item.isReserved !== 'boolean' && <p>Current pickup availability will be checked when you send a request.</p>}
+        </div>
+        <div className="public-item-share">
+          <label htmlFor="share-listing">Share this listing</label>
+          <div><input id="share-listing" type="url" readOnly value={shareUrl} onFocus={event => event.target.select()} /><button className="ui-button ui-button--secondary" onClick={copy}>Copy link</button></div>
+          {message && <p role="status" className="public-item-toast">{message}</p>}
+          <p className="public-item-published">{item.publishedAt && <>First published: <time dateTime={item.publishedAt}>{formatDeadline(item.publishedAt.slice(0, 10))}</time>. Publication is separate from pickup dates. </>}
+            <button className="public-item-refresh" onClick={() => setAttempt(value => value + 1)}>Refresh listings</button></p>
+        </div>
+      </aside>
     </article>}
   </main>;
 }
