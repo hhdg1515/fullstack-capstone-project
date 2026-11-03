@@ -71,11 +71,11 @@ test('bounded covers and ordered galleries retain regional counts, owner actions
     await expect(cards.getByRole('link', { name: five.item.name, exact: true }).locator('img')).toHaveAttribute('src', '/api/item-images/' + five.photos[0] + '/thumbnail');
     await audit(page, 'discovery'); await evidence(page, info, 'discovery-covers');
     const ownerPage = await s.owner.newPage(); await ownerPage.goto(list); await expect(ownerPage.getByText('Your listing', { exact: true })).toHaveCount(3);
-    await expect(ownerPage.getByRole('link', { name: 'Request pickup', exact: true })).toHaveCount(0);
+    await expect(ownerPage.getByRole('link', { name: "I'm interested", exact: true })).toHaveCount(0);
     await page.getByRole('link', { name: five.item.name, exact: true }).click();
     const photos = gallery(page); await loaded(photos.locator('img'));
     await expect(photos.locator('.public-gallery-primary img')).toHaveCount(1);
-    await expect(page.getByRole('link', { name: 'Request pickup', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: "I'm interested", exact: true })).toBeVisible();
     await expect(photos.getByRole('button', { name: 'Show photo 1 of 5', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await audit(page, 'five-photo gallery'); await evidence(page, info, 'gallery-five');
     await photos.getByRole('button', { name: 'Show photo 1 of 5', exact: true }).focus(); await page.keyboard.press('End');
@@ -129,7 +129,7 @@ test('authoritative cover changes, variant errors and stale URLs preserve item i
     for (const actor of [s.anonymous, s.requester]) for (const variant of ['thumbnail', 'display']) expect((await actor.request.get('/api/item-images/' + reversed[1] + '/' + variant)).status()).toBe(404);
     expect((await s.owner.request.get('/api/item-images/' + reversed[1] + '/thumbnail')).status()).toBe(200);
     await page.getByRole('button', { name: 'Refresh listings', exact: true }).click();
-    await expect(gallery(page)).toHaveCount(0); await expect(page.getByRole('link', { name: 'Request pickup', exact: true })).toHaveCount(0); await expect(page.getByRole('alert')).toBeVisible(); await audit(page, 'revoked listing');
+    await expect(gallery(page)).toHaveCount(0); await expect(page.getByRole('link', { name: "I'm interested", exact: true })).toHaveCount(0); await expect(page.getByRole('alert')).toBeVisible(); await audit(page, 'revoked listing');
     await page.goto(list); await expect(page.getByRole('heading', { name: '0 available items', exact: true })).toBeVisible(); await expect(page.locator('.public-item-cover img')).toHaveCount(0);
   } finally { await s.close(); }
 });

@@ -55,8 +55,8 @@ test('regional discovery, structured items, counts and ownership work without ch
     await expect(results.getByText('Reserved sofa', { exact: true })).toHaveCount(0); await expect(results.getByText('Other metro couch', { exact: true })).toHaveCount(0);
     await page.getByLabel('Search items', { exact: true }).fill('couch'); await expect(page).toHaveURL(/q=couch/);
     await expect(results.getByRole('link', { name: 'Comfortable seat', exact: true })).toBeVisible();
-    await page.getByLabel('Category', { exact: true }).selectOption('living-room');
-    await page.getByLabel('Item type', { exact: true }).selectOption('sofa'); await page.getByLabel('Condition', { exact: true }).selectOption('fair');
+    await page.getByRole('group', { name: 'Category', exact: true }).getByRole('button', { name: 'Living Room', exact: true }).click();
+    await page.getByRole('group', { name: 'Item type', exact: true }).getByRole('button', { name: 'Sofa', exact: true }).click(); await page.getByLabel('Condition', { exact: true }).selectOption('fair');
     await expect(page.getByRole('heading', { name: /0 available/ })).toBeVisible();
     await expect(page.getByText('No available items match these filters. Reset or try another search.', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Reset', exact: true }).click(); await expect(results.getByRole('link', { name: 'Comfortable seat', exact: true })).toBeVisible();
@@ -75,7 +75,7 @@ test('regional discovery, structured items, counts and ownership work without ch
     await expect(page.getByText(/No available items/)).toHaveCount(0);
     await a.goto('/app/items/' + itemId); await expect(a.getByText('Your listing.', { exact: true })).toBeVisible();
     await expect(a.getByRole('link', { name: 'Edit item', exact: true })).toHaveAttribute('href', '/app/items/' + itemId + '/edit');
-    await expect(a.getByRole('link', { name: 'Request pickup', exact: true })).toHaveCount(0);
+    await expect(a.getByRole('link', { name: "I'm interested", exact: true })).toHaveCount(0);
     await a.goto('/app/items/' + itemId + '/request'); await expect(a.getByText('Your listing. You cannot request your own item. Manage it from My plans.', { exact: true })).toBeVisible();
     await expect(a.getByLabel('Pickup date and time', { exact: true })).toHaveCount(0);
   } finally { for (const context of contexts) await context.close(); }

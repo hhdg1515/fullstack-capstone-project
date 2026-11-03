@@ -49,11 +49,11 @@ test('expanded areas, responsive filters, truthful cards and recovery preserve s
     await expect(page.getByRole('alert')).toContainText('Region options are unavailable');
     await audit(page, 'region catalog error'); expect(gets).toBe(0);
     await page.unroute('**/api/regions'); await page.getByRole('button', { name: 'Retry region options', exact: true }).click();
-    await expect(page.getByRole('option', { name: 'Wyoming', exact: true })).toBeAttached();
+    await expect(page.getByLabel('Metro area', { exact: true })).toBeEnabled();
     expect(gets).toBe(0);
     await page.evaluate(() => localStorage.setItem('moveout.browse-region.v1', JSON.stringify({ stateId: '06', metroId: 'unknown' })));
-    await page.goto('/app/items'); await expect(page.getByLabel('State', { exact: true })).toHaveValue(''); expect(gets).toBe(0);
-    await page.getByLabel('State', { exact: true }).selectOption('42'); await page.getByLabel('Metro area', { exact: true }).selectOption('37980');
+    await page.goto('/app/items'); await expect(page.getByLabel('Metro area', { exact: true })).toHaveValue(''); expect(gets).toBe(0);
+    await page.getByLabel('Metro area', { exact: true }).selectOption('37980');
     const count = value => page.getByRole('heading', { name: value + ' available ' + (value === 1 ? 'item' : 'items'), exact: true });
     await expect(count(2)).toBeVisible();
     const results = page.getByRole('list', { name: 'Available items' });
@@ -73,10 +73,10 @@ test('expanded areas, responsive filters, truthful cards and recovery preserve s
       await audit(page, 'filters ' + width);
       await page.getByLabel('City', { exact: true }).focus(); await page.keyboard.press('Escape');
       await expect(page.getByLabel('City', { exact: true })).toBeFocused(); await expect(page.getByLabel('City', { exact: true })).toBeVisible();
-      expect(await page.getByLabel('City', { exact: true }).evaluate(node => getComputedStyle(node).outlineStyle)).toBe('solid');
+      expect(await page.getByLabel('City', { exact: true }).evaluate(node => getComputedStyle(node.closest('.discovery-segment')).boxShadow)).not.toBe('none');
     }
     await page.evaluate(() => { document.documentElement.style.fontSize = ''; });
-    await page.getByLabel('Category', { exact: true }).selectOption('living-room'); await page.getByLabel('Item type', { exact: true }).selectOption('sofa');
+    await page.getByRole('group', { name: 'Category', exact: true }).getByRole('button', { name: 'Living Room', exact: true }).click(); await page.getByRole('group', { name: 'Item type', exact: true }).getByRole('button', { name: 'Sofa', exact: true }).click();
     await page.getByLabel('Condition', { exact: true }).selectOption('good'); await page.getByLabel('Sort items', { exact: true }).selectOption('deadline');
     await page.getByLabel('City', { exact: true }).selectOption('Philadelphia'); await page.getByLabel('Search items', { exact: true }).fill('couch');
     await expect(page.getByRole('button', { name: 'Find free items', exact: true })).toHaveCount(0); await expect(count(1)).toBeVisible();
@@ -94,7 +94,7 @@ test('expanded areas, responsive filters, truthful cards and recovery preserve s
     await expect(count(1)).toBeVisible(); await expect(page.getByText('Availability changed. Results have been refreshed.', { exact: true })).toBeVisible();
     await expect(results.getByRole('link', { name: first.name, exact: true })).toHaveCount(0);
     const ownerPage = await giver.newPage(); await ownerPage.goto('/app/items?stateId=42&metroId=37980');
-    await expect(ownerPage.getByText('Your listing', { exact: true })).toBeVisible(); await expect(ownerPage.getByRole('link', { name: 'Request pickup', exact: true })).toHaveCount(0);
+    await expect(ownerPage.getByText('Your listing', { exact: true })).toBeVisible(); await expect(ownerPage.getByRole('link', { name: "I'm interested", exact: true })).toHaveCount(0);
     await post(giver, '/api/auth/logout', {}); await ownerPage.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect(ownerPage.getByText('Your listing', { exact: true })).toHaveCount(0);
     await expect(ownerPage.getByRole('link', { name: 'Wilmington reading sofa', exact: true })).toBeVisible();

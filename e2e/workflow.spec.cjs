@@ -152,7 +152,7 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     await b.getByRole('link', { name: prefix + ' desk', exact: true }).click();
     await expect(b.getByRole('heading', { name: prefix + ' desk', exact: true })).toBeVisible(); const shared = b.url();
     await b.reload(); await expect(b.getByRole('heading', { name: prefix + ' desk', exact: true })).toBeVisible();
-    await b.getByRole('link', { name: 'Request pickup', exact: true }).click(); await b.getByRole('heading', { name: 'Login', exact: true }).waitFor();
+    await b.getByRole('link', { name: "I'm interested", exact: true }).click(); await b.getByRole('heading', { name: 'Login', exact: true }).waitFor();
     await b.getByRole('link', { name: 'Register Here', exact: true }).click();
     for (const [label, value] of [['First name', 'E2E'], ['Last name', runId], ['Email', emailB], ['Password', password]]) await b.getByLabel(label, { exact: true }).fill(value);
     await b.getByRole('button', { name: 'Register', exact: true }).click(); await b.getByLabel('Pickup date and time', { exact: true }).waitFor();
@@ -162,7 +162,7 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     const requestIds = [];
     for (let i = 0; i < itemIds.length; i++) {
       if (i) await b.goto('/app/items/' + itemIds[i] + '/request');
-      await b.getByLabel('Pickup date and time', { exact: true }).fill(localTime); await b.getByRole('button', { name: 'Send pickup request', exact: true }).click();
+      await b.getByLabel('Pickup date and time', { exact: true }).fill(localTime); await b.getByRole('button', { name: 'Send to the giver', exact: true }).click();
       await b.getByRole('button', { name: 'Cancel request', exact: true }).waitFor(); requestIds.push(b.url().split('/').pop());
       const privateResponse = await read(receiver, deployment.origin + '/api/pickup-requests/' + requestIds[i]);
       must((await privateResponse.json()).request.status === 'pending', 'Request was automatically reserved');
@@ -171,14 +171,14 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     const publicText = JSON.stringify(await (await read(receiver, deployment.origin + '/api/items/' + itemIds[0])).json());
     must(![emailA, emailB, 'giverId', 'receiverId', 'password', 'note'].some(secret => publicText.includes(secret)), 'Public item disclosed private data');
     for (let i = 0; i < requestIds.length; i++) {
-      await a.goto('/app/plans'); await a.getByRole('navigation', { name: 'Give Away', exact: true }).getByRole('link', { name: 'Incoming requests', exact: true }).click();
+      await a.goto('/app/plans'); await a.getByRole('navigation', { name: 'Donate', exact: true }).getByRole('link', { name: 'Incoming requests', exact: true }).click();
       await a.locator(`a[href="/app/pickups/${requestIds[i]}"]`).click(); await a.getByRole('button', { name: 'Accept pickup', exact: true }).click();
       await a.getByText('Accepted', { exact: true }).first().waitFor();
     }
     await test.step('Three pending requests explicitly accepted by giver', async () => {});
     await b.goto('/app/items/' + itemIds[0]);
     await expect(b.getByText('Pickup arranged', { exact: true })).toBeVisible();
-    await expect(b.getByRole('link', { name: 'Request pickup', exact: true })).toHaveCount(0);
+    await expect(b.getByRole('link', { name: "I'm interested", exact: true })).toHaveCount(0);
     await b.goto('/app/items/' + itemIds[0] + '/request');
     await expect(b.getByRole('button', { name: 'Check availability', exact: true })).toBeVisible();
     await expect(b.getByLabel('Pickup date and time', { exact: true })).toHaveCount(0);
@@ -187,7 +187,7 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     const unauthorizedAction = await write(receiver, '/api/pickup-requests/' + requestIds[0] + '/actions', { action: 'complete', version: 2 }); must(unauthorizedAction.status() === 409, 'Receiver completed giver handoff');
     await b.goto('/app/pickups/' + requestIds[1]); await b.getByRole('button', { name: 'Cancel request', exact: true }).click(); await b.getByText('Cancelled', { exact: true }).first().waitFor();
     await b.goto('/app/items/' + itemIds[1]);
-    await expect(b.getByRole('link', { name: 'Request pickup', exact: true })).toBeVisible();
+    await expect(b.getByRole('link', { name: "I'm interested", exact: true })).toBeVisible();
     const early = await write(giver, '/api/pickup-requests/' + requestIds[2] + '/actions', { action: 'no_show', version: 2 }); must(early.status() === 409, 'No-show allowed before appointment');
     await test.step('Reservation constraints, authorization, cancellation and early no-show rejection verified', async () => {});
     if (deployment.local) {
@@ -213,7 +213,7 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     must(released.status() === 201, 'No-show did not release the reservation');
     const releasedRequest = (await released.json()).request;
     must((await write(receiver, '/api/pickup-requests/' + releasedRequest.id + '/actions', { action: 'cancel', version: releasedRequest.version })).status() === 200, 'Follow-up request cancellation failed');
-    await primary(b, 'Find Free Items'); await b.getByRole('navigation', { name: 'Find Free Items', exact: true }).getByRole('link', { name: 'My pickup requests', exact: true }).click(); await expect(b.getByRole('heading', { name: 'My pickup requests', exact: true })).toBeVisible();
+    await primary(b, 'Find'); await b.getByRole('navigation', { name: 'Find', exact: true }).getByRole('link', { name: 'My pickup requests', exact: true }).click(); await expect(b.getByRole('heading', { name: 'My pickup requests', exact: true })).toBeVisible();
     await test.step('Completed handoff, cleared progress and no-show release verified', async () => {});
     const currentCookie = (await receiver.cookies()).find(cookie => cookie.name === '__Host-giftlink_session'); must(Boolean(currentCookie), 'Receiver session missing');
     await deployment.db.collection('sessions').updateOne({ _id: tokenHash(currentCookie.value), userId: userB._id }, { $set: { expiresAt: new Date(Date.now() - 1000) } });

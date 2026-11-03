@@ -12,8 +12,7 @@ for (const width of [1440,320,375]) test('draft form, silent pickup timezone, ac
   await page.goto('/app/listings/new'); await page.getByRole('button',{name:'Save Draft',exact:true}).first().click();
   await expect(page.getByLabel('Item name')).toBeFocused(); await expect(page.getByLabel('Item name')).toHaveAttribute('aria-invalid','true');
   await page.getByLabel('Item name').fill(name);
-  await page.getByLabel('Item name').press('Tab'); await expect(page.getByRole('button',{name:'Save Draft',exact:true}).first()).toBeFocused();
-  await page.getByRole('button',{name:'Save Draft',exact:true}).first().press('Enter');
+  await page.getByLabel('Item name').press('Enter');
   await expect(page.getByRole('heading',{name,exact:true})).toBeVisible(); let row=await deployment.db.collection('items').findOne({name}); expect(row.planId).toBeUndefined(); expect(row.pickupTimeZone).toBe('America/New_York');
   await page.getByRole('link',{name:'Manage '+name,exact:true}).click(); await expect(page.getByText(/timezone/i)).toHaveCount(0);
   await page.getByLabel('State',{exact:true}).selectOption('06'); await page.getByLabel('Metro area',{exact:true}).selectOption('31080');

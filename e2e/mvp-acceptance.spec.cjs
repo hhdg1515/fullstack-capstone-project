@@ -70,7 +70,7 @@ test('two independent users complete the integrated marketplace journey with tru
     expect((await read(giver, '/api/health')).databaseFingerprint).toBe(deployment.fingerprint);
     expect((await requester.request.get('/api/me')).status()).toBe(401);
     await b.goto('/'); await capture(b, 'landing');
-    await primary(b, 'Find Free Items');
+    await primary(b, 'Find');
     await expect(b.getByRole('heading', { name: 'Choose a metro area', exact: true })).toBeVisible();
     await capture(b, 'region-selection');
     await b.getByLabel('Metro area', { exact: true }).selectOption('41860');
@@ -137,14 +137,14 @@ test('two independent users complete the integrated marketplace journey with tru
     expect((await requester.request.get('/api/move-out-plans/' + planId)).status()).toBe(401);
     await a.goto('/app/items/' + desk.id);
     await expect(a.getByText('Your listing.', { exact: true })).toBeVisible();
-    await expect(a.getByRole('link', { name: 'Request pickup', exact: true })).toHaveCount(0);
+    await expect(a.getByRole('link', { name: "I'm interested", exact: true })).toHaveCount(0);
     const self = await giver.request.post('/api/pickup-requests', { headers, data: { itemId: desk.id, localDateTime: day(2) + 'T12:00', timeZone: 'America/Los_Angeles' } });
     expect(self.status()).toBe(409);
 
     await b.reload(); await expect(b.getByRole('heading', { name: '2 available items', exact: true })).toBeVisible();
     await capture(b, 'discovery');
-    await b.getByLabel('Category', { exact: true }).selectOption('office-lighting');
-    await b.getByLabel('Item type', { exact: true }).selectOption('desk');
+    await b.getByRole('group', { name: 'Category', exact: true }).getByRole('button', { name: 'Office & Lighting', exact: true }).click();
+    await b.getByRole('group', { name: 'Item type', exact: true }).getByRole('button', { name: 'Desk', exact: true }).click();
     await filterPanel(b);
     await b.getByLabel('Condition', { exact: true }).selectOption('good');
     await b.getByLabel('Sort items', { exact: true }).selectOption('deadline');
@@ -156,7 +156,7 @@ test('two independent users complete the integrated marketplace journey with tru
     await b.getByRole('link', { name: desk.name, exact: true }).click(); await capture(b, 'listing-detail');
     await b.goBack(); await expect(b.getByRole('heading', { name: '2 available items', exact: true })).toBeVisible();
     await b.goForward(); await expect(b.getByRole('heading', { name: desk.name, exact: true })).toBeVisible();
-    await b.getByRole('link', { name: 'Request pickup', exact: true }).click();
+    await b.getByRole('link', { name: "I'm interested", exact: true }).click();
     await b.getByRole('heading', { name: 'Login', exact: true }).waitFor();
     await b.getByRole('link', { name: 'Register Here', exact: true }).click(); await register(b, accounts[1]);
     await b.getByLabel('Pickup date and time', { exact: true }).waitFor();
@@ -165,7 +165,7 @@ test('two independent users complete the integrated marketplace journey with tru
     for (const item of [desk, chair]) {
       if (item === chair) await b.goto('/app/items/' + chair.id + '/request');
       await b.getByLabel('Pickup date and time', { exact: true }).fill(day(2) + 'T12:00');
-      await b.getByRole('button', { name: 'Send pickup request', exact: true }).evaluate(node => { node.click(); node.click(); });
+      await b.getByRole('button', { name: 'Send to the giver', exact: true }).evaluate(node => { node.click(); node.click(); });
       await b.getByRole('button', { name: 'Cancel request', exact: true }).waitFor(); requestIds.push(new URL(b.url()).pathname.split('/').pop());
     }
     expect((await read(requester, '/api/pickup-requests/sent')).requests).toHaveLength(2);
@@ -206,7 +206,7 @@ test('two independent users complete the integrated marketplace journey with tru
     await expect(b.getByRole('button', { name: 'Send message', exact: true })).toHaveCount(0);
     await b.goto('/app/items/' + chair.id + '/request');
     await b.getByLabel('Pickup date and time', { exact: true }).fill(day(2) + 'T14:00');
-    await b.getByRole('button', { name: 'Send pickup request', exact: true }).click(); await b.getByRole('button', { name: 'Cancel request', exact: true }).waitFor();
+    await b.getByRole('button', { name: 'Send to the giver', exact: true }).click(); await b.getByRole('button', { name: 'Cancel request', exact: true }).waitFor();
     expect(new URL(b.url()).pathname.split('/').pop()).not.toBe(requestIds[1]);
     await b.getByRole('button', { name: 'Cancel request', exact: true }).click(); await b.getByText('Cancelled', { exact: true }).waitFor();
     // The giver releases the accepted appointment; its chat stays readable but closed.

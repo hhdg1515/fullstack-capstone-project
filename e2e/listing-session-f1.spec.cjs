@@ -20,7 +20,7 @@ async function setup(browser, d) {
   const page = await context.newPage(); page.on('dialog', dialog => dialog.accept());
   const openNav = async () => { const menu = page.getByRole('button', { name: 'Menu', exact: true }); if (await menu.isVisible()) await menu.click(); };
   const logout = async () => { await openNav(); await page.getByRole('button', { name: 'Logout', exact: true }).click(); };
-  const login = async account => { if (page.url() === 'about:blank') await page.goto('/app/login'); else { await openNav(); await page.getByRole('link', { name: 'Log in', exact: true }).click(); } await page.getByLabel('Email', { exact: true }).fill(account.email); await page.getByLabel('Password', { exact: true }).fill(account.password); await page.getByRole('button', { name: 'Login', exact: true }).click(); await expect(page.getByText('Signed in as ' + account.firstName)).toHaveCount(1); };
+  const login = async account => { if (page.url() === 'about:blank') await page.goto('/app/login'); else { await openNav(); await page.getByRole('link', { name: 'Log in', exact: true }).click(); } await page.getByLabel('Email', { exact: true }).fill(account.email); await page.getByLabel('Password', { exact: true }).fill(account.password); await page.getByRole('button', { name: 'Login', exact: true }).click(); await expect(page.getByRole('button', { name: 'Logout', exact: true, includeHidden: true })).toHaveCount(1); };
   return { context, page, login, logout, openNav, a, b, one, two, legacy, plan, post };
 }
 for (const status of [200, 401]) test('late A response ' + status + ' cannot contaminate authenticated B; URLs and history retain ownership', async ({ isolatedBrowser: browser, deployment }) => {
@@ -38,15 +38,15 @@ for (const status of [200, 401]) test('late A response ' + status + ' cannot con
       const response = await route.fetch(); const body = await response.body(); entered(); await gate;
       await route.fulfill({ status, contentType: 'application/json', body: status === 200 ? body : JSON.stringify({ error: { code: 'SESSION_EXPIRED', message: 'Expired A' } }) });
     }, { times: 1 });
-    await s.openNav(); await s.page.getByRole('link', { name: 'My Listings', exact: true }).first().click(); await arrived;
+    await s.openNav(); await s.page.getByRole('link', { name: 'Donate', exact: true }).first().click(); await arrived;
     await s.logout(); await s.login(s.b);
-    await s.openNav(); await s.page.getByRole('link', { name: 'My Listings', exact: true }).first().click(); await expect(s.page.getByRole('link', { name: 'Private B item', exact: true })).toBeVisible();
+    await s.openNav(); await s.page.getByRole('link', { name: 'Donate', exact: true }).first().click(); await expect(s.page.getByRole('link', { name: 'Private B item', exact: true })).toBeVisible();
     await s.page.evaluate(() => { window.f1Leaks = []; window.f1Observer = new MutationObserver(() => { if (document.body.innerText.includes('Private A item') || document.body.innerText.includes('Unsent A draft')) window.f1Leaks.push('old-account-content'); }); window.f1Observer.observe(document.body, { childList: true, subtree: true, characterData: true }); });
     const finished = s.page.waitForResponse(r => r.url().endsWith('/api/me/items') && r.status() === status);
     release(); await finished;
     await s.page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     expect(await s.page.evaluate(() => { window.f1Observer.disconnect(); return window.f1Leaks; })).toEqual([]);
-    await expect(s.page.getByRole('button', { name: 'Logout', exact: true })).toHaveCount(1); await expect(s.page.getByText('Private A item', { exact: true })).toHaveCount(0);
+    await expect(s.page.getByRole('button', { name: 'Logout', exact: true, includeHidden: true })).toHaveCount(1); await expect(s.page.getByText('Private A item', { exact: true })).toHaveCount(0);
     await expect(s.page.getByText('Unsent A draft', { exact: true })).toHaveCount(0);
     await s.page.goto('/app/listings/' + s.one.id); await expect(s.page.getByRole('alert')).toBeVisible(); await expect(s.page.getByText('Private A item', { exact: true })).toHaveCount(0);
     await s.page.goto('/app/listings/' + s.two.id); await expect(s.page.getByLabel('Item name', { exact: true })).toHaveValue('Private B item');

@@ -50,11 +50,11 @@ test('two accounts request, accept, chat, reschedule and close a pickup for an i
     const b = await requester.newPage(); b.on('dialog', dialog => dialog.accept());
     await b.goto('/app/items/' + item.id); await expect(b.getByRole('heading', { name: item.name, exact: true })).toBeVisible();
     await expect(b.getByText(zone, { exact: false })).toHaveCount(0); await audit(b, 'listing');
-    await b.getByRole('link', { name: 'Request pickup', exact: true }).click();
+    await b.getByRole('link', { name: "I'm interested", exact: true }).click();
     await expect(b.getByText(/^Choose a date from /)).toBeVisible();
     await b.getByLabel('Pickup date and time').fill(localDay(3) + 'T10:00'); await b.getByLabel('Coordination note (optional, private)').fill('Synthetic meeting point near the library.');
     await audit(b, 'request-form');
-    await b.getByRole('button', { name: 'Send pickup request', exact: true }).click();
+    await b.getByRole('button', { name: 'Send to the giver', exact: true }).click();
     await expect(b).toHaveURL(/\/app\/pickups\/[a-f0-9]{24}$/); const requestId = new URL(b.url()).pathname.split('/').pop();
     await expect(b.getByText('Not reserved. Waiting for the giver to accept a pickup time.')).toBeVisible();
     await expect(b.getByRole('link', { name: 'View item', exact: true })).toHaveAttribute('href', '/app/items/' + item.id);
