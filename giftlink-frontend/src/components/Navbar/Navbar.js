@@ -24,12 +24,12 @@ export default function Navbar() {
     catch { setError('Logout could not be confirmed. Please try again.'); }
     finally { setBusy(false); }
   };
-  return <header className="site-header" onKeyDown={event => {
+  return <header className={'site-header' + (location.pathname === '/' ? ' site-header--dark' : '')} onKeyDown={event => {
     if (event.key === 'Escape' && open) { setOpen(false); menuButton.current?.focus(); }
   }}>
     {hostedDemo() && <p className="site-demo-note">Demo site: please don't enter real personal information.</p>}
     <div className="site-header-inner">
-      <Link className="site-brand" to="/" onClick={() => setOpen(false)}>Move-Out Marketplace</Link>
+      <Link className="site-brand" to="/" onClick={() => setOpen(false)}><span className="site-brand-mark" aria-hidden="true" />Move-Out Marketplace</Link>
       <button className="site-menu-button" ref={menuButton} aria-expanded={open} aria-controls="primary-navigation" onClick={() => setOpen(value => !value)}>{open ? 'Close menu' : 'Menu'}</button>
       <nav id="primary-navigation" className={`site-navigation ${open ? 'is-open' : ''}`} aria-label="Primary">
         <ul onClick={() => setOpen(false)}>
@@ -39,7 +39,7 @@ export default function Navbar() {
         <div className="site-session">
           {status === 'loading' ? <span role="status">Checking session…</span> : isLoggedIn ? <>
             <button onClick={handleLogout} disabled={busy}>{busy ? 'Logging out…' : 'Logout'}</button>
-          </> : <><Link to="/app/login">Log in</Link><Link to="/app/register">Register</Link></>}
+          </> : <><Link to="/app/login">Log in</Link><Link className="site-register" to="/app/register">Register</Link></>}
         </div>
       </nav>
     </div>

@@ -1,32 +1,76 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { apiRequest } from '../../api/client';
+import { publicImageUrl, publicItemMedia } from '../../api/publicItemMedia';
 import './Journeys.css';
 
+// The belt shows real published listings with photos from the visitor's saved
+// browsing area (or the Bay Area); it hides itself when there are too few.
+const defaultRegion = { stateId: '06', metroId: '41860' };
+function savedRegion() {
+  try {
+    const value = JSON.parse(localStorage.getItem('moveout.browse-region.v1'));
+    if (value && typeof value.stateId === 'string' && typeof value.metroId === 'string') return { stateId: value.stateId, metroId: value.metroId };
+  } catch { /* An unreadable preference falls back to the default area. */ }
+  return defaultRegion;
+}
+function ListingBelt() {
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    let active = true;
+    apiRequest(`/api/items?${new URLSearchParams(savedRegion())}`, { validate: data => Array.isArray(data.items) })
+      .then(data => {
+        if (!active) return;
+        setItems(data.items.filter(item => item && typeof item.id === 'string' && typeof item.name === 'string' && publicItemMedia(item)?.coverImage).slice(0, 12));
+      })
+      .catch(() => { /* The belt is decorative; the page works without it. */ });
+    return () => { active = false; };
+  }, []);
+  if (items.length < 3) return null;
+  const card = (item, copy) => {
+    const cover = publicItemMedia(item).coverImage.thumbnail;
+    return <li key={(copy ? 'copy-' : '') + item.id} aria-hidden={copy || undefined}>
+      <Link className="home-belt-card" to={`/app/items/${item.id}`} tabIndex={copy ? -1 : undefined} aria-label={copy ? undefined : item.name}>
+        <img src={publicImageUrl(cover)} width={cover.width} height={cover.height} alt="" crossOrigin="use-credentials" loading="lazy" decoding="async" />
+        <span className="home-belt-free">Free</span>
+        <span className="home-belt-caption"><strong>{item.name}</strong><span>{[item.neighborhood, item.city].filter(Boolean).join(', ')}</span></span>
+      </Link>
+    </li>;
+  };
+  return <section className="home-belt" aria-label="Recently listed free items">
+    <ul className="home-belt-track">{items.map(item => card(item, false))}{items.map(item => card(item, true))}</ul>
+  </section>;
+}
 export default function Home() {
   return <main className="journey-home">
-    <header className="home-intro">
-      <p className="journey-kicker">Free things. A little closer to home.</p>
-      <h1>Move lighter.<br />Settle smarter.</h1>
-      <p className="home-lead">Give away what you can’t take. Find what you need next.</p>
-    </header>
-    <div className="home-paths">
-      <section className="home-path home-give" aria-labelledby="home-give-title">
-        <span className="path-symbol" aria-hidden="true">↗</span>
-        <h2 id="home-give-title">Give Away</h2>
-        <p>Clear your space. Give useful things a second life.</p>
-        <p>Create a listing, arrange pickups, and see what’s cleared.</p>
-        <Link className="journey-button" to="/app/listings">Start Giving</Link>
-        <small>Sign in to organize your giveaway.</small>
-      </section>
-      <section className="home-path home-find" aria-labelledby="home-find-title">
-        <span className="path-symbol" aria-hidden="true">↙</span>
-        <h2 id="home-find-title">Find Free Items</h2>
-        <p>Find useful things for your next space.</p>
-        <p>Explore any neighborhood, choose a pickup window, and discover something you can use.</p>
-        <Link className="journey-button" to="/app/items">Explore Free Items</Link>
-        <small>Browse freely. Sign in when you request pickup.</small>
-      </section>
-    </div>
+    <section className="home-hero">
+      <div className="home-hero-inner">
+        <p className="journey-kicker">Free things. A little closer to home.</p>
+        <h1>Move lighter.<br /><span>Settle smarter.</span></h1>
+        <div className="home-hero-row">
+          <p className="home-lead">Neighbors who are moving out give away furniture, kitchenware and lamps. Browse by area, request a pickup time, chat privately. Always free.</p>
+          <div className="home-actions">
+            <div className="home-action-row">
+              <Link className="home-action home-action--primary" to="/app/items">Explore Free Items<span aria-hidden="true">→</span></Link>
+              <Link className="home-action home-action--ghost" to="/app/listings">Start Giving</Link>
+            </div>
+            <small>Browse freely. Sign in to request a pickup or to give.</small>
+          </div>
+        </div>
+      </div>
+      <ListingBelt />
+    </section>
+    <section className="home-how" aria-labelledby="home-how-title">
+      <div className="home-how-head">
+        <h2 id="home-how-title">How it works</h2>
+        <p>Three steps. No payments, no shipping, and never a street address on the site.</p>
+      </div>
+      <ol className="home-steps">
+        <li><span aria-hidden="true">01</span><h3>List</h3><p>Givers add photos, a general area and a pickup deadline.</p></li>
+        <li><span aria-hidden="true">02</span><h3>Request</h3><p>Neighbors choose a time inside the pickup window. The giver accepts one appointment.</p></li>
+        <li><span aria-hidden="true">03</span><h3>Pick up</h3><p>Settle the details in a private chat, then meet at the agreed time.</p></li>
+      </ol>
+    </section>
     <p className="home-reassurance">Everything is free. One account lets you give and find, wherever life takes you.</p>
   </main>;
 }

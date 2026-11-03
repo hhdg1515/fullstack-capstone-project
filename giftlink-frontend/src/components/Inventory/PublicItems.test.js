@@ -314,13 +314,16 @@ test('blocked local storage does not prevent choosing a valid URL region', async
 });
 test('controlled category/type/condition filters combine with text and reset incompatible type selection', async () => {
   mount(); await ready();
-  fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'living-room' } });
-  fireEvent.change(screen.getByLabelText('Item type'), { target: { value: 'sofa' } });
+  const category = within(screen.getByRole('group', { name: 'Category' }));
+  fireEvent.click(category.getByRole('button', { name: 'Living Room' }));
+  fireEvent.click(within(screen.getByRole('group', { name: 'Item type' })).getByRole('button', { name: 'Sofa' }));
   fireEvent.change(screen.getByLabelText('Condition'), { target: { value: 'good' } });
   fireEvent.change(screen.getByLabelText('Search items'), { target: { value: 'couch' } }); await submit();
   expect(screen.getByLabelText('Current URL')).toHaveTextContent('categoryId=living-room&itemTypeId=sofa&condition=good');
-  fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'office-lighting' } });
-  expect(screen.getByLabelText('Item type')).toHaveValue(''); expect(screen.queryByRole('option', { name: 'Sofa' })).not.toBeInTheDocument();
+  expect(category.getByRole('button', { name: 'Living Room' })).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(category.getByRole('button', { name: 'Office & Lighting' }));
+  const types = within(screen.getByRole('group', { name: 'Item type' }));
+  expect(types.getByRole('button', { name: 'All item types' })).toHaveAttribute('aria-pressed', 'true'); expect(types.queryByRole('button', { name: 'Sofa' })).not.toBeInTheDocument();
 });
 test('the heading uses the backend filtered total, not the number of loaded rows', async () => {
   handler = async () => feed([a], 'more', 24); mount(); await ready();
@@ -352,10 +355,11 @@ test('location-first hierarchy keeps the page title short, all filter controls v
   mount(); await ready();
   expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/^Find free items$/);
   expect(screen.queryByRole('region', { name: 'Browsing area' })).not.toBeInTheDocument(); expect(screen.queryByRole('button', { name: 'Change region' })).not.toBeInTheDocument();
-  for (const name of ['Category', 'Item type', 'Condition', 'Sort items']) expect(screen.getByLabelText(name)).toBeVisible();
+  for (const name of ['Condition', 'Sort items']) expect(screen.getByLabelText(name)).toBeVisible();
+  expect(within(screen.getByRole('group', { name: 'Category' })).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
   expect(screen.queryByLabelText('Pickup availability')).not.toBeInTheDocument();
-  expect(screen.getByLabelText('Item type')).toBeDisabled();
-  expect(screen.getByLabelText('Item type')).toHaveTextContent('Choose a category first');
+  // Item type chips appear only once a category is chosen.
+  expect(screen.queryByRole('group', { name: 'Item type' })).not.toBeInTheDocument();
   for (const name of ['Metro area', 'City', 'Neighborhood']) expect(screen.getByLabelText(name)).toBeVisible();
   expect(screen.getByLabelText('Metro area')).toHaveValue('41860');
 });
@@ -383,9 +387,9 @@ test('Escape does not collapse filters or discard unsubmitted selections', async
 
 test('reset is offered only when useful and clears unsubmitted filters without losing the area', async () => {
   mount(); await ready(); expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'living-room' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Living Room' }));
   await click('Reset'); await ready();
-  expect(screen.getByLabelText('Category')).toHaveValue(''); expect(screen.getByLabelText('Current URL')).toHaveTextContent('metroId=41860');
+  expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true'); expect(screen.getByLabelText('Current URL')).toHaveTextContent('metroId=41860');
   expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument();
 });
 
