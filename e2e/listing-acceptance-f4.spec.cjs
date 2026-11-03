@@ -60,7 +60,7 @@ test('integrated independent drafts, explicit local deadlines, legacy compatibil
       for (const label of [/publish/i, /upload/i, /withdraw/i, /request pickup/i, /send message/i]) await expect(page.getByRole('button', { name: label })).toHaveCount(0);
       const visibleText = await page.locator('main').innerText();
       for (const privateValue of [firstId, identity.id, email, 'imageRevision', 'storageKey', 'coordinationRevision']) expect(visibleText).not.toContain(privateValue);
-      await page.getByRole('link', { name: 'My Listings', exact: true }).last().click(); await page.getByRole('link', { name: 'Create Listing', exact: true }).click();
+      { const menu = page.getByRole('button', { name: 'Menu', exact: true }); if (await menu.isVisible()) await menu.click(); } await page.getByRole('link', { name: 'Donate', exact: true }).click(); await page.getByRole('link', { name: 'Create Listing', exact: true }).click();
       await page.getByLabel('Item name').fill(secondName); await page.getByLabel('State', { exact: true }).selectOption('36'); await page.getByLabel('Metro area', { exact: true }).selectOption('35620');
       await page.getByLabel('Pickup deadline', { exact: true }).fill('2027-11-15'); await save(); await expect(page.getByRole('heading', { name: secondName, exact: true })).toBeVisible();
       const secondId = (await deployment.db.collection('items').findOne({ name: secondName }))._id.toHexString(), secondBefore = (await call(owner, 'get', '/api/me/items/' + secondId)).item;
@@ -68,7 +68,7 @@ test('integrated independent drafts, explicit local deadlines, legacy compatibil
       expect(secondBefore.pickup.expiresAt).toBe('2027-11-16T05:00:00.000Z');
       const firstBefore = (await call(owner, 'get', '/api/me/items/' + firstId)).item; expect(firstBefore.pickup.expiresAt).toBe('2027-11-13T08:00:00.000Z');
       expect(await ownPlans()).toBe(0); expect(await deployment.db.collection('moveOutPlans').countDocuments()).toBe(plansBefore);
-      await page.getByRole('link', { name: 'My Listings', exact: true }).last().click(); await expect(page.getByRole('link', { name: firstName, exact: true })).toBeVisible(); await expect(page.getByRole('link', { name: secondName, exact: true })).toBeVisible();
+      { const menu = page.getByRole('button', { name: 'Menu', exact: true }); if (await menu.isVisible()) await menu.click(); } await page.getByRole('link', { name: 'Donate', exact: true }).click(); await expect(page.getByRole('link', { name: firstName, exact: true })).toBeVisible(); await expect(page.getByRole('link', { name: secondName, exact: true })).toBeVisible();
       await evidence(page, width, 'listings-populated');
       await page.getByRole('link', { name: 'Manage ' + firstName, exact: true }).click(); await page.getByLabel('Description', { exact: true }).fill('Updated only this independent item.'); await evidence(page, width, 'edit'); await save();
       await expect(page).toHaveURL(deployment.origin + '/app/listings'); expect((await call(owner, 'get', '/api/me/items/' + firstId)).item.description).toBe('Updated only this independent item.');

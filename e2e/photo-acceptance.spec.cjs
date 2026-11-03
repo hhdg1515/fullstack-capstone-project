@@ -106,8 +106,8 @@ test('the same real photo batch survives compression, uncertain publish, managem
     expect((await requester.request.get('/api/item-images/' + expected[0] + '/thumbnail')).status()).toBe(404);
     expect((await owner.request.get('/api/item-images/' + expected[0] + '/thumbnail')).status()).toBe(200);
     await deployment.db.collection('items').updateOne({ _id: saved._id }, { $set: { availableUntil: saved.availableUntil } });
-    await receiver.getByRole('link', { name: 'Request pickup', exact: true }).click();
-    await receiver.getByLabel('Pickup date and time', { exact: true }).fill(day(2) + 'T12:00'); await receiver.getByRole('button', { name: 'Send pickup request', exact: true }).click();
+    await receiver.getByRole('link', { name: "I'm interested", exact: true }).click();
+    await receiver.getByLabel('Pickup date and time', { exact: true }).fill(day(2) + 'T12:00'); await receiver.getByRole('button', { name: 'Send to the giver', exact: true }).click();
     await expect(receiver.getByRole('heading', { name: 'Pickup request', exact: true })).toBeVisible();
     const requestId = new URL(receiver.url()).pathname.split('/').pop(), requestRoot = '/api/pickup-requests/' + requestId;
     await receiver.getByLabel('Message', { exact: true }).fill('Synthetic integrated coordination.'); await receiver.getByRole('button', { name: 'Send message', exact: true }).click(); await expect(receiver.getByLabel('Message', { exact: true })).toHaveValue('');

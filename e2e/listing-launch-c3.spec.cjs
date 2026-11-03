@@ -63,7 +63,7 @@ test('C3 real two-account create/photos/publish/discover/chat/cancel and withdra
     for (const context of [anon, third]) expect((await context.request.get('/api/me/items/' + id)).status()).toBe(context === anon ? 401 : 404);
     const b = await requester.newPage(); b.on('dialog', dialog => dialog.accept()); await b.goto('/app/items/' + id + '/request');
     const appointment = Temporal.Now.zonedDateTimeISO(zone).add({ minutes: 3 }).toPlainDateTime().toString({ smallestUnit: 'minute' });
-    await b.getByLabel('Pickup date and time').fill(appointment); await b.getByRole('button', { name: 'Send pickup request', exact: true }).click(); await expect(b).toHaveURL(/\/app\/pickups\/[a-f0-9]{24}$/);
+    await b.getByLabel('Pickup date and time').fill(appointment); await b.getByRole('button', { name: 'Send to the giver', exact: true }).click(); await expect(b).toHaveURL(/\/app\/pickups\/[a-f0-9]{24}$/);
     const requestId = new URL(b.url()).pathname.split('/').pop(); await audit(b, 'request-pending');
     await a.goto('/app/pickups/' + requestId); await a.getByRole('button', { name: 'Accept pickup', exact: true }).click(); await b.reload();
     await expect(b.getByText('Applicant:')).toHaveCount(0); await b.getByLabel('Message', { exact: true }).fill('Synthetic requester message.'); await b.getByRole('button', { name: 'Send message', exact: true }).click(); await expect(b.getByText('Synthetic requester message.', { exact: true })).toBeVisible();

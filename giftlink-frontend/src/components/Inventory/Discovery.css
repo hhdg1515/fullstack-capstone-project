@@ -8,10 +8,10 @@
 /* Command bar: Where (metro, city, neighborhood) and Search in one pill. */
 .discovery-bar { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: center; background: var(--ui-fill); border-radius: var(--ui-radius-pill); padding: 6px; }
 .discovery-where { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; border-right: 1px solid #d5d9d6; }
-.discovery-segment { position: relative; display: flex; flex-direction: column; justify-content: center; gap: 2px; min-height: 64px; padding: 0 1.5rem; border-radius: var(--ui-radius-pill); min-width: 0; transition: background .2s, box-shadow .2s; }
+.discovery-segment { position: relative; display: flex; flex-direction: column; justify-content: center; gap: 0; min-height: 64px; padding: 4px 1.5rem; border-radius: var(--ui-radius-pill); min-width: 0; transition: background .2s, box-shadow .2s; }
 .discovery-segment:focus-within { background: var(--ui-surface); box-shadow: 0 2px 12px rgb(13 20 17 / 14%); }
-.discovery-segment label { margin: 0; font-size: .875rem; font-weight: 700; color: var(--ui-ink); }
-.discovery-segment select, .discovery-segment input { width: 100%; min-width: 0; min-height: 1.75rem; border: 0; padding: 0; background-color: transparent; font: 400 .875rem/1.4 var(--ui-font); color: var(--ui-ink); outline: none; text-overflow: ellipsis; }
+.discovery-segment label { margin: 0; font-size: .875rem; line-height: 1.2; font-weight: 700; color: var(--ui-ink); }
+.discovery-segment select, .discovery-segment input { width: 100%; min-width: 0; min-height: 44px; border: 0; padding: 0; background-color: transparent; font: 400 .875rem/1.4 var(--ui-font); color: var(--ui-ink); outline: none; text-overflow: ellipsis; }
 /* The segment or pill shows focus; the control itself gets no second outline. */
 .ui-page .discovery-segment select:focus-visible, .ui-page .discovery-segment input:focus-visible, .ui-page .discovery-pill select:focus-visible { outline: none; }
 .discovery-feed select option { font: 400 .875rem/1.4 var(--ui-font); color: var(--ui-ink); }
@@ -29,7 +29,7 @@
 .discovery-chip:disabled { opacity: .35; cursor: not-allowed; }
 .discovery-type-chips { align-items: center; margin-top: .75rem; }
 .discovery-type-chips > span { font-size: .8125rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ui-muted); margin-right: .375rem; }
-.discovery-type-chips .discovery-chip { min-height: 40px; font-size: .875rem; background: var(--ui-surface); box-shadow: inset 0 0 0 1.5px #d5d9d6; }
+.discovery-type-chips .discovery-chip { min-height: 44px; font-size: .875rem; background: var(--ui-surface); box-shadow: inset 0 0 0 1.5px #d5d9d6; }
 .discovery-type-chips .discovery-chip[aria-pressed="true"] { background: var(--ui-primary); color: #ffffff; box-shadow: none; }
 .discovery-pills { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
 .discovery-pill { display: inline-flex; align-items: center; gap: .375rem; min-height: 44px; padding: 0 .875rem 0 1rem; border-radius: var(--ui-radius-pill); background: var(--ui-fill); }
@@ -46,7 +46,7 @@
 .discovery-feed .discovery-summary { margin: 0; color: var(--ui-muted); font-size: .875rem; }
 .discovery-loading { margin: 0; font-size: 1.0625rem; font-weight: 600; color: var(--ui-muted); }
 .discovery-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr)); gap: 2.75rem 1.5rem; }
-.discovery-listing { display: flex; flex-direction: column; gap: .125rem; min-width: 0; }
+.discovery-listing { position: relative; display: flex; flex-direction: column; gap: .125rem; min-width: 0; }
 .discovery-listing p { margin: 0; padding: 0 2px; font-size: .875rem; color: var(--ui-muted); }
 .discovery-listing .discovery-listing-place { color: var(--ui-ink); }
 .discovery-listing .discovery-listing-pickup { margin-top: .375rem; font-size: .8125rem; }
@@ -137,6 +137,8 @@
   .discovery-where { grid-template-columns: 1fr; }
   .discovery-segment { min-height: 56px; padding: 0 1.125rem; border-radius: 20px; }
   .discovery-chips { flex-wrap: nowrap; overflow-x: auto; margin-inline: -1rem; padding-inline: 1rem; scrollbar-width: none; }
+  /* Disabled chips are not focusable, so they wrap instead of forming an unreachable scroll area. */
+  .discovery-chips.is-off { flex-wrap: wrap; overflow-x: visible; margin-inline: 0; padding-inline: 0; }
   .discovery-type-chips > span { flex: none; }
   .discovery-results-head { margin: 1.75rem 0 1rem; }
   .discovery-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 9.5rem), 1fr)); gap: 1.75rem .75rem; }

@@ -13,12 +13,12 @@ export default function PublicItemCard({ item, search, stateCode }) {
     <Link className="public-item-card-link" aria-label={item.name} to={`/app/items/${item.id}`} state={{ discoverySearch: search ? `?${search}` : '' }}>
       <span className="discovery-listing-media">
         <PublicItemCover key={item.coverImage?.id || item.imageAvailability || 'legacy'} item={item} />
-        <span className="discovery-listing-status">{item.free !== false && <span className="ui-status ui-status--free">Free</span>}
-          <span className={`ui-status ${later ? 'ui-status--later' : 'ui-status--now'}`}>{later ? 'Available Later' : 'Available Now'}</span>
-          {item.isOwner === true && <span className="ui-status ui-status--owner">Your listing</span>}</span>
       </span>
       <h3>{item.name}</h3>
     </Link>
+    <span className="discovery-listing-status">{item.free !== false && <span className="ui-status ui-status--free">Free</span>}
+      <span className={`ui-status ${later ? 'ui-status--later' : 'ui-status--now'}`}>{later ? 'Available Later' : 'Available Now'}</span>
+      {item.isOwner === true && <span className="ui-status ui-status--owner">Your listing</span>}</span>
     {(type || category) && <p className="discovery-listing-type">{[type, category].filter((value, index, all) => value && all.indexOf(value) === index).join(' · ')}</p>}
     <p className="discovery-listing-place">{[item.neighborhood, item.city || item.metroLabel, item.city ? stateCode : null].filter(Boolean).join(', ')}</p>
     {condition && <p className="discovery-listing-condition">Condition: {condition}</p>}

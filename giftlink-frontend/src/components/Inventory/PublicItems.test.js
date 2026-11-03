@@ -448,13 +448,14 @@ test('session changes reload location options and discard late old-session optio
   expect(screen.queryByRole('option', { name: 'Old neighborhood' })).not.toBeInTheDocument();
   expect(screen.queryByText(/Location options are unavailable/)).not.toBeInTheDocument();
 });
-test.each([200,401])('initial session resolution reissues anonymous public reads and discards the old %s result',async status=>{
-  const old=pending();let calls=0;mockAuth={status:'loading',user:null};
-  handler=async()=>++calls===1?old.promise:feed([b]);mount();
-  await waitFor(()=>expect(calls).toBe(1));mockAuth={status:'anonymous',user:null};
+test('public reads wait for the initial session check, then read once as the resolved viewer',async()=>{
+  let calls=0;mockAuth={status:'loading',user:null};
+  handler=async()=>{calls++;return feed([b]);};mount();
+  await screen.findByLabelText('Search items');await act(async()=>{});expect(calls).toBe(0);
+  mockAuth={status:'anonymous',user:null};
   fireEvent.change(screen.getByLabelText('Search items'),{target:{value:'Current anonymous search'}});
-  await screen.findByRole('link',{name:b.name});await act(async()=>old.resolve(status===200?feed([{...a,isOwner:true}]):reply(401,{error:{message:'Old unauthorized result'}})));
-  expect(screen.getByRole('link',{name:b.name})).toBeInTheDocument();expect(screen.queryByText('Your listing')).not.toBeInTheDocument();expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(await screen.findByRole('link',{name:b.name})).toBeInTheDocument();expect(calls).toBeGreaterThan(0);
+  expect(screen.queryByText('Your listing')).not.toBeInTheDocument();expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
 
 

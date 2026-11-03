@@ -91,6 +91,8 @@ function Discovery() {
   }, [directory.data, params, query, setParams]);
   useEffect(() => { if (selected) rememberRegion(stateId, selected.id); }, [selected, stateId]);
   useEffect(() => {
+    // Wait for the session check; fetching before and after it would remount every card and photo.
+    if (viewer === 'loading') return undefined;
     const current = { active: true }; revision.current = current; moreFlight.current = false;
     const refreshedAvailability = changedAvailability.current === scope; changedAvailability.current = null;
     setResult({ key: scope, loading: Boolean(selected), items: [] });
@@ -98,7 +100,7 @@ function Discovery() {
       if (current.active) setResult({ key: scope, items: data.items, total: data.total, page: data.page, dateMinimum: data.dateMinimum, refreshedAvailability });
     }).catch(error => { if (current.active) setResult({ key: scope, items: [], error }); });
     return () => { current.active = false; };
-  }, [scope, query, metroId, selected, attempt]);
+  }, [scope, query, metroId, selected, attempt, viewer]);
   useEffect(() => {
     let active = true; setPlaces({ loading: Boolean(selected), locations: [] });
     if (selected) apiRequest(`/api/items/locations?${new URLSearchParams({ stateId, metroId })}`, {
@@ -206,7 +208,7 @@ function Discovery() {
           <input id="browse-q" name="q" maxLength={100} placeholder="Name, description or item type" value={fields.q} onChange={change} disabled={!selected} /></div>
       </div>
       <div className="discovery-row">
-        <div className="discovery-chips" role="group" aria-label="Category">
+        <div className={'discovery-chips' + (filtersOff ? ' is-off' : '')} role="group" aria-label="Category">
           {chip('All', !fields.categoryId, () => setFields(previous => ({ ...previous, categoryId: '', itemTypeId: '' })))}
           {catalog.data?.categories.map(entry => chip(entry.label, fields.categoryId === entry.id,
             () => setFields(previous => ({ ...previous, categoryId: previous.categoryId === entry.id ? '' : entry.id, itemTypeId: '' }))))}
@@ -260,14 +262,15 @@ function PublicItemDetail({ itemId }) {
   const [result, setResult] = useState({});
   const [message, setMessage] = useState('');
   useEffect(() => {
+    if (viewer === 'loading') return undefined;
     let active = true;
-    setResult({ key: scope, loading: true }); setMessage('');
+    setResult(previous => previous.key === scope && previous.item ? { ...previous, refreshing: true } : { key: scope, loading: true }); setMessage('');
     apiRequest(`/api/items/${encodeURIComponent(itemId)}`).then(data => { if (active) setResult({ key: scope, item: data.item }); })
       .catch(error => { if (active) setResult({ key: scope, error }); });
     const refresh = () => setAttempt(value => value + 1);
     window.addEventListener('focus', refresh);
     return () => { active = false; window.removeEventListener('focus', refresh); };
-  }, [itemId, scope, attempt]);
+  }, [itemId, scope, attempt, viewer]);
   const current = result.key === scope ? result : { loading: true };
   const item = current.item;
   const previous = location.state?.discoverySearch;

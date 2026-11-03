@@ -41,7 +41,7 @@ test('shared Login and My Plans preserve keyboard, authoritative states and reco
     await expect(page.getByRole('heading', { name: 'No plans yet', exact: true })).toBeVisible();
     expect(new URL(page.url()).pathname).toBe('/app/plans');
     const create = page.locator('main a[href="/app/plans/new"]'); await expect(create).toHaveCount(1);
-    expect(await create.evaluate(node => getComputedStyle(node).backgroundColor)).toBe('rgb(36, 87, 70)');
+    expect(await create.evaluate(node => getComputedStyle(node).backgroundColor)).toBe('rgb(13, 20, 17)');
     expect((await create.boundingBox()).height).toBeGreaterThanOrEqual(44);
     await accessible(page, 'Empty plans');
     // Keyboard activation keeps the same creation route and existing form behavior.

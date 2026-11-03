@@ -17,7 +17,7 @@ async function setup(browser,d,width=1440) {
  const account={email:randomUUID()+'@example.test',password:randomUUID()+'secret',firstName:'LifecycleA',lastName:'Synthetic'};
  await post('/api/auth/register',account); const page=await context.newPage();
  const menu=async()=>{const button=page.getByRole('button',{name:'Menu',exact:true});if(await button.isVisible())await button.click();};
- const inventory=async()=>{await menu();await page.getByRole('link',{name:'My Listings',exact:true}).first().click();};
+ const inventory=async()=>{await menu();await page.getByRole('link',{name:'Donate',exact:true}).first().click();};
  return {context,page,post,headers,account,menu,inventory};
 }
 async function decide(page,action,accept,type='confirm') {
@@ -56,12 +56,12 @@ for(const width of [1440,320,375]) test('F3 create/edit guards, history, reload,
   await decide(page,()=>page.evaluate(()=>{setTimeout(()=>location.reload(),0);}),true,'beforeunload');await expect(nameField(page)).toHaveValue('');
   const name='F3 '+width+' '+'long-item-name'.repeat(9);
   const savedDialogs=[];const rejectSavedDialog=dialog=>{savedDialogs.push(dialog.type());dialog.dismiss();};page.on('dialog',rejectSavedDialog);
-  await nameField(page).fill(name);await nameField(page).press('Tab');await expect(save(page)).toBeFocused();await save(page).press('Enter');
+  await nameField(page).fill(name);await nameField(page).press('Enter');
   await expect(page.getByRole('heading',{name,exact:true})).toBeVisible();expect(new URL(page.url()).pathname).toBe('/app/listings');
   page.off('dialog',rejectSavedDialog);expect(savedDialogs).toEqual([]);
   const row=await deployment.db.collection('items').findOne({name});expect(row.planId).toBeUndefined();
   await page.getByRole('link',{name:'Manage '+name,exact:true}).click();await page.getByLabel('Description',{exact:true}).fill('Unsaved description');
-  await s.menu();const nav=page.getByRole('navigation',{name:'Primary'});await expect(nav.getByRole('link',{name:'My Listings',exact:true})).toHaveAttribute('aria-current','location');await expect(nav.getByRole('link',{name:'Find Free Items',exact:true})).not.toHaveAttribute('aria-current');
+  await s.menu();const nav=page.getByRole('navigation',{name:'Primary'});await expect(nav.getByRole('link',{name:'Donate',exact:true})).toHaveAttribute('aria-current','location');await expect(nav.getByRole('link',{name:'Find',exact:true})).not.toHaveAttribute('aria-current');
   const closeMenu=page.getByRole('button',{name:'Close menu',exact:true});if(await closeMenu.isVisible())await closeMenu.click();
   await decide(page,()=>s.inventory(),false);await expect(page.getByLabel('Description',{exact:true})).toHaveValue('Unsaved description');
   await decide(page,()=>page.goBack(),false);await expect(page.getByLabel('Description',{exact:true})).toHaveValue('Unsaved description');
@@ -162,9 +162,9 @@ test('F3 native Chromium 200 percent tab zoom preserves form, keyboard save and 
   await expect.poll(()=>page.evaluate(()=>({width:innerWidth,scale:devicePixelRatio,pinch:visualViewport.scale}))).toEqual({width:720,scale:2,pinch:1});
   await nameField(page).fill('Native zoom chair');const type=page.getByRole('combobox',{name:'Item type',exact:true});await type.fill('office chair');await type.press('ArrowDown');await type.press('Enter');
   await noOverflow(page);await accessible(page);await shot(page,'f3-native-zoom-200-form');
-  await nameField(page).focus();await nameField(page).press('Tab');await expect(save(page)).toBeFocused();await save(page).press('Enter');
+  await save(page).focus();await expect(save(page)).toBeFocused();await nameField(page).focus();await nameField(page).press('Enter');
   await expect(page.getByRole('heading',{name:'Native zoom chair',exact:true})).toBeVisible();await page.reload();await expect(page.getByRole('heading',{name:'Native zoom chair',exact:true})).toBeVisible();
-  const menu=page.getByRole('button',{name:'Menu',exact:true});if(await menu.isVisible())await menu.click();await page.getByRole('link',{name:'My Listings',exact:true}).first().click();
+  const menu=page.getByRole('button',{name:'Menu',exact:true});if(await menu.isVisible())await menu.click();await page.getByRole('link',{name:'Donate',exact:true}).first().click();
   await expect(page.getByRole('link',{name:'Native zoom chair',exact:true})).toBeVisible();await noOverflow(page);await accessible(page);await shot(page,'f3-native-zoom-200-inventory');
  }finally{if(zoom)await zoom.close();await s.context.close();fs.rmSync(directory,{recursive:true,force:true});}
 });
