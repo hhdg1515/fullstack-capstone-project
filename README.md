@@ -10,7 +10,21 @@ When people move out they throw away furniture, kitchenware and lamps that a nei
 
 The project started from the IBM Full-Stack capstone ("GiftLink") and was rebuilt into an item-first marketplace. The rebuild added real accounts, transactional pickups, a private photo pipeline, and accessibility and browser test coverage.
 
-> Status: a working demo with an isolated staging deployment. A public launch is not approved; the remaining launch items are tracked in [production readiness](docs/production-readiness.md).
+> Status: a portfolio demo running on free hosting tiers. A public launch is not approved; the remaining launch items are tracked in [production readiness](docs/production-readiness.md).
+
+## Try the live demo
+
+**[fullstack-capstone-project-flax.vercel.app](https://fullstack-capstone-project-flax.vercel.app)**
+
+The demo runs on free tiers (Vercel, MongoDB Atlas and Cloudflare R2), so the first request after a quiet period can take a few seconds. Treat everything you enter as public demo data that may be reset at any time. Register with a made-up address such as `giver@example.com` and a throwaway password of at least 12 characters.
+
+The full handoff needs two accounts, so use a normal browser window and a private (incognito) window side by side:
+
+1. **Window A, the giver.** Register, open **My Listings → Create Listing**, add a name, a photo or two, a pickup area and a deadline, then **Publish**.
+2. **Window B, the neighbor.** Without signing in, open **Find Free Items**, choose the same metro area and open the listing. Click **Request pickup**, choose **Register Here** on the sign-in page to create a second account, then pick a time inside the pickup window and send the request.
+3. **Window A.** Go to **My Listings → Incoming requests** and choose **Accept pickup**. The item is now reserved for everyone else.
+4. **Both windows.** Open the request with **Open conversation** and exchange a few messages in the private chat.
+5. **Optional.** Cancel the request from window B, or withdraw the listing from **Manage listing** in window A and watch it disappear from Find Free Items.
 
 ## What you can do
 
