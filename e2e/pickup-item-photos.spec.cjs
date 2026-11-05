@@ -1,3 +1,4 @@
+const { legacyPickupState } = require('./legacy-pickup-state.cjs');
 const { randomUUID, createHash } = require('node:crypto');
 const fs = require('node:fs'); const path = require('node:path');
 const sharp = require('../giftlink-backend/node_modules/sharp');
@@ -72,7 +73,8 @@ test('participants recognize current covers through acceptance, scheduling, cove
     await ownerPage.goto('/app/pickups/' + fixture.request.id); await loaded(thumb(ownerPage));
     await ownerPage.getByRole('button', { name: 'Mark as picked up', exact: true }).focus(); await expect(ownerPage.getByRole('button', { name: 'Mark as picked up', exact: true })).toBeFocused();
     await audit(ownerPage, 'giver pending'); await evidence(ownerPage, info, 'giver-pending');
-    ownerPage.once('dialog', dialog => dialog.accept()); await ownerPage.keyboard.press('Enter');
+    // Preserve historical reservation/media coverage through the compatibility API.
+    await legacyPickupState(ownerPage, 'accept');
     await expect(summary(ownerPage).getByText('Accepted', { exact: true })).toBeVisible(); await loaded(thumb(ownerPage));
     await page.evaluate(() => window.dispatchEvent(new Event('focus'))); await expect(summary(page).getByText('Accepted', { exact: true })).toBeVisible(); await loaded(thumb(page));
     await expect(page.getByRole('button', { name: 'Propose new time', exact: true })).toHaveCount(0);
