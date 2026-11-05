@@ -1,3 +1,4 @@
+const { legacyPickupState } = require('./legacy-pickup-state.cjs');
 const { randomUUID } = require('node:crypto');
 const AxeBuilder = require('@axe-core/playwright').default;
 const { test: base, expect } = require('./fixtures.cjs');
@@ -38,7 +39,7 @@ test('participants enter canonical conversations and keep request context, decis
     expect(new URL(a.url()).searchParams.get('status')).toBeNull();
     await a.getByRole('link', { name: 'View request from Requester for Local coordination desk', exact: true }).click();
     await expect(a.getByText('Conversation loaded.', { exact: true })).toBeAttached(); await a.getByLabel('Message', { exact: true }).fill('Keep this private draft while accepting.');
-    await a.getByRole('button', { name: 'Accept pickup', exact: true }).click(); await expect(a.getByText('Accepted', { exact: true })).toBeVisible();
+    await legacyPickupState(a, 'accept'); await expect(a.getByText('Accepted', { exact: true })).toBeVisible();
     await expect(a.getByLabel('Message', { exact: true })).toHaveValue('Keep this private draft while accepting.');
     await expect(a.getByText('Confirmed pickup:', { exact: true })).toBeVisible(); await expect(a.getByText('Picked Up', { exact: true })).toHaveCount(0);
     await expect(a.getByRole('link', { name: 'Open conversation', exact: true })).toHaveCount(0);
@@ -46,7 +47,7 @@ test('participants enter canonical conversations and keep request context, decis
     await a.getByRole('button', { name: 'Send message', exact: true }).click(); await expect(a.getByText('Message sent.', { exact: true })).toBeAttached();
     await b.goto('/app/pickups/' + request.id + '#conversation');
     await expect(b.getByRole('heading', { name: 'Pickup conversation', exact: true })).toBeFocused(); await expect(b.getByText('Keep this private draft while accepting.', { exact: true })).toBeVisible();
-    await expect(b.getByRole('button', { name: 'Accept pickup', exact: true })).toHaveCount(0); await expect(b.getByRole('button', { name: 'Confirm handoff', exact: true })).toHaveCount(0);
+    await expect(b.getByRole('button', { name: 'Accept pickup', exact: true })).toHaveCount(0); await expect(b.getByRole('button', { name: 'Mark as picked up', exact: true })).toHaveCount(0);
     await audit(a, 'giver accepted'); await audit(b, 'requester accepted');
     const root = '/api/pickup-requests/' + request.id;
     for (const suffix of ['', '/conversation', '/conversation/messages']) expect((await outsider.request.get(root + suffix)).status()).toBe(404);

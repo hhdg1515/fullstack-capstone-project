@@ -40,9 +40,11 @@ function createPickupRoutes({ connectToDatabase, auth, now, messageLimit, imageM
     ]), async (req, res, next) => {
         try { res.json(await service.schedule(req.user._id, req.params.requestId, req.body, req.params.proposalId)); } catch (error) { next(error); }
     });
-    router.post('/:requestId/actions', validate(['action', 'version'], [
-        body('action').isString().bail().isIn(['accept', 'decline', 'cancel', 'complete', 'no_show']),
-        body('version').isInt({ min: 1 }).custom(value => typeof value === 'number')
+    router.post('/:requestId/actions', validate(['action', 'version', 'confirmHandedOver'], [
+        body('action').isString().bail().isIn(['accept', 'decline', 'cancel', 'complete', 'no_show', 'picked_up']),
+        body('version').isInt({ min: 1 }).custom(value => typeof value === 'number'),
+        body('confirmHandedOver').custom((value, { req }) => req.body.action === 'picked_up' ? value === true : value === undefined)
+            .withMessage('Confirm that the item has actually been handed over.')
     ]), async (req, res, next) => {
         try { res.json(await service.act(req.user._id, req.params.requestId, req.body)); } catch (error) { next(error); }
     });

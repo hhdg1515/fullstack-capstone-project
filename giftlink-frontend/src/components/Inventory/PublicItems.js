@@ -304,7 +304,7 @@ function PublicItemDetail({ itemId }) {
         <div className="public-item-action">
           {owner && auth?.status === 'authenticated' && <Link className="ui-button public-item-cta" to={`/app/items/${item.id}/edit`}>{item.listingModel === 2 ? 'Manage listing' : 'Edit item'}</Link>}
           {owner ? <p role="status">Your listing.</p> : item.isReserved === true ? <p role="status">This item has an accepted pickup. Check back if it becomes available.</p> : item.pickupTimeZone ? <><Link className="ui-button public-item-cta" to={`/app/items/${item.id}/request`} state={{ discoverySearch: previous }}>{"I'm interested"}<span aria-hidden="true">→</span></Link>
-            <p>Suggest a pickup time, then chat with the giver. Nothing is reserved until they accept.</p></> : <p>The giver needs to set a pickup timezone before this listing can receive requests.</p>}
+            <p>Suggest a pickup time, then chat with the giver.</p></> : <p>The giver needs to set a pickup timezone before this listing can receive requests.</p>}
           {typeof item.isReserved !== 'boolean' && <p>Current pickup availability will be checked when you send a request.</p>}
         </div>
         <div className="public-item-share">

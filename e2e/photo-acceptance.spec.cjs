@@ -1,3 +1,4 @@
+const { legacyPickupState } = require('./legacy-pickup-state.cjs');
 const { randomUUID, randomBytes, createHash } = require('node:crypto');
 const fs = require('node:fs'); const path = require('node:path');
 const sharp = require('../giftlink-backend/node_modules/sharp');
@@ -120,15 +121,16 @@ test('the same real photo batch survives compression, uncertain publish, managem
     await post(owner, itemRoot + '/actions', { action: 'publish', version });
     let { request } = await post(requester, '/api/pickup-requests', { itemId: saved._id.toString(), localDateTime: day(2) + 'T12:00', timeZone: 'UTC' });
     const giverRequest = await owner.newPage(); giverRequest.on('dialog', dialog => dialog.accept());
-    await giverRequest.goto('/app/pickups/' + request.id); await giverRequest.getByRole('button', { name: 'Accept pickup', exact: true }).click(); await expect(giverRequest.getByText('Accepted', { exact: true })).toBeVisible();
+    await giverRequest.goto('/app/pickups/' + request.id); await legacyPickupState(giverRequest, 'accept'); await expect(giverRequest.getByText('Accepted', { exact: true })).toBeVisible();
     await receiver.goto('/app/pickups/' + request.id); await expect(receiver.getByRole('button', { name: 'Cancel request', exact: true })).toBeVisible();
     await expect(giverRequest.getByRole('button', { name: /Propose new time|Confirm handoff|Record no-show/ })).toHaveCount(0);
+    await expect(giverRequest.getByRole('button', { name: 'Mark as picked up', exact: true })).toBeVisible();
     ({ request } = await get(owner, '/api/pickup-requests/' + request.id));
     await audit(giverRequest, 'accepted pickup'); await evidence(giverRequest, info, 'pickup');
     const after = Date.parse(request.proposedAt) + 1000; deployment.advance(after); await giverRequest.clock.install({ time: new Date(after) });
     await post(owner, '/api/pickup-requests/' + request.id + '/actions', { action: 'complete', version: request.version });
-    await giverRequest.evaluate(() => window.dispatchEvent(new Event('focus'))); await expect(giverRequest.getByText('Completed', { exact: true })).toBeVisible();
-    await receiver.evaluate(() => window.dispatchEvent(new Event('focus'))); await expect(receiver.getByText('Completed', { exact: true })).toBeVisible();
+    await giverRequest.evaluate(() => window.dispatchEvent(new Event('focus'))); await expect(giverRequest.getByText('Picked up', { exact: true })).toBeVisible();
+    await receiver.evaluate(() => window.dispatchEvent(new Event('focus'))); await expect(receiver.getByText('Picked up', { exact: true })).toBeVisible();
     await expect(receiver.getByRole('article', { name: 'Request summary' }).getByRole('img')).toHaveCount(0);
     expect((await requester.request.get('/api/item-images/' + expected[0] + '/thumbnail')).status()).toBe(404); expect((await owner.request.get('/api/item-images/' + expected[0] + '/thumbnail')).status()).toBe(200);
     await audit(receiver, 'completed'); await evidence(receiver, info, 'completed');

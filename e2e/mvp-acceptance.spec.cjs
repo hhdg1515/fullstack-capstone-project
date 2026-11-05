@@ -1,3 +1,4 @@
+const { legacyPickupState } = require('./legacy-pickup-state.cjs');
 const { selectItemType } = require('./item-type.cjs');
 const { randomUUID } = require('node:crypto');
 const fs = require('node:fs');
@@ -173,9 +174,9 @@ test('two independent users complete the integrated marketplace journey with tru
     await capture(b, 'pending-request');
     await a.goto('/app/pickups/incoming');
     await expect(a.getByRole('list', { name: 'Pickup requests', exact: true }).getByRole('listitem')).toHaveCount(2);
-    await a.goto('/app/pickups/' + requestIds[1]); await a.getByRole('button', { name: 'Decline request', exact: true }).click();
+    await a.goto('/app/pickups/' + requestIds[1]); await legacyPickupState(a, 'decline');
     await a.getByText('Declined', { exact: true }).waitFor();
-    await a.goto('/app/pickups/' + requestIds[0]); await a.getByRole('button', { name: 'Accept pickup', exact: true }).click();
+    await a.goto('/app/pickups/' + requestIds[0]); await legacyPickupState(a, 'accept');
     await a.getByText('Accepted', { exact: true }).waitFor(); await capture(a, 'accepted-request');
     await b.goto('/app/items?stateId=06&metroId=41860');
     await expect(b.getByRole('heading', { name: '1 available item', exact: true })).toBeVisible();
@@ -199,6 +200,7 @@ test('two independent users complete the integrated marketplace journey with tru
     await a.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect(a.locator('.chat-message')).toHaveCount(2); await capture(a, 'conversation');
     await expect(a.getByRole('button', { name: /Propose new time|Confirm handoff|Record no-show/ })).toHaveCount(0);
+    await expect(a.getByRole('button', { name: 'Mark as picked up', exact: true })).toBeVisible();
 
     // A declined item's new request is a distinct lifecycle, not reopening history.
     await b.goto('/app/pickups/' + requestIds[1] + '#conversation');

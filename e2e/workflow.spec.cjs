@@ -1,3 +1,4 @@
+const { legacyPickupState } = require('./legacy-pickup-state.cjs');
 const { selectItemType } = require('./item-type.cjs');
 const { test, expect } = require('./fixtures.cjs');
 const { root, expectedEmails } = require('./policy.cjs');
@@ -172,7 +173,7 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     must(![emailA, emailB, 'giverId', 'receiverId', 'password', 'note'].some(secret => publicText.includes(secret)), 'Public item disclosed private data');
     for (let i = 0; i < requestIds.length; i++) {
       await a.goto('/app/plans'); await a.getByRole('navigation', { name: 'Donate', exact: true }).getByRole('link', { name: 'Incoming requests', exact: true }).click();
-      await a.locator(`a[href="/app/pickups/${requestIds[i]}"]`).click(); await a.getByRole('button', { name: 'Accept pickup', exact: true }).click();
+      await a.locator(`a[href="/app/pickups/${requestIds[i]}"]`).click(); await legacyPickupState(a, 'accept');
       await a.getByText('Accepted', { exact: true }).first().waitFor();
     }
     await test.step('Three pending requests explicitly accepted by giver', async () => {});
@@ -200,9 +201,9 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
       const current = (await (await read(giver, deployment.origin + '/api/pickup-requests/' + id)).json()).request;
       must((await write(giver, '/api/pickup-requests/' + id + '/actions', { action, version: current.version })).status() === 200, action + ' was not recorded');
     };
-    await outcome(requestIds[0], 'complete'); await a.goto('/app/pickups/' + requestIds[0]); await a.getByText('Completed', { exact: true }).first().waitFor();
-    await expect(a.getByRole('button', { name: /Confirm handoff|Record no-show/ })).toHaveCount(0);
-    await b.goto('/app/pickups/' + requestIds[0]); await b.getByText('Completed', { exact: true }).first().waitFor();
+    await outcome(requestIds[0], 'complete'); await a.goto('/app/pickups/' + requestIds[0]); await a.getByText('Picked up', { exact: true }).first().waitFor();
+    await expect(a.getByRole('button', { name: /Mark as picked up|Confirm handoff|Record no-show/ })).toHaveCount(0);
+    await b.goto('/app/pickups/' + requestIds[0]); await b.getByText('Picked up', { exact: true }).first().waitFor();
     must((await read(receiver, deployment.origin + '/api/items/' + itemIds[0])).status() === 404, 'Cleared item remained public');
     const planRow = await deployment.db.collection('moveOutPlans').findOne({ ownerId: userA._id }); await a.goto('/app/plans/' + planRow._id + '/items'); await expect(a.getByText('1 of 3 items cleared', { exact: true })).toBeVisible();
     await outcome(requestIds[2], 'no_show'); await a.goto('/app/pickups/' + requestIds[2]); await a.getByText('No-show', { exact: true }).first().waitFor();

@@ -1,3 +1,4 @@
+const { legacyPickupState } = require('./legacy-pickup-state.cjs');
 const fs = require('node:fs'), path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { ObjectId } = require('../giftlink-backend/node_modules/mongodb');
@@ -65,11 +66,12 @@ test('C3 real two-account create/photos/publish/discover/chat/cancel and withdra
     const appointment = Temporal.Now.zonedDateTimeISO(zone).add({ minutes: 3 }).toPlainDateTime().toString({ smallestUnit: 'minute' });
     await b.getByLabel('Pickup date and time').fill(appointment); await b.getByRole('button', { name: 'Send to the giver', exact: true }).click(); await expect(b).toHaveURL(/\/app\/pickups\/[a-f0-9]{24}$/);
     const requestId = new URL(b.url()).pathname.split('/').pop(); await audit(b, 'request-pending');
-    await a.goto('/app/pickups/' + requestId); await a.getByRole('button', { name: 'Accept pickup', exact: true }).click(); await b.reload();
+    await a.goto('/app/pickups/' + requestId); await legacyPickupState(a, 'accept'); await b.reload();
     await expect(b.getByText('Applicant:')).toHaveCount(0); await b.getByLabel('Message', { exact: true }).fill('Synthetic requester message.'); await b.getByRole('button', { name: 'Send message', exact: true }).click(); await expect(b.getByText('Synthetic requester message.', { exact: true })).toBeVisible();
     await a.reload(); await expect(a.getByText('Synthetic requester message.', { exact: true })).toBeVisible();
     await a.getByLabel('Message', { exact: true }).fill('Synthetic giver reply.'); await a.getByRole('button', { name: 'Send message', exact: true }).click(); await expect(a.getByText('Synthetic giver reply.', { exact: true })).toBeVisible();
     await expect(a.getByRole('button', { name: /Propose new time|Confirm handoff|Record no-show/ })).toHaveCount(0);
+    await expect(a.getByRole('button', { name: 'Mark as picked up', exact: true })).toBeVisible();
     await audit(b, 'conversation');
     await call(third, 'get', '/api/pickup-requests/' + requestId + '/conversation/messages', undefined, 404);
     // The giver releases the accepted appointment; the closed chat stays readable.

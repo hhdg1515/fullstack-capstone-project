@@ -161,7 +161,11 @@ function createPickupService({ connectToDatabase, now = () => new Date(), imageM
                 if (!row || referenceVersion(row) !== referenceVersion(original) || !row.giverId.equals(original.giverId) || !row.itemId.equals(original.itemId)) throw missing();
                 if (row.version !== input.version) throw conflict('PICKUP_CHANGED', 'This request changed. Reload and review its current status.');
                 const giver = row.giverId.equals(userId); const action = input.action; const at = plan === null ? await databaseNow(db, session) : now();
-                const allowed = action === 'cancel' ? ['pending', 'accepted'].includes(row.status) : giver &&
+                const handoff = action === 'picked_up';
+                if (handoff && input.confirmHandedOver !== true) throw new InventoryError(400, 'HANDOFF_CONFIRMATION_REQUIRED', 'Confirm the actual handoff before marking this item picked up.');
+                if (handoff && !originalParticipants(row)) throw missing();
+                if (handoff && row.rescheduleProposal && !validProposal(row)) throw conflict('PICKUP_CHANGED', 'Review the pickup proposal before recording the handoff.');
+                const allowed = handoff ? giver && row.active === true && ['pending', 'accepted'].includes(row.status) : action === 'cancel' ? ['pending', 'accepted'].includes(row.status) : giver &&
                     (['accept', 'decline'].includes(action) ? row.status === 'pending' : ['complete', 'no_show'].includes(action) && row.status === 'accepted');
                 if (!allowed) throw conflict('INVALID_PICKUP_TRANSITION', 'This action is unavailable for your role and the current request status.');
                 const item = plan === null ? await itemFor(db, row, { session }) :
@@ -171,13 +175,13 @@ function createPickupService({ connectToDatabase, now = () => new Date(), imageM
                     if (row.proposedAt <= at) throw conflict('APPOINTMENT_PAST', 'That pickup time has passed. Decline this request so the receiver can propose a new time.');
                     if (await db.collection('pickupRequests').findOne({ itemId: row.itemId, status: 'accepted' }, { session })) throw conflict('ITEM_RESERVED', 'Another pickup is already accepted for this item.');
                 }
-                if (['complete', 'no_show'].includes(action)) {
-                    if (row.proposedAt > at || action === 'no_show' && row.proposedAt.getTime() === at.getTime()) throw conflict('APPOINTMENT_NOT_REACHED', 'Wait until the scheduled appointment before recording a handoff or no-show.');
+                if (handoff || ['complete', 'no_show'].includes(action)) {
+                    if (!handoff && (row.proposedAt > at || action === 'no_show' && row.proposedAt.getTime() === at.getTime())) throw conflict('APPOINTMENT_NOT_REACHED', 'Wait until the scheduled appointment before recording a handoff or no-show.');
                     if (!item || !['available', 'expired'].includes(item.status) || (plan !== null && plan.status !== 'active')) throw conflict('LISTING_UNAVAILABLE', 'This listing changed. Reload and review the request.');
                 }
-                const state = { accept: 'accepted', decline: 'declined', cancel: 'cancelled', complete: 'completed', no_show: 'no_show' }[action];
-                const stamp = { accept: 'acceptedAt', decline: 'declinedAt', cancel: 'cancelledAt', complete: 'completedAt', no_show: 'noShowAt' }[action];
-                if (row.rescheduleProposal && ['cancel', 'complete', 'no_show'].includes(action)) {
+                const state = { picked_up: 'completed', accept: 'accepted', decline: 'declined', cancel: 'cancelled', complete: 'completed', no_show: 'no_show' }[action];
+                const stamp = { picked_up: 'completedAt', accept: 'acceptedAt', decline: 'declinedAt', cancel: 'cancelledAt', complete: 'completedAt', no_show: 'noShowAt' }[action];
+                if (row.rescheduleProposal && ['cancel', 'complete', 'no_show', 'picked_up'].includes(action)) {
                     row.history.push(rescheduleEvent(row, 'reschedule_invalidated', userId, giver ? 'giver' : 'receiver', at, 'request_' + state));
                     delete row.rescheduleProposal;
                 }
@@ -185,9 +189,24 @@ function createPickupService({ connectToDatabase, now = () => new Date(), imageM
                 if (action === 'cancel') row.cancellationReason = 'cancelled_by_' + (giver ? 'giver' : 'receiver');
                 row.history.push({ action: state, actorId: userId, actorRole: giver ? 'giver' : 'receiver', at });
                 await db.collection('pickupRequests').replaceOne({ _id: row._id }, row, { session });
-                if (action === 'complete') {
+                if (action === 'complete' || handoff) {
                     await db.collection('items').updateOne({ _id: item._id }, { $set: { status: 'cleared', updatedAt: at, clearedByPickupRequestId: row._id }, $inc: { version: 1 } }, { session });
-                    await db.collection('pickupRequests').updateMany({ itemId: item._id, active: true }, {
+                    const affected = { itemId: item._id, active: true };
+                    if (handoff) {
+                        Object.assign(affected, { giverId: row.giverId, status: { $in: ['pending', 'accepted'] } },
+                            referenceVersion(row) === 2 ? { referenceVersion: 2, planId: { $exists: false } } : { referenceVersion: { $exists: false }, planId: row.planId });
+                        // At most one accepted reservation exists per item. Keep
+                        // its pending proposal snapshot before closing it.
+                        const proposed = await db.collection('pickupRequests').find(Object.assign({}, affected, { status: 'accepted', rescheduleProposal: { $exists: true } }), { session }).limit(2).toArray();
+                        if (proposed.length > 1) throw conflict('PICKUP_CHANGED', 'Review the conflicting pickup records before recording the handoff.');
+                        for (const other of proposed) {
+                            if (!originalParticipants(other) || !validProposal(other)) throw conflict('PICKUP_CHANGED', 'Review the pickup proposal before recording the handoff.');
+                            await db.collection('pickupRequests').updateOne({ _id: other._id, version: other.version }, {
+                                $push: { history: rescheduleEvent(other, 'reschedule_invalidated', userId, 'giver', at, 'item_handed_over') }
+                            }, { session });
+                        }
+                    }
+                    await db.collection('pickupRequests').updateMany(affected, {
                         $set: { status: 'cancelled', active: false, cancelledAt: at, updatedAt: at, cancellationReason: 'item_handed_over' },
                         $unset: { rescheduleProposal: '' },
                         $inc: { version: 1 }, $push: { history: { action: 'cancelled', actorId: userId, actorRole: 'giver', at, reason: 'item_handed_over' } }

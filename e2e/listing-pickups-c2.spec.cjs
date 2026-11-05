@@ -1,3 +1,4 @@
+const { legacyPickupState } = require('./legacy-pickup-state.cjs');
 // UX-2C2 browser acceptance: Account A owns an independent (v2) listing,
 // Account B requests, coordinates, reschedules and the pickup is decided,
 // all on a real HTTPS app and MongoDB replica set. V2 publication is UX-2C3, so
@@ -68,7 +69,7 @@ test('two accounts request, accept, chat, reschedule and close a pickup for an i
     await expect(a).toHaveURL(deployment.origin + '/app/pickups/' + requestId);
     await expect(a.getByRole('link', { name: item.name, exact: true })).toHaveAttribute('href', '/app/items/' + item.id);
     await expect(a.getByText(/^Pickup window: /)).toBeVisible();
-    await a.getByRole('button', { name: 'Accept pickup', exact: true }).click();
+    await legacyPickupState(a, 'accept');
     await expect(a.getByText('Pickup arranged. The item is reserved; handoff has not been recorded.')).toBeVisible(); await audit(a, 'owner-accepted');
 
     // Private conversation in both directions.
@@ -81,6 +82,7 @@ test('two accounts request, accept, chat, reschedule and close a pickup for an i
 
     // Time changes are no longer offered in the UI.
     await expect(a.getByRole('button', { name: /Propose new time|Confirm handoff|Record no-show/ })).toHaveCount(0);
+    await expect(a.getByRole('button', { name: 'Mark as picked up', exact: true })).toBeVisible();
 
     // Outsiders and anonymous users see nothing private.
     const c = await outsider.newPage(); await c.goto('/app/pickups/' + requestId);

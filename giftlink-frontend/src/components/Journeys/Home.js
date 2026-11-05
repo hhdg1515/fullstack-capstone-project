@@ -47,7 +47,7 @@ const faqs = [
   ['Are all items free?', 'No. Look for the Free label. For other items, agree on the price in chat before arranging pickup.'],
   ['Is it free to publish a listing?', 'Yes. Creating an account and publishing a listing are free.'],
   ['Does the site provide delivery or moving help?', 'No. You arrange collection, transport and any lifting help directly with the other person.'],
-  ['Does sending a request reserve the item?', 'No. The item is reserved only when the giver accepts a pickup request.'],
+  ['Does sending a request reserve the item?', 'No. A request or chat does not reserve the item. Agree on pickup directly with the giver.'],
   ['Will my home address appear on my listing?', 'No. Listings show a general pickup area, not a street address. Share exact pickup instructions privately, only when needed.']
 ];
 export default function Home() {

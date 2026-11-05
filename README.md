@@ -22,9 +22,9 @@ The full handoff needs two accounts, so use a normal browser window and a privat
 
 1. **Window A, the giver.** Register, open **Donate → Create Listing**, add a name, a photo or two, a pickup area and a deadline, answer **Is it free?**, then **Publish**.
 2. **Window B, the neighbor.** Without signing in, open **Find**, choose the same metro area and open the listing. Click **I'm interested**, choose **Register Here** on the sign-in page to create a second account, then pick a time inside the pickup window and send the request.
-3. **Window A.** Go to **Donate → Incoming requests** and choose **Accept pickup**. The item is now reserved for everyone else.
-4. **Both windows.** Open the request with **Open conversation** and exchange a few messages in the private chat.
-5. **Optional.** Cancel the request from window B, or withdraw the listing from **Manage listing** in window A and watch it disappear from Find.
+3. **Window A.** Go to **Donate → Incoming requests** and open **View request**. Chat with applicants; no acceptance step is needed.
+4. **Both windows.** Exchange a few messages in the request’s private chat.
+5. **After handing over.** In the actual recipient’s request, the giver chooses **Mark as picked up** and confirms. The item disappears from Find, other open requests close, and message history stays readable. In the demo, use only synthetic items and accounts to simulate this step.
 
 ## What you can do
 
@@ -33,10 +33,10 @@ The full handoff needs two accounts, so use a normal browser window and a privat
 | Create a listing: name, type, condition, description, up to 5 photos, pickup area and deadline | Browse anonymously by **metro area → city → neighborhood** |
 | Publish it, then edit it in place or withdraw it from **Manage listing** | Search and filter (category, item type, condition, sort); results update as you type |
 | See the number of open requests on each listing card | Open a listing with its photo gallery and share link |
-| Accept or decline requests; accepting reserves the item | Sign in only when requesting a pickup date and time |
+| Chat with applicants; mark the actual recipient’s item as picked up | Sign in only when requesting a pickup date and time |
 | Chat privately with each requester | Chat with the giver, or cancel the request |
 
-A pickup request never reserves an item by itself. The giver accepts one appointment per item, and other requests stay pending until the appointment is released.
+Chatting does not reserve an item. Recording the actual handoff removes the listing and closes other open requests. [Existing reservation compatibility](docs/chat-first-pickup.md#existing-accepted-requests-and-old-clients) is preserved.
 
 ## Architecture
 
@@ -73,8 +73,8 @@ flowchart LR
 1. The giver saves a listing, which is validated server-side and given a pickup deadline. Uploaded photos are processed and stored privately, then the giver publishes.
 2. Discovery queries only published, unexpired, unreserved listings in the selected metro, and returns no owner identifiers.
 3. A neighbor proposes a local date and time inside the listing's pickup window. The server re-checks the window and that the item is still available.
-4. When the giver accepts, a transaction marks the request accepted. A unique partial index guarantees at most one accepted pickup per item.
-5. Requester and giver exchange plain-text messages that only those two participants can read. Declining, cancelling or withdrawing closes the request and leaves the history read-only.
+4. Giver and applicants coordinate in separate private conversations. There is no Accept/Decline step in the normal interface.
+5. After the physical handoff, the giver marks the actual recipient’s request picked up. One transaction clears the item, records that recipient’s completion and closes competing requests. Closed message history remains participant-only and read-only.
 
 ## Engineering highlights
 
