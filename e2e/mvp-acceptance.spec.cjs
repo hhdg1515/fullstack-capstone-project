@@ -192,11 +192,11 @@ test('two independent users complete the integrated marketplace journey with tru
     const original = (await read(giver, api)).request.proposedAt;
     await a.getByRole('button', { name: 'Send message', exact: true }).click(); await expect(a.getByLabel('Message', { exact: true })).toHaveValue('');
     expect((await read(requester, api)).request.proposedAt).toBe(original);
-    await b.getByRole('button', { name: 'Reload request', exact: true }).click();
+    await b.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect(b.getByText("Let's meet at 3 PM.\nPlease use the formal time proposal to confirm.", { exact: true })).toBeVisible();
     await b.getByLabel('Message', { exact: true }).fill('I will approve the formal proposal.');
     await b.getByRole('button', { name: 'Send message', exact: true }).click(); await expect(b.getByLabel('Message', { exact: true })).toHaveValue('');
-    await a.getByRole('button', { name: 'Reload request', exact: true }).click();
+    await a.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect(a.locator('.chat-message')).toHaveCount(2); await capture(a, 'conversation');
     await expect(a.getByRole('button', { name: /Propose new time|Confirm handoff|Record no-show/ })).toHaveCount(0);
 
@@ -210,7 +210,7 @@ test('two independent users complete the integrated marketplace journey with tru
     expect(new URL(b.url()).pathname.split('/').pop()).not.toBe(requestIds[1]);
     await b.getByRole('button', { name: 'Cancel request', exact: true }).click(); await b.getByText('Cancelled', { exact: true }).waitFor();
     // The giver releases the accepted appointment; its chat stays readable but closed.
-    await a.getByRole('button', { name: 'Reload request', exact: true }).click();
+    await a.evaluate(() => window.dispatchEvent(new Event('focus')));
     await a.getByRole('button', { name: 'Cancel request', exact: true }).click(); await a.getByText('Cancelled', { exact: true }).waitFor();
     await b.goto(detail + '#conversation');
     await expect(b.getByText(/This request is closed. You can read/)).toBeAttached();

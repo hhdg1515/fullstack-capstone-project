@@ -40,8 +40,7 @@ test('giver distinguishes requests for the same item and reviews the selected ap
     await expect(page.getByText('Cafe entrance', { exact: true })).toBeVisible(); await expect(page.getByText('Library entrance', { exact: true })).toHaveCount(0);
     await page.getByRole('link', { name: 'Back to requests', exact: true }).click();
     await expect(page.getByLabel('Request status', { exact: true })).toHaveCount(0);
-    await page.getByText('Past requests', { exact: true }).click();
-    await expect(page.getByText('No past requests.', { exact: true })).toBeVisible();
+    await expect(page.getByText('Past requests', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'View request from Alex for Shared desk', exact: true })).toBeVisible();
   } finally { for (const context of contexts) await context.close(); }
 });

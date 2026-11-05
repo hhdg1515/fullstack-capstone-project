@@ -112,9 +112,9 @@ test('the same real photo batch survives compression, uncertain publish, managem
     const requestId = new URL(receiver.url()).pathname.split('/').pop(), requestRoot = '/api/pickup-requests/' + requestId;
     await receiver.getByLabel('Message', { exact: true }).fill('Synthetic integrated coordination.'); await receiver.getByRole('button', { name: 'Send message', exact: true }).click(); await expect(receiver.getByLabel('Message', { exact: true })).toHaveValue('');
     await post(owner, itemRoot + '/actions', { action: 'unlist', version: saved.version, confirmCancelRequests: true });
-    await receiver.getByRole('button', { name: 'Reload request', exact: true }).click(); await expect(receiver.getByText('Cancelled', { exact: true })).toBeVisible();
+    await receiver.evaluate(() => window.dispatchEvent(new Event('focus'))); await expect(receiver.getByText('Cancelled', { exact: true })).toBeVisible();
     await expect(receiver.getByRole('article', { name: 'Request summary' }).getByRole('img')).toHaveCount(0);
-    await receiver.getByRole('button', { name: 'Reload request', exact: true }).click(); await expect(receiver.getByText('Synthetic integrated coordination.', { exact: true })).toBeVisible();
+    await receiver.evaluate(() => window.dispatchEvent(new Event('focus'))); await expect(receiver.getByText('Synthetic integrated coordination.', { exact: true })).toBeVisible();
     await expect(receiver.getByRole('button', { name: 'Send message', exact: true })).toHaveCount(0); await audit(receiver, 'closed private photos'); await evidence(receiver, info, 'closed');
     const version = (await deployment.db.collection('items').findOne({ _id: saved._id })).version;
     await post(owner, itemRoot + '/actions', { action: 'publish', version });
@@ -127,8 +127,8 @@ test('the same real photo batch survives compression, uncertain publish, managem
     await audit(giverRequest, 'accepted pickup'); await evidence(giverRequest, info, 'pickup');
     const after = Date.parse(request.proposedAt) + 1000; deployment.advance(after); await giverRequest.clock.install({ time: new Date(after) });
     await post(owner, '/api/pickup-requests/' + request.id + '/actions', { action: 'complete', version: request.version });
-    await giverRequest.getByRole('button', { name: 'Reload request', exact: true }).click(); await expect(giverRequest.getByText('Completed', { exact: true })).toBeVisible();
-    await receiver.getByRole('button', { name: 'Reload request', exact: true }).click(); await expect(receiver.getByText('Completed', { exact: true })).toBeVisible();
+    await giverRequest.evaluate(() => window.dispatchEvent(new Event('focus'))); await expect(giverRequest.getByText('Completed', { exact: true })).toBeVisible();
+    await receiver.evaluate(() => window.dispatchEvent(new Event('focus'))); await expect(receiver.getByText('Completed', { exact: true })).toBeVisible();
     await expect(receiver.getByRole('article', { name: 'Request summary' }).getByRole('img')).toHaveCount(0);
     expect((await requester.request.get('/api/item-images/' + expected[0] + '/thumbnail')).status()).toBe(404); expect((await owner.request.get('/api/item-images/' + expected[0] + '/thumbnail')).status()).toBe(200);
     await audit(receiver, 'completed'); await evidence(receiver, info, 'completed');
