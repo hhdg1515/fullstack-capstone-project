@@ -30,7 +30,7 @@ function mount({ status = 'pending', detail = false, strict = false } = {}) {
 const ready = async () => screen.findByText('Conversation loaded.');
 const type = text => fireEvent.change(screen.getByLabelText('Message', { exact: true }), { target: { value: text } });
 const submit = () => fireEvent.submit(screen.getByRole('button', { name: 'Send message' }).closest('form'));
-const refresh = () => fireEvent.click(screen.getByRole('button', { name: 'Reload request' }));
+const refresh = () => { const button = screen.queryByRole('button', { name: 'Reload request' }); if (button) fireEvent.click(button); else fireEvent(window, new Event('focus')); };
 const texts = () => [...screen.getByRole('region', { name: 'Message history' }).querySelectorAll('.chat-text')].map(node => node.textContent);
 beforeEach(() => {
   handler = async url => url.endsWith('/conversation') ? reply(context()) : reply({ messages: [], nextCursor: null });
@@ -234,7 +234,7 @@ test('the real pickup detail keeps the chat draft on parent reload, then closes 
     return url.endsWith('/conversation') ? reply(context('giver', state)) : reply({ messages: [message(1)], nextCursor: null });
   };
   jest.spyOn(window, 'confirm').mockReturnValue(true); mount({ detail: true }); await ready(); type('Do not lose this');
-  wait = true; fireEvent.click(screen.getByRole('button', { name: 'Reload request' }));
+  wait = true; refresh();
   expect(screen.getByDisplayValue('Do not lose this')).toBeInTheDocument();
   await act(async () => reload.resolve(reply({ request: pickup() }))); wait = false;
   fireEvent.click(screen.getByRole('button', { name: 'Decline request' }));

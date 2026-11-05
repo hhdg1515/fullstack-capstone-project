@@ -34,7 +34,7 @@ test('participants enter canonical conversations and keep request context, decis
     await expect(entry).toHaveAttribute('href', '/app/pickups/' + request.id);
     await entry.click(); await expect(a.getByRole('region', { name: 'Message history' })).toBeVisible();
     await expect(a.getByText('Conversation loaded.', { exact: true })).toBeAttached(); await expect(a.getByText('Applicant: Requester', { exact: true })).toHaveCount(0);
-    await a.getByRole('link', { name: 'Back to requests', exact: true }).click(); await expect(a.getByRole('region', { name: 'Active requests', exact: true })).toBeVisible();
+    await a.getByRole('link', { name: 'Back to requests', exact: true }).click(); await expect(a.getByRole('region', { name: 'Incoming requests', exact: true })).toBeVisible();
     expect(new URL(a.url()).searchParams.get('status')).toBeNull();
     await a.getByRole('link', { name: 'View request from Requester for Local coordination desk', exact: true }).click();
     await expect(a.getByText('Conversation loaded.', { exact: true })).toBeAttached(); await a.getByLabel('Message', { exact: true }).fill('Keep this private draft while accepting.');
@@ -54,7 +54,7 @@ test('participants enter canonical conversations and keep request context, decis
     await expect(stranger.getByLabel('Message', { exact: true })).toHaveCount(0); await expect(stranger.getByText('Keep this private draft while accepting.', { exact: true })).toHaveCount(0);
     await b.getByRole('button', { name: 'Cancel request', exact: true }).click(); await expect(b.getByText('Cancelled', { exact: true })).toBeVisible();
     await expect(b.getByText(/This request is closed. You can read/)).toBeAttached(); await expect(b.getByRole('button', { name: 'Send message', exact: true })).toHaveCount(0);
-    await a.getByRole('button', { name: 'Reload request', exact: true }).click(); await expect(a.getByText(/This request is closed. You can read/)).toBeAttached();
+    await a.evaluate(() => window.dispatchEvent(new Event('focus'))); await expect(a.getByText(/This request is closed. You can read/)).toBeAttached();
     await expect(a.getByRole('region', { name: 'Message history' }).getByText('Keep this private draft while accepting.', { exact: true })).toBeVisible();
     await audit(b, 'closed history'); expect(deployment.serverErrors).toEqual([]);
   } finally { for (const c of contexts) await c.close(); }

@@ -112,7 +112,7 @@ test('private dashboards provide loading, empty/error/retry and role navigation'
   await act(async () => pending.resolve(error('Temporary failure', 'FAILED', 503)));
   expect(await screen.findByRole('alert')).toHaveTextContent('Temporary failure');
   fetch.mockResolvedValue(response({ requests: [], nextCursor: null })); await click(screen.getByRole('button', { name: 'Retry requests' }));
-  expect(await screen.findByText('No active requests.')).toBeInTheDocument();
+  expect(await screen.findByText('No requests yet.')).toBeInTheDocument();
   expect(screen.getByRole('navigation', { name: 'Donate' })).toBeInTheDocument();
 });
 test('giver inbox displays active appointments with bounded next pages without status controls', async () => {
@@ -123,9 +123,9 @@ test('giver inbox displays active appointments with bounded next pages without s
   expect(screen.queryByLabelText('Request status')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Refresh requests' })).not.toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Incoming pickup requests' })).not.toBeInTheDocument();
-  await waitFor(() => expect(fetch.mock.calls.some(([url]) => url.includes('received?view=active'))).toBe(true));
+  await waitFor(() => expect(fetch.mock.calls.some(([url]) => url.includes('received?'))).toBe(true));
   await click(await screen.findByRole('button', { name: 'Next requests' }));
-  await waitFor(() => expect(fetch.mock.calls.some(([url]) => url.includes(`view=active&cursor=${base.id}`))).toBe(true));
+  await waitFor(() => expect(fetch.mock.calls.some(([url]) => url.includes(`cursor=${base.id}`))).toBe(true));
   expect(await screen.findByRole('button', { name: 'First page' })).toBeInTheDocument();
 });
 test('receiver private detail retains full item and private note without giver controls or internal identities', async () => {
@@ -161,7 +161,7 @@ test('conflicting decisions require reload and a declined confirmation sends no 
   mount('/app/pickups/' + base.id); const button = await screen.findByRole('button', { name: 'Accept pickup' });
   window.confirm.mockReturnValueOnce(false); await click(button); expect(fetch.mock.calls.some(([, options]) => options.method === 'POST')).toBe(false);
   await click(button); expect(await screen.findByRole('alert')).toHaveTextContent('Request changed; reload.');
-  await click(screen.getByRole('button', { name: 'Reload request' }));
+  await act(async () => { fireEvent(window, new Event('focus')); });
   expect(await screen.findByRole('button', { name: 'Accept pickup' })).toBeInTheDocument();
 });
 test('expired sessions redirect private actions back to login', async () => {
@@ -245,7 +245,7 @@ test('lifecycle decisions block rapid duplicates and uncertain resubmission unti
   await act(async () => { fireEvent.click(accept); fireEvent.click(accept); }); expect(postCount).toBe(1);
   await act(async () => pending.resolve(error('Sending could not be confirmed.', 'UNAVAILABLE', 503)));
   await screen.findByRole('alert'); expect(accept).toBeDisabled();
-  await click(screen.getByRole('button', { name: 'Reload request' })); await waitFor(() => expect(accept).toBeEnabled()); expect(postCount).toBe(1);
+  await act(async () => { fireEvent(window, new Event('focus')); }); await waitFor(() => expect(accept).toBeEnabled()); expect(postCount).toBe(1);
 });
 test('a late action from another request cannot invalidate the new request session', async () => {
   const pending = deferred();
@@ -260,7 +260,7 @@ test.each([403, 404])('definitive %s detail revalidation removes private content
   let deny = false;
   fetch.mockImplementation(async url => url.endsWith('/api/me') ? response({ user }) : deny ? error('Private request unavailable', 'PICKUP_NOT_FOUND', status) : response({ request: base }));
   mount('/app/pickups/' + base.id); await screen.findByRole('heading', { name: 'Kitchen box' }); deny = true;
-  await click(screen.getByRole('button', { name: 'Reload request' })); await screen.findByRole('alert');
+  await act(async () => { fireEvent(window, new Event('focus')); }); await screen.findByRole('alert');
   expect(screen.queryByRole('heading', { name: 'Kitchen box' })).not.toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Pickup conversation' })).not.toBeInTheDocument();
 });
@@ -279,10 +279,10 @@ test('a failed detail refresh labels retained information as last loaded and blo
   let fail = false;
   fetch.mockImplementation(async url => url.endsWith('/api/me') ? response({ user }) : fail ? error('Reload failed', 'TEMPORARY', 503) : response({ request: { ...base, role: 'giver', status: 'accepted' } }));
   mount('/app/pickups/' + base.id); await screen.findByText('Accepted'); fail = true;
-  await click(screen.getByRole('button', { name: 'Reload request' })); await screen.findByRole('alert');
+  await act(async () => { fireEvent(window, new Event('focus')); }); await screen.findByRole('alert');
   expect(screen.getByText('Showing last loaded details. Reload to confirm current status and pickup time.')).toBeVisible();
   expect(screen.getByRole('button', { name: 'Cancel request' })).toBeDisabled(); expect(screen.queryByText('No pickup requests here yet.')).not.toBeInTheDocument();
-  fail = false; await click(screen.getByRole('button', { name: 'Reload request' })); await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel request' })).toBeEnabled());
+  fail = false; await act(async () => { fireEvent(window, new Event('focus')); }); await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel request' })).toBeEnabled());
   expect(screen.queryByText('Showing last loaded details. Reload to confirm current status and pickup time.')).not.toBeInTheDocument();
 });
 
@@ -299,7 +299,7 @@ test('fresh request details show the current cover and hide stale media while re
   mount('/app/pickups/' + base.id); const alt = item.name + ' (current cover)';
   expect(await screen.findByRole('img', { name: alt })).toHaveAttribute('src', photoItem.coverImage.thumbnail.url);
   expect(screen.getByRole('button', { name: 'Cancel request' })).toBeEnabled();
-  next = deferred(); await click(screen.getByRole('button', { name: 'Reload request' }));
+  next = deferred(); await act(async () => { fireEvent(window, new Event('focus')); });
   expect(screen.queryByRole('img')).not.toBeInTheDocument(); expect(screen.getByRole('heading', { name: item.name })).toBeInTheDocument();
   await act(async () => next.resolve(response({ request: { ...value, item: { ...item, imageAvailability: 'unavailable', coverImage: null } } })));
   expect(screen.getByText('Photo unavailable')).toBeVisible(); expect(screen.getByRole('button', { name: 'Cancel request' })).toBeEnabled();
@@ -308,7 +308,7 @@ test('failed refresh retains marked text and independent history but never a sta
   let failure = false;
   fetch.mockImplementation(async url => url.endsWith('/api/me') ? response({ user }) : failure ? error('Temporarily unavailable', 'BUSY', 503) : response({ request: { ...base, item: photoItem } }));
   mount('/app/pickups/' + base.id); await screen.findByRole('img'); failure = true;
-  await click(screen.getByRole('button', { name: 'Reload request' })); await screen.findByText('Temporarily unavailable');
+  await act(async () => { fireEvent(window, new Event('focus')); }); await screen.findByText('Temporarily unavailable');
   expect(screen.queryByRole('img')).not.toBeInTheDocument(); expect(screen.getByText(/Showing last loaded details/)).toBeVisible();
   expect(screen.getByRole('heading', { name: item.name })).toBeInTheDocument(); expect(screen.getByRole('button', { name: 'Cancel request' })).toBeDisabled();
 });
@@ -316,7 +316,7 @@ test('cover replacement resets a broken thumbnail only after an authoritative re
   let replacement = false; const nextId = '64b000000000000000000002';
   fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { request: { ...base, item: replacement ? { ...photoItem, coverImage: { id: nextId, thumbnail: { ...photoItem.coverImage.thumbnail, url: `/api/item-images/${nextId}/thumbnail` } } } : photoItem } }));
   mount('/app/pickups/' + base.id); fireEvent.error(await screen.findByRole('img')); expect(screen.getByText('Photo unavailable')).toBeVisible();
-  replacement = true; await click(screen.getByRole('button', { name: 'Reload request' }));
+  replacement = true; await act(async () => { fireEvent(window, new Event('focus')); });
   expect(await screen.findByRole('img')).toHaveAttribute('src', `/api/item-images/${nextId}/thumbnail`);
 });
 test.each([{ id: 'wrong-request' }, { role: 'outsider' }, { status: 'unknown' }])('does not show photo metadata outside the confirmed request/role/state: %j', async changes => {
@@ -328,26 +328,30 @@ test('expired request sessions clear the thumbnail before returning to login', a
   let expired = false;
   fetch.mockImplementation(async url => url.endsWith('/api/me') ? expired ? error('Sign in', 'UNAUTHENTICATED', 401) : response({ user }) : expired ? error('Sign in', 'UNAUTHENTICATED', 401) : response({ request: { ...base, item: photoItem } }));
   mount('/app/pickups/' + base.id); await screen.findByRole('img'); expired = true;
-  await click(screen.getByRole('button', { name: 'Reload request' }));
+  await act(async () => { fireEvent(window, new Event('focus')); });
   expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument(); expect(screen.queryByRole('img')).not.toBeInTheDocument();
 });
 
 
-test('incoming history is lazy, separately paginated and never replaces active work', async () => {
+test('incoming requests show all states together without a history disclosure or status filter', async () => {
   fetch.mockImplementation(async url => {
     if (url.endsWith('/api/me')) return response({ user });
-    const past = url.includes('view=past');
-    return response({ requests: [{ ...base, role: 'giver', status: past ? 'cancelled' : 'pending', item: { ...item, name: past ? 'Old box' : 'Active box' } }], nextCursor: past && !url.includes('cursor=') ? base.id : null });
+    return response({ requests: ['pending','accepted','cancelled','declined','completed'].map((status, index) => ({ ...base, id: String(index), role: 'giver', status, item: { ...item, name: status + ' box' } })), nextCursor: null });
   });
-  mount('/app/pickups/incoming'); await screen.findByRole('link', { name: 'Active box' });
-  expect(fetch.mock.calls.some(([url]) => url.includes('view=past'))).toBe(false);
-  await click(screen.getByText('Past requests', { exact: true }));
-  await screen.findByRole('link', { name: 'Old box' });
-  expect(screen.getByRole('link', { name: 'Active box' })).toBeVisible();
-  const past = within(screen.getByRole('region', { name: 'Past requests' }));
-  await click(past.getByRole('button', { name: 'Next requests' }));
-  await waitFor(() => expect(fetch.mock.calls.some(([url]) => url.includes('view=past&cursor=' + base.id))).toBe(true));
-  expect(screen.getByRole('link', { name: 'Active box' })).toBeVisible();
-  await click(screen.getByText('Past requests', { exact: true }));
-  await waitFor(() => expect(screen.queryByRole('link', { name: 'Old box' })).not.toBeInTheDocument());
+  mount('/app/pickups/incoming'); await screen.findByRole('link', { name: 'pending box' });
+  for (const status of ['pending','accepted','cancelled','declined','completed']) expect(screen.getByRole('link', { name: status + ' box' })).toBeVisible();
+  expect(screen.queryByText('Past requests', { exact: true })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Request status')).not.toBeInTheDocument();
+  expect(fetch.mock.calls.filter(([url]) => url.includes('/received')).every(([url]) => !url.includes('view=') && !url.includes('status='))).toBe(true);
+});
+
+test('request detail has no Reload request button and refreshes status when the window regains focus', async () => {
+  let current = base;
+  fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { request: current }));
+  mount('/app/pickups/' + base.id); await screen.findByRole('heading', { name: item.name });
+  expect(screen.queryByRole('button', { name: 'Reload request' })).not.toBeInTheDocument();
+  current = { ...base, status: 'cancelled' };
+  await act(async () => { fireEvent(window, new Event('focus')); });
+  expect(await screen.findByText('Cancelled', { exact: true })).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Cancel request' })).not.toBeInTheDocument();
 });

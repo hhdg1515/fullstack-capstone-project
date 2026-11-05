@@ -37,7 +37,7 @@ test('an uncertain committed send requires review, preserves drafts and closes r
     await expect(page.getByText('Message sent.', { exact: true })).toHaveCount(0); expect(sends).toBe(1);
     expect((await (await receiver.request.get(endpoint)).json()).messages).toHaveLength(1);
     await page.unroute('**/conversation/messages'); await post(receiver, endpoint, { text: 'I can see your pickup message.' });
-    await page.getByRole('button', { name: 'Reload request', exact: true }).click();
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect(page.getByRole('region', { name: 'Message history' }).locator('.chat-message')).toHaveCount(2);
     await expect(page.getByLabel('Message', { exact: true })).toHaveValue(text); await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled(); expect(sends).toBe(1);
     await page.getByLabel('Message', { exact: true }).fill('Keep this independent unsent draft.');
@@ -51,7 +51,7 @@ test('an uncertain committed send requires review, preserves drafts and closes r
     }
     await page.evaluate(() => { document.documentElement.style.fontSize = ''; });
     await post(receiver, '/api/pickup-requests/' + request.id + '/actions', { action: 'cancel', version: request.version });
-    await page.getByRole('button', { name: 'Reload request', exact: true }).click(); await expect(page.getByText(/This request is closed. You can read/)).toBeAttached();
+    await page.evaluate(() => window.dispatchEvent(new Event('focus'))); await expect(page.getByText(/This request is closed. You can read/)).toBeAttached();
     await expect(page.getByLabel('Unsent message', { exact: true })).toHaveValue('Keep this independent unsent draft.'); await expect(page.getByLabel('Unsent message', { exact: true })).toHaveAttribute('readonly');
     await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
     await page.getByRole('button', { name: 'Discard draft', exact: true }).click(); await expect(page.getByRole('button', { name: 'Send message', exact: true })).toHaveCount(0);

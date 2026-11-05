@@ -86,22 +86,21 @@ function PickupCards({ requests, incoming, state }) {
         {!request.item && <p>The listing is no longer available. You can still review the request.</p>}
       </Surface>)}</ul>);
 }
-function IncomingPage({ past = false }) {
+function IncomingPage() {
   const [params, setParams] = useSearchParams();
-  const cursorKey = past ? 'pastCursor' : 'cursor';
-  const cursor = !past && params.has('status') ? '' : params.get(cursorKey) || '';
-  const query = new URLSearchParams({ view: past ? 'past' : 'active' });
+  const cursor = params.has('status') || params.has('past') ? '' : params.get('cursor') || '';
+  const query = new URLSearchParams();
   if (cursor) query.set('cursor', cursor);
   const data = usePlansData(`/api/pickup-requests/received?${query}`);
   const move = value => {
-    const next = new URLSearchParams(params); next.delete('status');
-    if (value) next.set(cursorKey, value); else next.delete(cursorKey);
+    const next = new URLSearchParams();
+    if (value) next.set('cursor', value);
     setParams(next);
   };
   return <>
     <LoadState data={data} />
     {data.data && <>
-      {!data.data.requests.length && <p>{past ? 'No past requests.' : 'No active requests.'}</p>}
+      {!data.data.requests.length && <p>No requests yet.</p>}
       <PickupCards requests={data.data.requests} incoming state={{ journey: 'give', returnSearch: params.toString() }} />
       <div className="pickup-actions">{cursor && <button className="ui-button ui-button--secondary" onClick={() => move('')}>First page</button>}
         {data.data.nextCursor && <button className="ui-button" onClick={() => move(data.data.nextCursor)}>Next requests</button>}</div>
@@ -109,17 +108,9 @@ function IncomingPage({ past = false }) {
   </>;
 }
 function IncomingRequests() {
-  const [params, setParams] = useSearchParams();
-  const pastOpen = params.get('past') === '1';
   return <main className="ui-page pickup-page"><JourneyNav journey="give" />
     <h1 className="visually-hidden">Incoming requests</h1>
-    <section aria-label="Active requests"><IncomingPage /></section>
-    <details className="pickup-past" open={pastOpen} onToggle={event => {
-      if (event.currentTarget.open === pastOpen) return;
-      const next = new URLSearchParams(params);
-      if (event.currentTarget.open) next.set('past', '1'); else next.delete('past');
-      setParams(next);
-    }}><summary>Past requests</summary>{pastOpen && <section aria-label="Past requests"><IncomingPage past /></section>}</details>
+    <section aria-label="Incoming requests"><IncomingPage /></section>
   </main>;
 }
 export function PickupDashboard({ incoming = false }) {
@@ -161,6 +152,10 @@ function RequestDetail({ requestId }) {
   const flight = useRef(false), alive = useRef(false); const location = useLocation();
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => { if (request) { setBlocked(false); setError(''); } }, [request]);
+  useEffect(() => {
+    window.addEventListener('focus', data.retry);
+    return () => window.removeEventListener('focus', data.retry);
+  }, [data.retry]);
   const loaded = Boolean(request);
   useEffect(() => {
     if (loaded && ['#conversation', '#pickup-arrangement-heading'].includes(location.hash)) {
@@ -196,8 +191,8 @@ function RequestDetail({ requestId }) {
   const back = ((request ? request.role === 'giver' : location.state?.journey === 'give') ? '/app/pickups/incoming' : '/app/pickups') + (backQuery.toString() ? `?${backQuery}` : '');
   return <main className="ui-page pickup-page">{request && <JourneyNav journey={request.role === 'giver' ? 'give' : 'find'} planId={request.plan?.id} />}
     <Link className="pickup-back" to={back}>Back to requests</Link>
-    <PageHeader title="Pickup request" action={<button className="ui-button ui-button--secondary" disabled={busy || data.loading} onClick={data.retry}>Reload request</button>} />
-    <LoadState data={data} />{error && <Feedback error><p>{error}</p><p>Reload the request and review its current state before trying again.</p></Feedback>}
+    <PageHeader title="Pickup request" />
+    <LoadState data={data} />{error && <Feedback error><p>{error}</p><p>Check the current request before trying again.</p><button className="ui-button ui-button--secondary" disabled={data.loading} onClick={data.retry}>Check request</button></Feedback>}
     {request && <Surface className="pickup-thread">
       {(data.loading || data.error) && <Feedback>Showing last loaded details. Reload to confirm current status and pickup time.</Feedback>}
       <article className="pickup-summary" aria-label="Request summary">
