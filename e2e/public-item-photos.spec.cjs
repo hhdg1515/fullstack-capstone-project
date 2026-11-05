@@ -44,7 +44,20 @@ async function audit(page, name) {
   const errors = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations.map(row => row.id);
   await test.step('D1 ' + name + ' WCAG rules: ' + (errors.join(', ') || 'none'), async () => expect(errors).toEqual([]));
 }
-async function loaded(images) { for (const image of await images.all()) { await image.scrollIntoViewIfNeeded(); await expect.poll(() => image.evaluate(node => node.complete && node.naturalWidth > 0)).toBe(true); } }
+async function loaded(images) {
+  // all() does not wait; an empty gallery must not count as loaded.
+  await expect(images.first()).toBeVisible();
+  const sources = await images.evaluateAll(nodes => nodes.map(node => node.getAttribute('src')));
+  expect(sources.length).toBeGreaterThan(0);
+  for (const [index, src] of sources.entries()) {
+    const image = images.and(images.page().locator('img[src=' + JSON.stringify(src) + ']'));
+    await test.step('D1 decoded image ' + (index + 1), async () => {
+      await image.scrollIntoViewIfNeeded();
+      await expect.poll(() => image.evaluate(node => node.complete && node.naturalWidth > 0)).toBe(true);
+    });
+  }
+  await expect(images).toHaveCount(sources.length);
+}
 async function evidence(page, info, name, target = page.locator('main')) {
   if (!process.env.PUBLIC_PHOTO_EVIDENCE) return;
   const directory = path.join(__dirname, '../docs/verification/m65d1'); fs.mkdirSync(directory, { recursive: true });
@@ -100,19 +113,32 @@ test('authoritative cover changes, variant errors and stale URLs preserve item i
   const s = await scene(browser, deployment, info);
   try {
     const item = await s.create('Gallery recovery chair', 5), page = await s.anonymous.newPage();
+    const imageReads = [];
+    page.on('request', req => {
+      if (/^\/api\/item-images\/[a-f0-9]{24}\/(thumbnail|display)$/.test(new URL(req.url()).pathname)) imageReads.push(req);
+    });
     const reversed = item.photos.slice().reverse();
     await page.goto('/app/items/' + item.item.id); await loaded(gallery(page).locator('img'));
+    expect(imageReads.length).toBeGreaterThan(0);
+    expect(imageReads.length).toBeLessThanOrEqual(6);
+    expect(new Set(imageReads.map(req => req.url())).size).toBe(imageReads.length); imageReads.length = 0;
     await s.post(item.prefix + '/images/order', { imageRevision: item.revision, imageIds: reversed });
     await page.getByRole('button', { name: 'Refresh listings', exact: true }).click();
     await expect(gallery(page).locator('.public-gallery-primary img')).toHaveAttribute('src', '/api/item-images/' + reversed[0] + '/display');
     // Verify this batch has loaded before issuing another gallery refresh;
     // overlapping batches may legitimately hit the unchanged eight-read budget.
     await loaded(gallery(page).locator('img'));
+    expect(imageReads.length).toBeGreaterThan(0);
+    expect(imageReads.length).toBeLessThanOrEqual(6);
+    expect(new Set(imageReads.map(req => req.url())).size).toBe(imageReads.length); imageReads.length = 0;
     await s.post(item.prefix + '/images/' + reversed[0] + '/actions', { imageRevision: item.revision + 1, action: 'delete' });
     await page.getByRole('button', { name: 'Refresh listings', exact: true }).click();
     await expect(gallery(page).getByRole('button', { name: 'Show photo 1 of 4', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await expect(gallery(page).locator('.public-gallery-primary img')).toHaveAttribute('src', '/api/item-images/' + reversed[1] + '/display');
     await loaded(gallery(page).locator('img'));
+    expect(imageReads.length).toBeGreaterThan(0);
+    expect(imageReads.length).toBeLessThanOrEqual(5);
+    expect(new Set(imageReads.map(req => req.url())).size).toBe(imageReads.length);
     expect((await s.anonymous.request.get('/api/item-images/' + reversed[0] + '/thumbnail')).status()).toBe(404);
     await page.goto(list); await loaded(page.locator('.public-item-cover img'));
     await expect(page.locator('.public-item-cover img')).toHaveAttribute('src', '/api/item-images/' + reversed[1] + '/thumbnail');
