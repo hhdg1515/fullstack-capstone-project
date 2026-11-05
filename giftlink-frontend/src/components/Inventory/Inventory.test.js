@@ -230,7 +230,7 @@ test('a withdrawn public detail disappears on refresh instead of retaining its o
   let visible = true;
   handler = async () => visible ? reply(200, { item }) : reply(404, { error: { message: 'Listing unavailable' } });
   mount(`/app/items/${item.id}`); await screen.findByRole('heading', { name: item.name });
-  visible = false; await click(screen.getByRole('button', { name: 'Refresh listings' }));
+  visible = false; await act(async () => { fireEvent(window, new Event('focus')); });
   expect(await screen.findByRole('alert')).toHaveTextContent('This listing is no longer available');
   expect(screen.queryByRole('heading', { name: item.name })).not.toBeInTheDocument();
 });

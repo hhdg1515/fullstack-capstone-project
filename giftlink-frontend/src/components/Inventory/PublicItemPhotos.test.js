@@ -78,3 +78,17 @@ test('explicit retry restores failed thumbnails and display without resetting se
   rerender(<PublicItemGallery item={value} retryToken={2} />);
   expect(screen.getByRole('img', { name: 'Local chair (2 of 2)' })).not.toBe(display);
 });
+
+test('contextual image retries recover failures without a page-level refresh or selection reset', () => {
+  render(<PublicItemGallery item={gallery(2)} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Next photo' }));
+  fireEvent.error(screen.getByRole('img', { name: 'Local chair (2 of 2)' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Retry photo' }));
+  expect(screen.getByRole('img', { name: 'Local chair (2 of 2)' })).toHaveAttribute('src', photo(2).display.url);
+  const first = screen.getByRole('button', { name: 'Show photo 1 of 2' });
+  fireEvent.error(first.querySelector('img'));
+  fireEvent.click(screen.getByRole('button', { name: 'Retry thumbnails' }));
+  expect(first.querySelector('img')).toHaveAttribute('src', photo(1).thumbnail.url);
+  expect(screen.queryByRole('button', { name: 'Retry thumbnails' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Show photo 2 of 2' })).toHaveAttribute('aria-pressed', 'true');
+});

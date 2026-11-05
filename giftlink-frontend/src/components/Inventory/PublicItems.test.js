@@ -59,7 +59,7 @@ test('authoritative refresh removes a revoked gallery and its request action', a
   mount('/app/items/' + a.id);
   expect(await screen.findByRole('img', { name: a.name + ' (1 of 1)' })).toBeInTheDocument();
   handler = async () => reply(404, { error: { code: 'NOT_FOUND', message: 'Item not found' } });
-  await click('Refresh listings');
+  await act(async () => { fireEvent(window, new Event('focus')); });
   expect(await screen.findByRole('alert')).toHaveTextContent('This listing is no longer available.');
   expect(screen.queryByRole('img')).not.toBeInTheDocument();
   expect(screen.queryByRole('link', { name: "I'm interested" })).not.toBeInTheDocument();
@@ -86,7 +86,7 @@ test('refreshing a released listing restores its request action from the new ser
   let isReserved = true;
   handler = async () => reply(200, { item: { ...a, pickupTimeZone: 'UTC', isReserved } });
   mount('/app/items/' + a.id); await screen.findByText('Pickup arranged');
-  isReserved = false; await click('Refresh listings');
+  isReserved = false; await act(async () => { fireEvent(window, new Event('focus')); });
   expect(await screen.findByRole('link', { name: "I'm interested" })).toBeInTheDocument();
   expect(screen.getByText('Available Now')).toBeInTheDocument();
 });
@@ -248,7 +248,7 @@ test('detail navigation returns to the applied filters and direct unavailable li
   expect(await screen.findByRole('heading', { name: a.name, level: 1 })).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Back to items' })).toHaveAttribute('href', '/app/items?city=Oakland&availability=now&stateId=06&metroId=41860');
   handler = async () => reply(404, { error: { message: 'Listing unavailable' } });
-  await click('Refresh listings');
+  await act(async () => { fireEvent(window, new Event('focus')); });
   expect(await screen.findByRole('alert')).toHaveTextContent('This listing is no longer available');
   expect(screen.queryByLabelText('Share this listing')).not.toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: a.name })).not.toBeInTheDocument();
@@ -465,7 +465,7 @@ test('optional v2 city and neighborhood fields do not create blank filter option
  expect(within(screen.getByLabelText('Neighborhood')).getAllByRole('option').map(option=>option.textContent)).toEqual(['All neighborhoods','Synthetic area']);
 });
 
-test('detail focus refresh preserves the selected loaded photo while updating availability; manual refresh retries failures', async () => {
+test('detail focus refresh preserves the selected loaded photo while updating availability; contextual retry restores failures', async () => {
   const photo = n => { const id = String(n).padStart(24, '0'); return { id, thumbnail: { url: `/api/item-images/${id}/thumbnail`, width: 400, height: 300 }, display: { url: `/api/item-images/${id}/display`, width: 800, height: 600 } }; };
   let value = { ...a, imageAvailability: 'ready', images: [photo(1), photo(2)] };
   handler = async () => reply(200, { item: value });
@@ -483,14 +483,14 @@ test('detail focus refresh preserves the selected loaded photo while updating av
   expect(screen.getByRole('img', { name: a.name + ' (2 of 2)' })).toBe(selected);
   expect(screen.queryByText('Loading photo…')).not.toBeInTheDocument();
   handler = async () => reply(200, { item: value });
-  fireEvent.click(screen.getByRole('button', { name: 'Refresh listings' }));
+  fireEvent(window, new Event('focus'));
   await waitFor(() => expect(screen.getByRole('img', { name: a.name + ' (2 of 2)' })).toBe(selected));
   expect(screen.queryByText('Loading photo…')).not.toBeInTheDocument();
   fireEvent.error(selected);
   expect(screen.getByText(/Photo unavailable. Choose another/)).toBeVisible();
   await act(async () => { fireEvent(window, new Event('focus')); });
   expect(screen.getByText(/Photo unavailable. Choose another/)).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: 'Refresh listings' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Retry photo' }));
   const retried = await screen.findByRole('img', { name: a.name + ' (2 of 2)' });
   expect(retried).not.toBe(selected); fireEvent.load(retried);
   expect(screen.queryByText('Loading photo…')).not.toBeInTheDocument();
