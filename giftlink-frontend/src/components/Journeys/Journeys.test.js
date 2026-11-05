@@ -127,7 +127,7 @@ test('Give Away provides consolidated incoming requests and per-plan inventory/c
   expect(await screen.findByRole('heading', { name: 'Incoming requests' })).toBeInTheDocument();
   expect(fetch.mock.calls.some(([url]) => url.includes('/api/pickup-requests/received'))).toBe(true);
   detailRole = 'giver'; await click(await screen.findByRole('link', { name: /^View request from/ }));
-  expect(await screen.findByRole('button', { name: 'Accept pickup' })).toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: 'Mark as picked up' })).toBeInTheDocument();
   expect(primary().getByRole('link', { name: 'Donate' })).toHaveAttribute('aria-current', 'location');
   await click(primary().getByRole('link', { name: 'Find' }));
   await click(context('Find').getByRole('link', { name: 'My pickup requests' }));

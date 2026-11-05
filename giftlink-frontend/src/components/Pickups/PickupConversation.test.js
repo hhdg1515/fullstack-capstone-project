@@ -226,18 +226,18 @@ test('plain text stays literal, multiline/long words stay in a scrollable region
 });
 test('the real pickup detail keeps the chat draft on parent reload, then closes sending on backend lifecycle state', async () => {
   let state = 'pending'; const reload = deferred(); let wait = false;
-  const pickup = () => ({ id, role: 'giver', status: state, version: state === 'pending' ? 1 : 2, counterpart: { firstName: 'Alex' }, item: null, timeZone: 'UTC',
+  const pickup = () => ({ id, role: 'giver', status: state, version: state === 'pending' ? 1 : 2, counterpart: { firstName: 'Alex' }, item: { id: 'a'.repeat(24), name: 'Synthetic item', status: 'available', city: 'Oakland', neighborhood: 'Test', effectiveAvailableUntil: '2030-01-02' }, timeZone: 'UTC',
     proposedAt: '2030-01-01T10:00:00Z', note: '', history: [], cancellationReason: null });
   handler = async (url, options) => {
     if (url === '/api/pickup-requests/' + id) return wait ? reload.promise : reply({ request: pickup() });
-    if (options.method === 'POST') { state = 'declined'; return reply({ request: pickup() }); }
+    if (options.method === 'POST') { state = 'completed'; return reply({ request: pickup() }); }
     return url.endsWith('/conversation') ? reply(context('giver', state)) : reply({ messages: [message(1)], nextCursor: null });
   };
   jest.spyOn(window, 'confirm').mockReturnValue(true); mount({ detail: true }); await ready(); type('Do not lose this');
   wait = true; refresh();
   expect(screen.getByDisplayValue('Do not lose this')).toBeInTheDocument();
   await act(async () => reload.resolve(reply({ request: pickup() }))); wait = false;
-  fireEvent.click(screen.getByRole('button', { name: 'Decline request' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Mark as picked up' }));
   await screen.findByText(/This request is closed/); expect(screen.getByDisplayValue('Do not lose this')).toHaveAttribute('readonly');
   expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
 });

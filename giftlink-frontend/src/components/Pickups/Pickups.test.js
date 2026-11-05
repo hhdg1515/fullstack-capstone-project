@@ -12,7 +12,7 @@ import { confirmPickupChanges } from '../../api/confirmPickupChanges';
 jest.mock('./PickupConversation', () => () => <section id="conversation"><h3 id="conversation-heading" tabIndex={-1}>Pickup conversation</h3></section>);
 
 const user = { id: 'receiver', firstName: 'Reader', lastName: 'Neighbor', email: 'reader@example.test' };
-const item = { id: '64a000000000000000000001', name: 'Kitchen box', description: 'One whole box.', city: 'Oakland', neighborhood: 'Temescal',
+const item = { id: '64a000000000000000000001', name: 'Kitchen box', description: 'One whole box.', status: 'available', city: 'Oakland', neighborhood: 'Temescal',
   pickupTimeZone: 'Asia/Kolkata', isReserved: false, availableFrom: '2030-07-01', effectiveAvailableUntil: '2030-07-03', availability: 'later' };
 const base = { id: '64a000000000000000000002', role: 'receiver', status: 'pending', version: 1, note: 'Meet by the library', item,
   proposedAt: '2030-07-01T09:00:00.000Z', localDateTime: '2030-07-01T14:30', timeZone: 'Asia/Kolkata', counterpart: { firstName: 'Giver' },
@@ -64,7 +64,7 @@ test('the direct request form shows the server owner state instead of accepting 
 test('form uses the giver timezone explicitly, never prepopulates browser local time, and sends no identities', async () => {
   mount(); const control = await screen.findByLabelText('Pickup date and time');
   expect(control).toHaveValue('');
-  expect(screen.getByText(/does not reserve/)).toBeInTheDocument();
+  expect(screen.queryByText(/Wait for the giver to accept/)).not.toBeInTheDocument();
   fireEvent.change(control, { target: { value: '2030-07-01T14:30' } });
   fireEvent.change(screen.getByLabelText('Coordination note (optional, private)'), { target: { value: ' Meet by the library ' } });
   await submit(screen.getByRole('button', { name: 'Send to the giver' }).closest('form'));
@@ -132,18 +132,18 @@ test('receiver private detail retains full item and private note without giver c
   mount('/app/pickups/' + base.id);
   expect(await screen.findByText('Meet by the library')).toBeInTheDocument(); expect(screen.queryByText('One whole box.')).not.toBeInTheDocument(); expect(screen.getByRole('link', { name: item.name })).toHaveAttribute('href', '/app/items/' + item.id);
   expect(screen.getByRole('button', { name: 'Cancel request' })).toBeInTheDocument();
-  for (const name of ['Accept pickup', 'Decline request', 'Confirm handoff', 'Record no-show']) expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+  for (const name of ['Mark as picked up', 'Accept pickup', 'Decline request', 'Confirm handoff', 'Record no-show']) expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
 });
-test('giver accepts using the current version after confirmation and sees appointment outcome controls', async () => {
+test('giver confirms the actual handoff with the current version without accepting first', async () => {
   let current = { ...base, role: 'giver' };
   fetch.mockImplementation(async (url, options) => {
-    if (options.method === 'POST') current = { ...current, status: 'accepted', version: 2 };
+    if (options.method === 'POST') current = { ...current, status: 'completed', version: 2 };
     return response(url.endsWith('/api/me') ? { user } : { request: current });
   });
-  mount('/app/pickups/' + base.id); await click(await screen.findByRole('button', { name: 'Accept pickup' }));
-  expect(await screen.findByText('Accepted')).toBeInTheDocument();
-  const [, options] = fetch.mock.calls.find(([, options]) => options.method === 'POST'); expect(JSON.parse(options.body)).toEqual({ action: 'accept', version: 1 });
-  expect(window.confirm).toHaveBeenCalled(); expect(screen.queryByRole('button', { name: 'Confirm handoff' })).not.toBeInTheDocument();
+  mount('/app/pickups/' + base.id); await click(await screen.findByRole('button', { name: 'Mark as picked up' }));
+  expect(await screen.findByText('Picked up')).toBeInTheDocument();
+  const [, options] = fetch.mock.calls.find(([, options]) => options.method === 'POST'); expect(JSON.parse(options.body)).toEqual({ action: 'picked_up', version: 1, confirmHandedOver: true });
+  expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('actually been handed over')); expect(screen.queryByRole('button', { name: 'Confirm handoff' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Record no-show' })).not.toBeInTheDocument();
 });
 test.each([['cancel', 'Cancel request', 'cancelled', 'Cancelled']])('accepted appointment supports %s after its time', async (action, label, status, statusText) => {
@@ -158,11 +158,11 @@ test.each([['cancel', 'Cancel request', 'cancelled', 'Cancelled']])('accepted ap
 });
 test('conflicting decisions require reload and a declined confirmation sends no action', async () => {
   fetch.mockImplementation(async (url, options) => options.method === 'POST' ? error('Request changed; reload.', 'PICKUP_CHANGED') : response(url.endsWith('/api/me') ? { user } : { request: { ...base, role: 'giver' } }));
-  mount('/app/pickups/' + base.id); const button = await screen.findByRole('button', { name: 'Accept pickup' });
+  mount('/app/pickups/' + base.id); const button = await screen.findByRole('button', { name: 'Mark as picked up' });
   window.confirm.mockReturnValueOnce(false); await click(button); expect(fetch.mock.calls.some(([, options]) => options.method === 'POST')).toBe(false);
   await click(button); expect(await screen.findByRole('alert')).toHaveTextContent('Request changed; reload.');
   await act(async () => { fireEvent(window, new Event('focus')); });
-  expect(await screen.findByRole('button', { name: 'Accept pickup' })).toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: 'Mark as picked up' })).toBeInTheDocument();
 });
 test('expired sessions redirect private actions back to login', async () => {
   fetch.mockImplementation(async (url, options) => options.method === 'POST' ? error('Session ended', 'SESSION_EXPIRED', 401) : response(url.endsWith('/api/me') ? { user } : { request: base }));
@@ -241,7 +241,7 @@ test('lifecycle decisions block rapid duplicates and uncertain resubmission unti
     if (options.method === 'POST') { postCount++; return pending.promise; }
     return response(url.endsWith('/api/me') ? { user } : { request: { ...base, role: 'giver' } });
   });
-  mount('/app/pickups/' + base.id); const accept = await screen.findByRole('button', { name: 'Accept pickup' });
+  mount('/app/pickups/' + base.id); const accept = await screen.findByRole('button', { name: 'Mark as picked up' });
   await act(async () => { fireEvent.click(accept); fireEvent.click(accept); }); expect(postCount).toBe(1);
   await act(async () => pending.resolve(error('Sending could not be confirmed.', 'UNAVAILABLE', 503)));
   await screen.findByRole('alert'); expect(accept).toBeDisabled();
@@ -250,11 +250,11 @@ test('lifecycle decisions block rapid duplicates and uncertain resubmission unti
 test('a late action from another request cannot invalidate the new request session', async () => {
   const pending = deferred();
   fetch.mockImplementation(async (url, options) => options.method === 'POST' ? pending.promise : response(url.endsWith('/api/me') ? { user } : { request: { ...base, id: url.split('/').pop(), role: 'giver' } }));
-  mount('/app/pickups/' + base.id); await click(await screen.findByRole('button', { name: 'Accept pickup' }));
-  await click(screen.getByRole('button', { name: 'Next request' })); await screen.findByRole('button', { name: 'Accept pickup' });
+  mount('/app/pickups/' + base.id); await click(await screen.findByRole('button', { name: 'Mark as picked up' }));
+  await click(screen.getByRole('button', { name: 'Next request' })); await screen.findByRole('button', { name: 'Mark as picked up' });
   await act(async () => pending.resolve(error('Old expired session', 'SESSION_EXPIRED', 401)));
   expect(screen.queryByRole('heading', { name: 'Login' })).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Accept pickup' })).toBeEnabled(); expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Mark as picked up' })).toBeEnabled(); expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
 test.each([403, 404])('definitive %s detail revalidation removes private content and conversation entry', async status => {
   let deny = false;
@@ -354,4 +354,32 @@ test('request detail has no Reload request button and refreshes status when the 
   await act(async () => { fireEvent(window, new Event('focus')); });
   expect(await screen.findByText('Cancelled', { exact: true })).toBeVisible();
   expect(screen.queryByRole('button', { name: 'Cancel request' })).not.toBeInTheDocument();
+});
+
+
+test('an existing accepted future appointment can be marked picked up after actual handoff', async () => {
+  let current = { ...base, role: 'giver', status: 'accepted', version: 2, proposedAt: '2099-01-01T12:00:00Z' };
+  fetch.mockImplementation(async (url, options) => {
+    if (options.method === 'POST') current = { ...current, status: 'completed', version: 3 };
+    return response(url.endsWith('/api/me') ? { user } : { request: current });
+  });
+  mount('/app/pickups/' + base.id);
+  await click(await screen.findByRole('button', { name: 'Mark as picked up' }));
+  expect(await screen.findByText('Picked up', { exact: true })).toBeVisible();
+  expect(JSON.parse(fetch.mock.calls.find(([, options]) => options.method === 'POST')[1].body)).toEqual({ action: 'picked_up', version: 2, confirmHandedOver: true });
+});
+
+test.each(['draft','unlisted','cleared'])('cannot offer handoff for a %s item even if a stale request is pending', async status => {
+  fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { request: { ...base, role: 'giver', item: { ...item, status } } }));
+  mount('/app/pickups/' + base.id); await screen.findByRole('heading', { name: item.name });
+  expect(screen.queryByRole('button', { name: 'Mark as picked up' })).not.toBeInTheDocument();
+});
+
+
+test('completed requests show the authoritative handoff time rather than a future suggested appointment', async () => {
+  const completedAt = '2026-01-01T10:00:00.000Z';
+  fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { request: { ...base, role: 'giver', status: 'completed', completedAt } }));
+  const { container } = mount('/app/pickups/' + base.id); await screen.findByText('Handed over:');
+  expect(container.querySelector('.pickup-arrangement time')).toHaveAttribute('datetime', completedAt);
+  expect(container.querySelector('.pickup-arrangement time')).not.toHaveAttribute('datetime', base.proposedAt);
 });

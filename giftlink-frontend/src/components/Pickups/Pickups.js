@@ -15,12 +15,13 @@ import { PageHeader, Surface, Feedback } from '../../design-system/primitives';
 import { pickupMinimum, pastPickupSelection } from '../../forms/pickupTime';
 import { placeLabel } from './placeLabel';
 
-export const pickupLabels = { pending: 'Pending', accepted: 'Accepted', declined: 'Declined', cancelled: 'Cancelled', completed: 'Completed', no_show: 'No-show' };
-const actionLabels = { accept: 'Accept pickup', decline: 'Decline request', cancel: 'Cancel request', complete: 'Confirm handoff', no_show: 'Record no-show' };
+export const pickupLabels = { pending: 'Pending', accepted: 'Accepted', declined: 'Declined', cancelled: 'Cancelled', completed: 'Picked up', no_show: 'No-show' };
+const actionLabels = { picked_up: 'Mark as picked up', cancel: 'Cancel request' };
 const participant = request => ['giver', 'receiver'].includes(request.role);
 function Appointment({ request, compact = false }) {
-  return <p className="pickup-appointment"><b>{request.status === 'pending' ? 'Proposed pickup' : request.status === 'accepted' ? 'Confirmed pickup' : 'Pickup time'}:</b><br />
-    <PickupTime value={request} compact={compact} /></p>;
+  const handedOver = request.status === 'completed' && typeof request.completedAt === 'string' && Number.isFinite(Date.parse(request.completedAt));
+  return <p className="pickup-appointment"><b>{handedOver ? 'Handed over' : request.status === 'completed' ? 'Original pickup suggestion' : request.status === 'pending' ? 'Proposed pickup' : request.status === 'accepted' ? 'Confirmed pickup' : 'Pickup time'}:</b><br />
+    <PickupTime value={handedOver ? { ...request, proposedAt: request.completedAt } : request} compact={compact} /></p>;
 }
 function LoadState({ data }) {
   if (data.loading) return <Feedback>Loading pickup requests…</Feedback>;
@@ -57,7 +58,6 @@ export function RequestPickup() {
     {item && <><div className="pickup-item-context"><PickupItemPhoto key={item.images?.[0]?.id || item.id} item={item} detail /><div className="pickup-item-identity"><h2>{item.name}</h2><p>{placeLabel(item)}</p></div></div>
       {item.isOwner === true ? <p role="status">Your listing. You cannot request your own item. Manage it from {item.listingModel === 2 ? 'My Listings' : 'My plans'}.</p> : item.isReserved === true ? <div role="status"><p>This item has an accepted pickup. Check back if it becomes available.</p>
         <button className="ui-button ui-button--secondary" onClick={data.retry}>Check availability</button></div> : !item.pickupTimeZone ? <p role="alert">The giver must set a pickup timezone before requests can be submitted.</p> : <Surface as="form" ref={validation.formRef} noValidate className="pickup-request-form" onSubmit={submit} aria-busy={busy}>
-        <p>A request does not reserve the item. Wait for the giver to accept. Each listing is one pickup unit, including groups of items.</p>
         {typeof item.isReserved !== 'boolean' && <p>Current pickup availability will be checked when you send a request.</p>}
         <p>Choose a date from {item.availableFrom || 'today'} through {item.effectiveAvailableUntil}.</p>
         <fieldset disabled={busy}><legend className="visually-hidden">Appointment details</legend>
@@ -163,18 +163,19 @@ function RequestDetail({ requestId }) {
     }
   }, [loaded, location.hash, location.key]);
   const actions = request ? [
-    ...(request.role === 'giver' && request.status === 'pending' ? ['accept', 'decline'] : []),
+    ...(request.role === 'giver' && request.item && ['available', 'expired'].includes(request.item.status) && ['pending', 'accepted'].includes(request.status) ? ['picked_up'] : []),
     ...(participant(request) && (request.status === 'accepted' || (request.status === 'pending' && request.role === 'receiver')) ? ['cancel'] : [])
   ] : [];
   const action = async name => {
     if (flight.current || blocked || data.loading || data.error || !actions.includes(name)) return;
-    const warning = name === 'accept' ? 'Accept this appointment? Other requests will remain pending, and new requests will be blocked until it is released.' : `${actionLabels[name]}?`;
+    const warning = name === 'picked_up' ? `Confirm the item has actually been handed over to ${request.counterpart.firstName}? The listing will be removed and other open requests will be closed.` : `${actionLabels[name]}?`;
     if (!window.confirm(warning)) return;
     flight.current = true; setBusy(true); setError('');
     try {
-      await apiRequest(`/api/pickup-requests/${requestId}/actions`, { method: 'POST', notifyUnauthorized: false, body: { action: name, version: request.version },
+      const result = await apiRequest(`/api/pickup-requests/${requestId}/actions`, { method: 'POST', notifyUnauthorized: false, body: { action: name, version: request.version, ...(name === 'picked_up' ? { confirmHandedOver: true } : {}) },
         validate: value => value?.request?.id === requestId && Number.isInteger(value.request.version) && value.request.version > request.version });
       if (!alive.current) return;
+      if (name === 'picked_up') data.update(() => result);
       setBlocked(true); data.retry();
     } catch (failure) {
       if (!alive.current) return;
@@ -182,7 +183,7 @@ function RequestDetail({ requestId }) {
       if (failure.status === 401) window.dispatchEvent(new Event('giftlink:unauthorized'));
     } finally { if (alive.current) { flight.current = false; setBusy(false); } }
   };
-  const actionButton = name => <button key={name} className={`ui-button${name === 'accept' ? '' : ' ui-button--secondary'}`}
+  const actionButton = name => <button key={name} className={`ui-button${name === 'picked_up' ? '' : ' ui-button--secondary'}`}
     disabled={busy || blocked || data.loading || Boolean(data.error)} onClick={() => action(name)}>{actionLabels[name]}</button>;
   // A requester's Cancel sits where the status would be; pending needs no badge.
   const headingCancel = request?.role === 'receiver' && actions.includes('cancel');

@@ -1,3 +1,4 @@
+const { legacyPickupState } = require('./legacy-pickup-state.cjs');
 const { randomUUID } = require('node:crypto');
 const fs = require('node:fs'); const path = require('node:path');
 const AxeBuilder = require('@axe-core/playwright').default;
@@ -108,7 +109,7 @@ test('participants exchange private text, retain reading position and drafts, th
     const quotaRules = (await new AxeBuilder({ page: a }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations.map(row => row.id);
     await test.step('Message quota feedback WCAG rules: ' + (quotaRules.join(', ') || 'none'), async () => expect(quotaRules).toEqual([]));
     expect(quotaPosts).toBe(1);
-    await a.getByRole('button', { name: 'Decline request', exact: true }).click(); await expect(a.getByText(/This request is closed/)).toBeVisible();
+    await legacyPickupState(a, 'decline'); await expect(a.getByText(/This request is closed/)).toBeVisible();
     await expect(a.getByLabel('Unsent message', { exact: true })).toHaveAttribute('readonly'); await expect(a.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
     await a.getByRole('button', { name: 'Discard draft', exact: true }).click(); await expect(a.getByRole('button', { name: 'Send message', exact: true })).toHaveCount(0);
     await b.evaluate(() => window.dispatchEvent(new Event('focus'))); await expect(b.getByText(/This request is closed/)).toBeVisible();

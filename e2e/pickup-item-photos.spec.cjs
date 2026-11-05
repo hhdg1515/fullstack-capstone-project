@@ -70,7 +70,7 @@ test('participants recognize current covers through acceptance, scheduling, cove
     await expect(page.getByText('Synthetic pickup history remains readable.', { exact: true })).toBeVisible();
     await audit(page, 'requester pending'); await evidence(page, info, 'requester-pending');
     await ownerPage.goto('/app/pickups/' + fixture.request.id); await loaded(thumb(ownerPage));
-    await ownerPage.getByRole('button', { name: 'Accept pickup', exact: true }).focus(); await expect(ownerPage.getByRole('button', { name: 'Accept pickup', exact: true })).toBeFocused();
+    await ownerPage.getByRole('button', { name: 'Mark as picked up', exact: true }).focus(); await expect(ownerPage.getByRole('button', { name: 'Mark as picked up', exact: true })).toBeFocused();
     await audit(ownerPage, 'giver pending'); await evidence(ownerPage, info, 'giver-pending');
     ownerPage.once('dialog', dialog => dialog.accept()); await ownerPage.keyboard.press('Enter');
     await expect(summary(ownerPage).getByText('Accepted', { exact: true })).toBeVisible(); await loaded(thumb(ownerPage));

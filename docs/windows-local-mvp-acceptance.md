@@ -97,11 +97,11 @@ local passwords. Registration is through the existing UI; no seeded passwords.
    in that item's context; never repeat an uncertain item POST or binary PUT.
 5. B: anonymous Find Free Items → same region → listing → photo gallery.
    Sign in and request a future appointment in the **giver's confirmed zone**.
-6. A: Incoming requests → accept. Both: open the request's conversation, send
-   synthetic messages, propose and accept a formal time change. Chat text alone
-   never changes the appointment.
-7. At/after the real appointment, A records the legitimate handoff. Verify
-   Completed/read-only history; the cleared item is absent from discovery and
+6. A: Incoming requests → View request. Both: send synthetic messages. With a
+   third synthetic applicant, verify separate pending chats and no reservation.
+7. Simulate the actual handoff in this disposable environment. A chooses
+   **Mark as picked up** in the correct recipient’s request and confirms. Verify
+   Picked up/read-only history, actual handoff time and cancellation of other open requests; the cleared item is absent from discovery and
    B cannot fetch new photo bytes. A retains authorized owner access.
 8. A: create a second item in a different region. Publish; verify independent
    location/deadline. Withdraw it and explicitly confirm affected future
