@@ -128,7 +128,7 @@ test('giver dashboard displays appointment timezone and plan, and filters accept
 });
 test('receiver private detail retains full item and private note without giver controls or internal identities', async () => {
   mount('/app/pickups/' + base.id);
-  expect(await screen.findByText('Meet by the library')).toBeInTheDocument(); expect(screen.queryByText('One whole box.')).not.toBeInTheDocument(); expect(screen.getByRole('link', { name: 'View item' })).toHaveAttribute('href', '/app/items/' + item.id);
+  expect(await screen.findByText('Meet by the library')).toBeInTheDocument(); expect(screen.queryByText('One whole box.')).not.toBeInTheDocument(); expect(screen.getByRole('link', { name: item.name })).toHaveAttribute('href', '/app/items/' + item.id);
   expect(screen.getByRole('button', { name: 'Cancel request' })).toBeInTheDocument();
   for (const name of ['Accept pickup', 'Decline request', 'Confirm handoff', 'Record no-show']) expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
 });

@@ -32,7 +32,7 @@ test('participants enter canonical conversations and keep request context, decis
     await expect(a.getByRole('link', { name: /^Open conversation/ })).toHaveCount(0);
     const entry = a.getByRole('link', { name: 'View request from Requester for Local coordination desk', exact: true });
     await expect(entry).toHaveAttribute('href', '/app/pickups/' + request.id);
-    await entry.click(); await expect(a.getByRole('heading', { name: 'Pickup conversation', exact: true })).toBeVisible();
+    await entry.click(); await expect(a.getByRole('region', { name: 'Message history' })).toBeVisible();
     await expect(a.getByText('Conversation loaded.', { exact: true })).toBeAttached(); await expect(a.getByText('Applicant: Requester', { exact: true })).toHaveCount(0);
     await a.getByRole('link', { name: 'Back to requests', exact: true }).click(); await expect(a.getByLabel('Request status', { exact: true })).toHaveValue('pending');
     expect(new URL(a.url()).searchParams.get('status')).toBe('pending');

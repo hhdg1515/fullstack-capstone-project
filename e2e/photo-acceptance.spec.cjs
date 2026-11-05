@@ -114,7 +114,7 @@ test('the same real photo batch survives compression, uncertain publish, managem
     await post(owner, itemRoot + '/actions', { action: 'unlist', version: saved.version, confirmCancelRequests: true });
     await receiver.getByRole('button', { name: 'Reload request', exact: true }).click(); await expect(receiver.getByText('Cancelled', { exact: true })).toBeVisible();
     await expect(receiver.getByRole('article', { name: 'Request summary' }).getByRole('img')).toHaveCount(0);
-    await receiver.getByRole('button', { name: 'Refresh conversation', exact: true }).click(); await expect(receiver.getByText('Synthetic integrated coordination.', { exact: true })).toBeVisible();
+    await receiver.getByRole('button', { name: 'Reload request', exact: true }).click(); await expect(receiver.getByText('Synthetic integrated coordination.', { exact: true })).toBeVisible();
     await expect(receiver.getByRole('button', { name: 'Send message', exact: true })).toHaveCount(0); await audit(receiver, 'closed private photos'); await evidence(receiver, info, 'closed');
     const version = (await deployment.db.collection('items').findOne({ _id: saved._id })).version;
     await post(owner, itemRoot + '/actions', { action: 'publish', version });

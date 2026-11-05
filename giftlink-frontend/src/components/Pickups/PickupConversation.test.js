@@ -16,8 +16,9 @@ const problem = (status, code = 'FAILED', fields) => reply({ error: { code, mess
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { resolve, promise }; };
 let handler;
 function Scene({ status }) {
+  const [refreshToken, setRefreshToken] = React.useState(0);
   const { requestId } = useParams(); const navigate = useNavigate();
-  return <><button onClick={() => navigate('/app/pickups/' + nextId)}>Next request</button><PickupConversation requestId={requestId} requestStatus={status} /></>;
+  return <><button onClick={() => navigate('/app/pickups/' + nextId)}>Next request</button><button onClick={() => setRefreshToken(value => value + 1)}>Reload request</button><PickupConversation requestId={requestId} requestStatus={status} refreshToken={refreshToken} /></>;
 }
 function mount({ status = 'pending', detail = false, strict = false } = {}) {
   const tree = <MemoryRouter initialEntries={['/app/pickups/' + id]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AuthProvider><Routes>
@@ -29,7 +30,7 @@ function mount({ status = 'pending', detail = false, strict = false } = {}) {
 const ready = async () => screen.findByText('Conversation loaded.');
 const type = text => fireEvent.change(screen.getByLabelText('Message', { exact: true }), { target: { value: text } });
 const submit = () => fireEvent.submit(screen.getByRole('button', { name: 'Send message' }).closest('form'));
-const refresh = () => fireEvent.click(screen.getByRole('button', { name: 'Refresh conversation' }));
+const refresh = () => fireEvent.click(screen.getByRole('button', { name: 'Reload request' }));
 const texts = () => [...screen.getByRole('region', { name: 'Message history' }).querySelectorAll('.chat-text')].map(node => node.textContent);
 beforeEach(() => {
   handler = async url => url.endsWith('/conversation') ? reply(context()) : reply({ messages: [], nextCursor: null });
@@ -269,4 +270,18 @@ test('an embedded conversation keeps its draft and offers no time-change shortcu
   expect(screen.queryByRole('link', { name: 'Review pickup time change' })).not.toBeInTheDocument();
   expect(screen.queryByRole('link', { name: 'Open conversation' })).not.toBeInTheDocument();
   expect(screen.getByLabelText('Message', { exact: true })).toHaveValue('Keep this independent draft');
+});
+
+test('compact composer has a labelled icon send control, no placeholder or normal refresh button, and request reload keeps its draft', async () => {
+  mount(); await ready();
+  const input = screen.getByRole('textbox', { name: 'Message' });
+  expect(input).not.toHaveAttribute('placeholder');
+  const sendButton = screen.getByRole('button', { name: 'Send message' });
+  expect(sendButton.textContent).toBe(''); expect(sendButton.querySelector('svg')).not.toBeNull();
+  expect(screen.queryByRole('button', { name: 'Refresh conversation' })).not.toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Pickup conversation' })).toHaveClass('visually-hidden');
+  expect(input).toHaveAccessibleDescription(/2,000 characters/);
+  type('Keep this independent chat draft'); refresh();
+  await screen.findByText('Conversation refreshed.');
+  expect(input).toHaveValue('Keep this independent chat draft');
 });

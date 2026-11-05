@@ -37,7 +37,7 @@ test('an uncertain committed send requires review, preserves drafts and closes r
     await expect(page.getByText('Message sent.', { exact: true })).toHaveCount(0); expect(sends).toBe(1);
     expect((await (await receiver.request.get(endpoint)).json()).messages).toHaveLength(1);
     await page.unroute('**/conversation/messages'); await post(receiver, endpoint, { text: 'I can see your pickup message.' });
-    await page.getByRole('button', { name: 'Refresh conversation', exact: true }).click();
+    await page.getByRole('button', { name: 'Reload request', exact: true }).click();
     await expect(page.getByRole('region', { name: 'Message history' }).locator('.chat-message')).toHaveCount(2);
     await expect(page.getByLabel('Message', { exact: true })).toHaveValue(text); await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled(); expect(sends).toBe(1);
     await page.getByLabel('Message', { exact: true }).fill('Keep this independent unsent draft.');

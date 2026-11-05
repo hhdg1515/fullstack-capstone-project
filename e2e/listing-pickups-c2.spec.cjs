@@ -56,8 +56,8 @@ test('two accounts request, accept, chat, reschedule and close a pickup for an i
     await audit(b, 'request-form');
     await b.getByRole('button', { name: 'Send to the giver', exact: true }).click();
     await expect(b).toHaveURL(/\/app\/pickups\/[a-f0-9]{24}$/); const requestId = new URL(b.url()).pathname.split('/').pop();
-    await expect(b.getByText('Not reserved. Waiting for the giver to accept a pickup time.')).toBeVisible();
-    await expect(b.getByRole('link', { name: 'View item', exact: true })).toHaveAttribute('href', '/app/items/' + item.id);
+    await expect(b.getByRole('button', { name: 'Cancel request', exact: true })).toBeVisible();
+    await expect(b.getByRole('link', { name: item.name, exact: true })).toHaveAttribute('href', '/app/items/' + item.id);
     await audit(b, 'requester-pending');
     const stored = await deployment.db.collection('pickupRequests').findOne({ _id: new ObjectId(requestId) });
     expect(stored.referenceVersion).toBe(2); expect('planId' in stored).toBe(false); expect(stored.timeZone).toBe(zone);
@@ -66,7 +66,7 @@ test('two accounts request, accept, chat, reschedule and close a pickup for an i
     const a = await owner.newPage(); a.on('dialog', dialog => dialog.accept());
     await a.goto('/app/pickups/incoming'); await a.getByRole('link', { name: 'View request from Reader for ' + item.name, exact: true }).click();
     await expect(a).toHaveURL(deployment.origin + '/app/pickups/' + requestId);
-    await expect(a.getByRole('link', { name: 'View item', exact: true })).toHaveAttribute('href', '/app/items/' + item.id);
+    await expect(a.getByRole('link', { name: item.name, exact: true })).toHaveAttribute('href', '/app/items/' + item.id);
     await expect(a.getByText(/^Pickup window: /)).toBeVisible();
     await a.getByRole('button', { name: 'Accept pickup', exact: true }).click();
     await expect(a.getByText('Pickup arranged. The item is reserved; handoff has not been recorded.')).toBeVisible(); await audit(a, 'owner-accepted');

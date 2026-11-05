@@ -42,3 +42,10 @@
 .pickup-item-thumbnail { position: relative; flex: 0 0 96px; aspect-ratio: 4 / 3; overflow: hidden; display: grid; place-items: center; background: var(--ui-subtle); color: var(--ui-muted); border-radius: var(--ui-radius-control); font-size: var(--ui-text-small); }
 .pickup-item-thumbnail img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .pickup-item-thumbnail span { padding: var(--ui-space-1); text-align: center; }
+
+/* One continuous request surface; the item, appointment and chat share it. */
+.pickup-thread { margin-top: var(--ui-space-4); }
+.pickup-thread .pickup-summary, .pickup-thread .pickup-arrangement, .pickup-thread .pickup-secondary { border: 0; background: transparent; box-shadow: none; }
+.pickup-thread .pickup-item-identity h2 a { color: inherit; text-decoration: none; }
+.pickup-thread .pickup-item-identity h2 a:hover { text-decoration: underline; }
+.pickup-thread .pickup-secondary:empty { display: none; }
