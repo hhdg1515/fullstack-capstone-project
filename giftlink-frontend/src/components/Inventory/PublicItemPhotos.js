@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { publicImageUrl, publicItemMedia } from '../../api/publicItemMedia';
 import './PublicItemPhotos.css';
 
@@ -11,20 +11,22 @@ export function PublicItemCover({ item }) {
       <span>{media.imageAvailability === 'none' ? 'No photo' : 'Photo unavailable'}</span>}
   </div>;
 }
-export default function PublicItemGallery({ item }) {
+export default function PublicItemGallery({ item, retryToken = 0 }) {
   const media = publicItemMedia(item, true);
   if (!media) return null;
   return <section className="public-item-gallery" aria-label="Item photos"><h2 className="visually-hidden">Photos</h2>
-    {media.imageAvailability === 'ready' ? <Gallery key={media.images.map(image => image.id).join(':')} images={media.images} name={item.name} /> :
+    {media.imageAvailability === 'ready' ? <Gallery key={media.images.map(image => image.id).join(':')} images={media.images} name={item.name} retryToken={retryToken} /> :
       <p>{media.imageAvailability === 'none' ? 'No photos yet.' : 'Photos unavailable. Refresh the listing to try again.'}</p>}
   </section>;
 }
-function Gallery({ images, name }) {
+function Gallery({ images, name, retryToken }) {
   const [selected, setSelected] = useState(0), [failedThumbs, setFailedThumbs] = useState({});
   const buttons = useRef([]), image = images[selected];
+  // Explicit retry only: ordinary focus refreshes retain loaded and failed state.
+  useEffect(() => { setFailedThumbs({}); }, [retryToken]);
   return <>
     <div className="public-gallery-stage">
-      <GalleryImage key={image.id} image={image} name={name} position={selected} count={images.length} />
+      <GalleryImage key={image.id} image={image} name={name} position={selected} count={images.length} retryToken={retryToken} />
       {images.length > 1 && <div className="public-gallery-navigation">
         <button type="button" className="public-gallery-arrow public-gallery-arrow--previous" aria-label="Previous photo" onClick={() => setSelected(value => value - 1)} disabled={selected === 0}><span aria-hidden="true">‹</span></button>
         <p role="status" aria-live="polite">Photo {selected + 1} of {images.length}</p>
@@ -49,13 +51,14 @@ function Gallery({ images, name }) {
     </>}
   </>;
 }
-function GalleryImage({ image, name, position, count }) {
+function GalleryImage({ image, name, position, count, retryToken }) {
   const [failed, setFailed] = useState(false), [loaded, setLoaded] = useState(false);
+  useEffect(() => { setFailed(false); }, [retryToken]);
   return <div className="public-gallery-primary" aria-busy={!failed && !loaded}>
     {failed ? <p role="status">{count > 1 ? 'Photo unavailable. Choose another photo or refresh the listing.' : 'Photo unavailable. Refresh the listing to try again.'}</p> : <>
       {!loaded && <p className="public-gallery-loading" role="status">Loading photo…</p>}
       <img src={publicImageUrl(image.display)} width={image.display.width} height={image.display.height} alt={`${name} (${position + 1} of ${count})`}
-        crossOrigin="use-credentials" decoding="async" onLoad={() => setLoaded(true)} onError={() => setFailed(true)} />
+        crossOrigin="use-credentials" decoding="async" onLoad={() => setLoaded(true)} onError={() => { setLoaded(false); setFailed(true); }} />
     </>}
   </div>;
 }

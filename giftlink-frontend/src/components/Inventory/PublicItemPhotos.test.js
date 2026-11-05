@@ -62,3 +62,19 @@ test('public media rejects oversized dimensions, duplicated IDs, excess photos a
   render(<PublicItemGallery item={{ ...item, imageAvailability: 'unavailable', images: [] }} />); expect(screen.getByText(/Photos unavailable/)).toBeVisible();
   expect(document.querySelector('img')).not.toBeInTheDocument();
 });
+
+test('explicit retry restores failed thumbnails and display without resetting selection or an already loaded display', () => {
+  const value = gallery(2); const { rerender } = render(<PublicItemGallery item={value} retryToken={0} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Next photo' }));
+  const display = screen.getByRole('img', { name: 'Local chair (2 of 2)' }); fireEvent.load(display);
+  const first = screen.getByRole('button', { name: 'Show photo 1 of 2' }); fireEvent.error(first.querySelector('img'));
+  rerender(<PublicItemGallery item={{ ...value }} retryToken={0} />);
+  expect(first.querySelector('img')).toBeNull();
+  rerender(<PublicItemGallery item={{ ...value }} retryToken={1} />);
+  expect(first.querySelector('img')).toHaveAttribute('src', photo(1).thumbnail.url);
+  expect(screen.getByRole('img', { name: 'Local chair (2 of 2)' })).toBe(display);
+  expect(screen.queryByText('Loading photo…')).not.toBeInTheDocument();
+  fireEvent.error(display);
+  rerender(<PublicItemGallery item={value} retryToken={2} />);
+  expect(screen.getByRole('img', { name: 'Local chair (2 of 2)' })).not.toBe(display);
+});

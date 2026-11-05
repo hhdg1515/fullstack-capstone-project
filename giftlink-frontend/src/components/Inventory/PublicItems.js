@@ -259,6 +259,7 @@ function PublicItemDetail({ itemId }) {
   const scope = `${viewer}:${itemId}`;
   const location = useLocation();
   const [attempt, setAttempt] = useState(0);
+  const [photoRetry, setPhotoRetry] = useState(0);
   const [result, setResult] = useState({});
   const [message, setMessage] = useState('');
   useEffect(() => {
@@ -290,7 +291,7 @@ function PublicItemDetail({ itemId }) {
       <button className="ui-button ui-button--secondary" onClick={() => setAttempt(value => value + 1)}>Retry listing</button></div>}
     {item && <article className="public-item-layout">
       <div className="public-item-main">
-        <PublicItemGallery key={`${scope}:${attempt}`} item={item} />
+        <PublicItemGallery key={scope} item={item} retryToken={photoRetry} />
         <section className="public-item-about"><h2>Description</h2><p className="public-item-description">{item.description || 'No additional description provided.'}</p></section>
       </div>
       <aside className="public-item-aside">
@@ -309,7 +310,7 @@ function PublicItemDetail({ itemId }) {
           <div><input id="share-listing" type="url" readOnly value={shareUrl} onFocus={event => event.target.select()} /><button className="ui-button ui-button--secondary" onClick={copy}>Copy link</button></div>
           {message && <p role="status" className="public-item-toast">{message}</p>}
           <p className="public-item-published">{item.publishedAt && <>First published: <time dateTime={item.publishedAt}>{formatDeadline(item.publishedAt.slice(0, 10))}</time>. Publication is separate from pickup dates. </>}
-            <button className="public-item-refresh" onClick={() => setAttempt(value => value + 1)}>Refresh listings</button></p>
+            <button className="public-item-refresh" onClick={() => { setAttempt(value => value + 1); setPhotoRetry(value => value + 1); }}>Refresh listings</button></p>
         </div>
       </aside>
     </article>}
