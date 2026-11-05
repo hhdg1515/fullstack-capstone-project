@@ -103,13 +103,13 @@ test('authoritative cover changes, variant errors and stale URLs preserve item i
     const reversed = item.photos.slice().reverse();
     await page.goto('/app/items/' + item.item.id); await loaded(gallery(page).locator('img'));
     await s.post(item.prefix + '/images/order', { imageRevision: item.revision, imageIds: reversed });
-    await page.getByRole('button', { name: 'Refresh listings', exact: true }).click();
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect(gallery(page).locator('.public-gallery-primary img')).toHaveAttribute('src', '/api/item-images/' + reversed[0] + '/display');
     // Verify this batch has loaded before issuing another gallery refresh;
     // overlapping batches may legitimately hit the unchanged eight-read budget.
     await loaded(gallery(page).locator('img'));
     await s.post(item.prefix + '/images/' + reversed[0] + '/actions', { imageRevision: item.revision + 1, action: 'delete' });
-    await page.getByRole('button', { name: 'Refresh listings', exact: true }).click();
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect(gallery(page).getByRole('button', { name: 'Show photo 1 of 4', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await expect(gallery(page).locator('.public-gallery-primary img')).toHaveAttribute('src', '/api/item-images/' + reversed[1] + '/display');
     await loaded(gallery(page).locator('img'));
@@ -122,13 +122,13 @@ test('authoritative cover changes, variant errors and stale URLs preserve item i
     await expect(page.getByRole('heading', { name: '1 available item', exact: true })).toBeVisible(); await audit(page, 'cover failure'); await evidence(page, info, 'cover-unavailable');
     await page.route('**/api/item-images/' + reversed[1] + '/display', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":{"code":"IMAGE_READ_UNAVAILABLE"}}' }));
     await page.getByRole('link', { name: item.item.name, exact: true }).click();
-    await expect(gallery(page).getByText('Photo unavailable. Choose another photo or refresh the listing.', { exact: true })).toBeVisible();
+    await expect(gallery(page).getByText('Photo unavailable. Choose another photo or try again.', { exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: item.item.name, exact: true })).toBeVisible(); await audit(page, 'display failure'); await evidence(page, info, 'gallery-unavailable');
     await gallery(page).getByRole('button', { name: 'Next photo', exact: true }).click(); await loaded(gallery(page).locator('.public-gallery-primary img'));
     await s.post(item.prefix + '/actions', { action: 'unlist', version: item.item.version });
     for (const actor of [s.anonymous, s.requester]) for (const variant of ['thumbnail', 'display']) expect((await actor.request.get('/api/item-images/' + reversed[1] + '/' + variant)).status()).toBe(404);
     expect((await s.owner.request.get('/api/item-images/' + reversed[1] + '/thumbnail')).status()).toBe(200);
-    await page.getByRole('button', { name: 'Refresh listings', exact: true }).click();
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect(gallery(page)).toHaveCount(0); await expect(page.getByRole('link', { name: "I'm interested", exact: true })).toHaveCount(0); await expect(page.getByRole('alert')).toBeVisible(); await audit(page, 'revoked listing');
     await page.goto(list); await expect(page.getByRole('heading', { name: '0 available items', exact: true })).toBeVisible(); await expect(page.locator('.public-item-cover img')).toHaveCount(0);
   } finally { await s.close(); }

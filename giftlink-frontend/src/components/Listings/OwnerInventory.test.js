@@ -37,3 +37,14 @@ test('cards with open pickup requests show a count that opens Incoming requests'
  expect(screen.getByRole('link',{name:'2 pickup requests for Busy desk'})).toHaveAttribute('href','/app/pickups/incoming');expect(screen.getByText('2 requests')).toBeVisible();
  expect(screen.queryByRole('link',{name:/pickup requests? for Quiet lamp/})).not.toBeInTheDocument();
 });
+
+
+test('missing optional condition retains a blank row before status and location', async () => {
+ const blank=item('a','No condition'), known={...item('b','With condition'),classification:{condition:{label:'Good'}}};
+ listOwnerListings.mockResolvedValue({items:[blank,known],nextCursor:null});
+ const {container}=mount();await screen.findByText('No condition');
+ const rows=container.querySelectorAll('.owner-listing-condition');
+ expect(rows).toHaveLength(2);expect(rows[0]).toHaveAttribute('aria-hidden','true');
+ expect(rows[0].textContent.trim()).toBe('');expect(rows[1]).toHaveTextContent('Good');
+ expect(rows[1]).not.toHaveAttribute('aria-hidden');
+});

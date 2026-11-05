@@ -8,3 +8,5 @@
 .owner-listing-preview img { max-width: 100%; object-fit: cover; }
 .owner-listing-photos { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: var(--ui-space-4); }
 .owner-listing-photos img { display: block; max-width: 100%; height: auto; object-fit: cover; border-radius: var(--ui-radius-control); }
+
+.owner-listing-condition { min-height: 1.5em; }

@@ -48,6 +48,7 @@ function Gallery({ images, name, retryToken }) {
             crossOrigin="use-credentials" loading="lazy" decoding="async" onError={() => setFailedThumbs(values => ({ ...values, [photo.id]: true }))} />}
         </button>)}
       </div>
+      {Object.keys(failedThumbs).length > 0 && <button type="button" className="ui-button ui-button--secondary" onClick={() => setFailedThumbs({})}>Retry thumbnails</button>}
     </>}
   </>;
 }
@@ -55,7 +56,7 @@ function GalleryImage({ image, name, position, count, retryToken }) {
   const [failed, setFailed] = useState(false), [loaded, setLoaded] = useState(false);
   useEffect(() => { setFailed(false); }, [retryToken]);
   return <div className="public-gallery-primary" aria-busy={!failed && !loaded}>
-    {failed ? <p role="status">{count > 1 ? 'Photo unavailable. Choose another photo or refresh the listing.' : 'Photo unavailable. Refresh the listing to try again.'}</p> : <>
+    {failed ? <><p role="status">{count > 1 ? 'Photo unavailable. Choose another photo or try again.' : 'Photo unavailable. Try again.'}</p><button type="button" className="ui-button ui-button--secondary" onClick={() => setFailed(false)}>Retry photo</button></> : <>
       {!loaded && <p className="public-gallery-loading" role="status">Loading photo…</p>}
       <img src={publicImageUrl(image.display)} width={image.display.width} height={image.display.height} alt={`${name} (${position + 1} of ${count})`}
         crossOrigin="use-credentials" decoding="async" onLoad={() => setLoaded(true)} onError={() => { setLoaded(false); setFailed(true); }} />
