@@ -6,9 +6,13 @@ const { ObjectId } = require('mongodb');
 const { InventoryError } = require('./inventory');
 const { todayUTC, isCalendarDate } = require('./calendar');
 const { pickupReservationStages } = require('./pickup-policy');
-const { classificationResponse, taxonomy, category, type, condition } = require('./item-taxonomy');
+const { classificationResponse, taxonomy, category, condition } = require('./item-taxonomy');
 const { validateRegion, metro, regionResponse } = require('./regions');
 
+// Browse-only grouping; persisted classification IDs remain unchanged.
+const primaryCategories = ['dining-kitchen', 'living-room', 'bedroom'];
+const otherCategories = taxonomy.categories.filter(entry => !primaryCategories.includes(entry.id));
+const browseCategory = id => id === 'others' ? { itemTypes: otherCategories.flatMap(entry => entry.itemTypes) } : category(id);
 const normalizeLabel = value => value.trim().replace(/\s+/g, ' ');
 const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const phrase = value => normalizeLabel(value).split(' ').map(escape).join('\\s+');
@@ -29,7 +33,7 @@ function parseQuery(raw, today, requireRegion = true, mixed = false) {
         validateRegion(query.stateId, query.metroId);
         if (!query.stateId || !query.metroId) throw new InventoryError(400, 'REGION_REQUIRED', 'Choose a listed state and metro before browsing.');
     }
-    if (query.categoryId && !category(query.categoryId) || query.itemTypeId && !type(query.categoryId, query.itemTypeId) || query.condition && !condition(query.condition)) {
+    if (query.categoryId && !browseCategory(query.categoryId) || query.itemTypeId && !(browseCategory(query.categoryId) || { itemTypes: [] }).itemTypes.some(entry => entry.id === query.itemTypeId) || query.condition && !condition(query.condition)) {
         throw invalid('Choose a listed category, a matching item type and a supported condition.');
     }
     for (const key of ['q', 'city', 'neighborhood']) {
@@ -159,7 +163,7 @@ function createDiscoveryService({ connectToDatabase, now = () => new Date(), ima
         const at = cursor ? cursor.at : current.getTime();
         const terms = [initialMatch(at)];
         if (query.q) terms.push(textMatch(query.q));
-        for (const field of ['categoryId', 'itemTypeId', 'condition']) if (query[field]) terms.push({ [field]: query[field] });
+        for (const field of ['categoryId', 'itemTypeId', 'condition']) if (query[field]) terms.push({ [field]: field === 'categoryId' && query[field] === 'others' ? { $in: otherCategories.map(entry => entry.id) } : query[field] });
         const independentTerms = terms.slice();
         const start = query.availability === 'date' ? query.date : today;
         if (['now', 'date'].includes(query.availability)) terms.push({ $or: [{ availableFrom: null }, { availableFrom: { $lte: start } }] });

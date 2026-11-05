@@ -10,6 +10,7 @@ import usePublicCatalog from '../../api/usePublicCatalog';
 import { Feedback } from '../../design-system/primitives';
 import './Discovery.css';
 import PublicItemCard from './PublicItemCard';
+import AreaSelect from './AreaSelect';
 import PublicItemGallery from './PublicItemPhotos';
 import { validPickupTimeZone } from '../../forms/pickupTime';
 import { placeLabel } from '../Pickups/placeLabel';
@@ -121,23 +122,27 @@ function Discovery() {
   const cities = places.locations.map(place => place.city).filter(Boolean);
   if (city && !cities.includes(city)) cities.unshift(city);
   if (neighborhood && !neighborhoods.includes(neighborhood)) neighborhoods.unshift(neighborhood);
-  const category = catalog.data?.categories.find(entry => entry.id === fields.categoryId);
+  const primaryCategories = [['dining-kitchen', 'Kitchen'], ['living-room', 'Living Room'], ['bedroom', 'Bedroom']];
+  const others = (catalog.data?.categories || []).filter(entry => !primaryCategories.some(([id]) => id === entry.id));
+  const groups = [...primaryCategories.map(([id, label]) => ({ id, label })), { id: 'others', label: 'Others' }];
+  const category = fields.categoryId === 'others' ? { itemTypes: others.flatMap(entry => entry.itemTypes) } : catalog.data?.categories.find(entry => entry.id === fields.categoryId);
   const applied = [];
   if (params.get('q')) applied.push(`Search: ${params.get('q')}`);
   for (const name of ['city', 'neighborhood']) if (params.get(name)) applied.push(`${name === 'city' ? 'City' : 'Neighborhood'}: ${params.get(name)}`);
   for (const [name, label] of [['categoryId', 'Category'], ['itemTypeId', 'Item type'], ['condition', 'Condition']]) {
     const id = params.get(name);
-    const entries = name === 'categoryId' ? catalog.data?.categories : name === 'condition' ? catalog.data?.conditions : catalog.data?.categories.flatMap(entry => entry.itemTypes);
+    const entries = name === 'categoryId' ? [...(catalog.data?.categories || []), { id: 'others', label: 'Others' }] : name === 'condition' ? catalog.data?.conditions : catalog.data?.categories.flatMap(entry => entry.itemTypes);
     if (id) applied.push(`${label}: ${entries?.find(entry => entry.id === id)?.label || 'Check selection'}`);
   }
   if (params.get('sort') === 'deadline') applied.push('Sort: earliest pickup deadline');
   const canReset = applied.length > 0 || Object.entries(fields).some(([name, value]) => value && !(name === 'sort' && value === 'newest'));
   const metros = (directory.data?.metros || []).slice().sort((a, b) => a.label.localeCompare(b.label));
   const changeMetro = event => {
-    const metro = directory.data.metros.find(row => row.id === event.target.value);
+    const [chosenState, chosenMetro] = event.target.value.split(':');
+    const metro = directory.data.metros.find(row => row.id === chosenMetro && row.stateIds.includes(chosenState));
     const next = new URLSearchParams(query);
     for (const name of ['cursor', 'city', 'neighborhood']) next.delete(name);
-    if (metro) { next.set('stateId', metro.stateIds.includes(stateId) ? stateId : metro.stateIds[0]); next.set('metroId', metro.id); }
+    if (metro) { next.set('stateId', chosenState); next.set('metroId', metro.id); }
     else { next.delete('stateId'); next.delete('metroId'); rememberRegion(); }
     setParams(next, { replace: sameQuery(next, query) });
   };
@@ -197,21 +202,20 @@ function Discovery() {
       {/* Where (metro → city → neighborhood) and search share one command bar. */}
       <div className="discovery-bar">
         <div className="discovery-where" role="group" aria-label="Where">
-          <div className="discovery-segment"><label htmlFor="browse-metro">Metro area</label><select id="browse-metro" name="metroId" value={selected ? selected.id : ''} onChange={changeMetro} disabled={directory.loading || Boolean(directory.error)}>
-            <option value="">{directory.loading ? 'Loading metro areas…' : 'Choose a metro area'}</option>{metros.map(metro => <option key={metro.id} value={metro.id}>{metro.label}</option>)}</select></div>
-          <div className="discovery-segment"><label htmlFor="browse-city">City</label><select id="browse-city" name="city" value={city} onChange={change} disabled={!selected}><option value="">All cities</option>
-            {cities.map(value => <option key={key(value)} value={value}>{value}</option>)}</select></div>
-          <div className="discovery-segment"><label htmlFor="browse-neighborhood">Neighborhood</label><select id="browse-neighborhood" name="neighborhood" value={neighborhood} onChange={change} disabled={!selected}><option value="">All neighborhoods</option>
-            {neighborhoods.map(value => <option key={key(value)} value={value}>{value}</option>)}</select></div>
+          <div className="discovery-segment"><label htmlFor="browse-metro">Metro area</label><AreaSelect id="browse-metro" name="metroId" value={selected ? stateId + ':' + selected.id : ''} onChange={changeMetro} disabled={directory.loading || Boolean(directory.error)}>
+            <option value="">{directory.loading ? 'Loading metro areas…' : 'Choose a metro area'}</option>{(directory.data?.states || []).slice().sort((a, b) => a.label.localeCompare(b.label)).filter(state => metros.some(metro => metro.stateIds.includes(state.id))).map(state => <optgroup key={state.id} label={state.label}>{metros.filter(metro => metro.stateIds.includes(state.id)).map(metro => <option key={metro.id} value={state.id + ':' + metro.id}>{metro.label}</option>)}</optgroup>)}</AreaSelect></div>
+          <div className="discovery-segment"><label htmlFor="browse-city">City</label><AreaSelect id="browse-city" name="city" value={city} onChange={change} disabled={!selected}><option value="">All cities</option>
+            {cities.map(value => <option key={key(value)} value={value}>{value}</option>)}</AreaSelect></div>
+          <div className="discovery-segment"><label htmlFor="browse-neighborhood">Neighborhood</label><AreaSelect id="browse-neighborhood" name="neighborhood" value={neighborhood} onChange={change} disabled={!selected}><option value="">All neighborhoods</option>
+            {neighborhoods.map(value => <option key={key(value)} value={value}>{value}</option>)}</AreaSelect></div>
         </div>
         <div className="discovery-segment discovery-search"><label htmlFor="browse-q">Search items</label>
           <input id="browse-q" name="q" maxLength={100} placeholder="Name, description or item type" value={fields.q} onChange={change} disabled={!selected} /></div>
       </div>
       <div className="discovery-row">
         <div className={'discovery-chips' + (filtersOff ? ' is-off' : '')} role="group" aria-label="Category">
-          {chip('All', !fields.categoryId, () => setFields(previous => ({ ...previous, categoryId: '', itemTypeId: '' })))}
-          {catalog.data?.categories.map(entry => chip(entry.label, fields.categoryId === entry.id,
-            () => setFields(previous => ({ ...previous, categoryId: previous.categoryId === entry.id ? '' : entry.id, itemTypeId: '' }))))}
+          {groups.map(entry => chip(entry.label, entry.id === 'others' ? Boolean(fields.categoryId && !primaryCategories.some(([id]) => id === fields.categoryId)) : fields.categoryId === entry.id,
+            () => setFields(previous => ({ ...previous, categoryId: previous.categoryId === entry.id || (entry.id === 'others' && others.some(row => row.id === previous.categoryId)) ? '' : entry.id, itemTypeId: '' }))))}
         </div>
         <div className="discovery-pills">
           <div className="discovery-pill"><label htmlFor="browse-condition">Condition</label><select id="browse-condition" name="condition" value={fields.condition} onChange={change} disabled={filtersOff}>

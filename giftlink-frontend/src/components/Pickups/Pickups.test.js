@@ -112,18 +112,20 @@ test('private dashboards provide loading, empty/error/retry and role navigation'
   await act(async () => pending.resolve(error('Temporary failure', 'FAILED', 503)));
   expect(await screen.findByRole('alert')).toHaveTextContent('Temporary failure');
   fetch.mockResolvedValue(response({ requests: [], nextCursor: null })); await click(screen.getByRole('button', { name: 'Retry requests' }));
-  expect(await screen.findByText('No pickup requests here yet.')).toBeInTheDocument();
+  expect(await screen.findByText('No active requests.')).toBeInTheDocument();
   expect(screen.getByRole('navigation', { name: 'Donate' })).toBeInTheDocument();
 });
-test('giver dashboard displays appointment timezone and plan, and filters accepted appointments with bounded next pages', async () => {
+test('giver inbox displays active appointments with bounded next pages without status controls', async () => {
   fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { requests: [{ ...base, role: 'giver', plan: { id: 'plan', title: 'Summer move' } }], nextCursor: base.id }));
   mount('/app/pickups/incoming'); expect(await screen.findByRole('link', { name: 'Kitchen box' })).toBeInTheDocument();
   expect(screen.queryByRole('link', { name: 'Summer move' })).not.toBeInTheDocument();
   expect(screen.getByText(/2:30 PM/)).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText('Request status'), { target: { value: 'accepted' } });
-  await waitFor(() => expect(fetch.mock.calls.some(([url]) => url.includes('received?status=accepted'))).toBe(true));
+  expect(screen.queryByLabelText('Request status')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Refresh requests' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Incoming pickup requests' })).not.toBeInTheDocument();
+  await waitFor(() => expect(fetch.mock.calls.some(([url]) => url.includes('received?view=active'))).toBe(true));
   await click(await screen.findByRole('button', { name: 'Next requests' }));
-  await waitFor(() => expect(fetch.mock.calls.some(([url]) => url.includes(`cursor=${base.id}&status=accepted`))).toBe(true));
+  await waitFor(() => expect(fetch.mock.calls.some(([url]) => url.includes(`view=active&cursor=${base.id}`))).toBe(true));
   expect(await screen.findByRole('button', { name: 'First page' })).toBeInTheDocument();
 });
 test('receiver private detail retains full item and private note without giver controls or internal identities', async () => {
@@ -330,3 +332,22 @@ test('expired request sessions clear the thumbnail before returning to login', a
   expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument(); expect(screen.queryByRole('img')).not.toBeInTheDocument();
 });
 
+
+test('incoming history is lazy, separately paginated and never replaces active work', async () => {
+  fetch.mockImplementation(async url => {
+    if (url.endsWith('/api/me')) return response({ user });
+    const past = url.includes('view=past');
+    return response({ requests: [{ ...base, role: 'giver', status: past ? 'cancelled' : 'pending', item: { ...item, name: past ? 'Old box' : 'Active box' } }], nextCursor: past && !url.includes('cursor=') ? base.id : null });
+  });
+  mount('/app/pickups/incoming'); await screen.findByRole('link', { name: 'Active box' });
+  expect(fetch.mock.calls.some(([url]) => url.includes('view=past'))).toBe(false);
+  await click(screen.getByText('Past requests', { exact: true }));
+  await screen.findByRole('link', { name: 'Old box' });
+  expect(screen.getByRole('link', { name: 'Active box' })).toBeVisible();
+  const past = within(screen.getByRole('region', { name: 'Past requests' }));
+  await click(past.getByRole('button', { name: 'Next requests' }));
+  await waitFor(() => expect(fetch.mock.calls.some(([url]) => url.includes('view=past&cursor=' + base.id))).toBe(true));
+  expect(screen.getByRole('link', { name: 'Active box' })).toBeVisible();
+  await click(screen.getByText('Past requests', { exact: true }));
+  await waitFor(() => expect(screen.queryByRole('link', { name: 'Old box' })).not.toBeInTheDocument());
+});

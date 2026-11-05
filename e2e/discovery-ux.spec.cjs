@@ -53,7 +53,16 @@ test('expanded areas, responsive filters, truthful cards and recovery preserve s
     expect(gets).toBe(0);
     await page.evaluate(() => localStorage.setItem('moveout.browse-region.v1', JSON.stringify({ stateId: '06', metroId: 'unknown' })));
     await page.goto('/app/items'); await expect(page.getByLabel('Metro area', { exact: true })).toHaveValue(''); expect(gets).toBe(0);
-    await page.getByLabel('Metro area', { exact: true }).selectOption('37980');
+    const area = page.getByLabel('Metro area', { exact: true });
+    await area.click();
+    const areaMenu = page.getByRole('listbox', { name: 'Metro area options', exact: true });
+    await expect(areaMenu).toBeVisible();
+    const triggerBox = await area.boundingBox(), menuBox = await areaMenu.boundingBox();
+    expect(menuBox.y).toBeGreaterThanOrEqual(triggerBox.y + triggerBox.height);
+    const optionIndex = await area.evaluate(select => [...select.options].findIndex(option => option.value === '42:37980'));
+    expect(optionIndex).toBeGreaterThan(0);
+    await areaMenu.getByRole('option').nth(optionIndex).click();
+    await expect(areaMenu).toHaveCount(0);
     const count = value => page.getByRole('heading', { name: value + ' available ' + (value === 1 ? 'item' : 'items'), exact: true });
     await expect(count(2)).toBeVisible();
     const results = page.getByRole('list', { name: 'Available items' });

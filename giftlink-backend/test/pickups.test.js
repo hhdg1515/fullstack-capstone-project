@@ -398,6 +398,34 @@ describe('two-party pickup lifecycle on verified isolated MongoDB', function () 
         const logged = lines.join('\n');
         for (const secret of ['Private coordination note', 'library meeting', '@example.test', receiver.cookie, 'Private surname']) assert.ok(!logged.includes(secret));
     });
+    it('separates received active work from bounded past pages without changing legacy or sender queries', async function () {
+        const row = (await submit()).body.request;
+        const stored = await db.collection('pickupRequests').findOne({ _id: new ObjectId(row.id) });
+        await db.collection('pickupRequests').insertOne(Object.assign({}, stored, {
+            _id: new ObjectId(), receiverId: new ObjectId(other.id), status: 'accepted', active: true
+        }));
+        const pastStates = ['declined', 'cancelled', 'completed', 'no_show'];
+        await db.collection('pickupRequests').insertMany(Array.from({ length: 30 }, (_, i) => Object.assign({}, stored, {
+            _id: new ObjectId(), status: pastStates[i % pastStates.length], active: false
+        })));
+        const received = query => request(app).get(calls + '/received').query(query).set('Cookie', giver.cookie).expect(200);
+        const active = (await received({ view: 'active' })).body;
+        assert.equal(active.requests.length, 2); assert.equal(active.nextCursor, null);
+        assert.deepEqual(active.requests.map(r => r.status).sort(), ['accepted', 'pending']);
+        const first = (await received({ view: 'past' })).body;
+        assert.equal(first.requests.length, 25); assert.ok(first.nextCursor);
+        const second = (await received({ view: 'past', cursor: first.nextCursor })).body;
+        assert.equal(second.requests.length, 5); assert.equal(second.nextCursor, null);
+        const closed = [...first.requests, ...second.requests];
+        assert.equal(new Set(closed.map(r => r.id)).size, 30);
+        assert.ok(closed.every(r => pastStates.includes(r.status)));
+        assert.equal((await received({})).body.requests.length, 25);
+        assert.equal((await request(app).get(calls + '/received?view=active').set('Cookie', receiver.cookie).expect(200)).body.requests.length, 0);
+        for (const query of ['view=unknown', 'view[]=active', 'view=active&status=pending']) {
+            await request(app).get(calls + '/received?' + query).set('Cookie', giver.cookie).expect(400);
+        }
+        await request(app).get(calls + '/sent?view=active').set('Cookie', receiver.cookie).expect(400);
+    });
     it('paginates and filters private dashboards, rejecting unbounded or structured query input', async function () {
         const first = await db.collection('pickupRequests').findOne({}); assert.equal(first, null);
         const row = (await submit()).body.request; const stored = await db.collection('pickupRequests').findOne({ _id: new ObjectId(row.id) });

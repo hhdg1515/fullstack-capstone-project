@@ -29,6 +29,23 @@ describe('anonymous neighborhood discovery on verified isolated MongoDB', functi
         await db.collection('moveOutPlans').insertOne(plan);
         app = createApp({ connectToDatabase: async () => db, logger });
     });
+    it('groups other categories at query time while preserving exact counts, types and cursors', async function () {
+        const rows = [item({ categoryId: 'office-lighting', itemTypeId: 'desk', name: 'Office desk' }),
+            item({ categoryId: 'storage-organization', itemTypeId: 'storage-bin', name: 'Storage box' }),
+            item({ categoryId: 'other-household', itemTypeId: 'other', name: 'Household item' }),
+            item({ categoryId: 'living-room', itemTypeId: 'sofa', name: 'Sofa' })];
+        await db.collection('items').insertMany(rows);
+        const first = (await get({ categoryId: 'others', limit: '2' }).expect(200)).body;
+        assert.equal(first.total, 3); assert.equal(first.items.length, 2); assert.ok(first.page.nextCursor);
+        const next = (await get({ categoryId: 'others', limit: '2', cursor: first.page.nextCursor }).expect(200)).body;
+        assert.equal(next.items.length, 1); assert.equal(next.total, 3);
+        assert.equal(new Set([...first.items, ...next.items].map(row => row.id)).size, 3);
+        assert.equal((await get({ categoryId: 'others', itemTypeId: 'desk' }).expect(200)).body.total, 1);
+        await get({ categoryId: 'others', itemTypeId: 'sofa' }).expect(400);
+        await get({ categoryId: 'living-room', limit: '2', cursor: first.page.nextCursor }).expect(400);
+        assert.equal((await get({ categoryId: 'office-lighting' }).expect(200)).body.total, 1);
+        assert.equal((await db.collection('items').findOne({ _id: rows[0]._id })).categoryId, 'office-lighting');
+    });
     it('browses without a session and returns bounded pagination plus normalized, allowlisted public fields', async function () {
         const stored = item({ email: 'private-item@example.test', token: 'private-token', password: 'hash-secret', apartmentNumber: 'unit-secret' });
         await db.collection('items').insertOne(stored);

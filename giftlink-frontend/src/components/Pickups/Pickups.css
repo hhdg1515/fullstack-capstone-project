@@ -49,3 +49,6 @@
 .pickup-thread .pickup-item-identity h2 a { color: inherit; text-decoration: none; }
 .pickup-thread .pickup-item-identity h2 a:hover { text-decoration: underline; }
 .pickup-thread .pickup-secondary:empty { display: none; }
+
+.pickup-past { margin-top: var(--ui-space-6); border-top: 1px solid var(--ui-border); padding-top: var(--ui-space-3); }
+.pickup-past > summary { cursor: pointer; font-weight: 600; padding-block: var(--ui-space-3); min-height: 44px; box-sizing: border-box; }

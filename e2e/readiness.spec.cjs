@@ -14,7 +14,7 @@ test('public/account pages have no automated WCAG A/AA violations and support ke
       const rules = results.violations.map(value => value.id).join(', ') || 'none';
       await test.step('Accessibility ' + route + ' rules: ' + rules, async () => { expect(results.violations.length).toBe(0); });
       if (route === '/app/items') {
-        await page.getByLabel('Metro area', { exact: true }).selectOption('41860');
+        await page.getByLabel('Metro area', { exact: true }).selectOption('06:41860');
         await expect(page.getByRole('button', { name: /^Filters/ })).toHaveCount(0);
         await expect(page.getByLabel('Condition', { exact: true })).toBeVisible();
         const expanded = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();

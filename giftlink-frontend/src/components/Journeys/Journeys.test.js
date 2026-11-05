@@ -108,7 +108,7 @@ test('one account gives in Pasadena and searches Irvine without copying or enfor
   sessionUser = user; mount('/app/plans');
   expect(await screen.findByRole('link', { name: 'Pasadena move' })).toBeInTheDocument();
   await click(primary().getByRole('link', { name: 'Find' }));
-  await act(async () => fireEvent.change(screen.getByLabelText('Metro area'), { target: { value: '31080' } }));
+  await act(async () => fireEvent.change(screen.getByLabelText('Metro area'), { target: { value: '06:31080' } }));
   await screen.findByRole('option', { name: 'Irvine' }); expect(screen.getByLabelText('City', { exact: true })).toHaveValue('');
   fireEvent.change(screen.getByLabelText('City', { exact: true }), { target: { value: 'Irvine' } });
   await waitFor(() => expect(screen.getByTestId('route')).toHaveTextContent('/app/items?stateId=06&metroId=31080&city=Irvine'));
@@ -124,7 +124,7 @@ test('Give Away provides consolidated incoming requests and per-plan inventory/c
   expect(await screen.findByText('0 of 1 items cleared')).toBeInTheDocument();
   expect(context('Donate').getByRole('link', { name: 'Items & clearance progress' })).toHaveAttribute('aria-current', 'location');
   await click(context('Donate').getByRole('link', { name: 'Incoming requests' }));
-  expect(await screen.findByRole('heading', { name: 'Incoming pickup requests' })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'Incoming requests' })).toBeInTheDocument();
   expect(fetch.mock.calls.some(([url]) => url.includes('/api/pickup-requests/received'))).toBe(true);
   detailRole = 'giver'; await click(await screen.findByRole('link', { name: /^View request from/ }));
   expect(await screen.findByRole('button', { name: 'Accept pickup' })).toBeInTheDocument();

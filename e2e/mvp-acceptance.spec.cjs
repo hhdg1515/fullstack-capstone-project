@@ -73,7 +73,7 @@ test('two independent users complete the integrated marketplace journey with tru
     await primary(b, 'Find');
     await expect(b.getByRole('heading', { name: 'Choose a metro area', exact: true })).toBeVisible();
     await capture(b, 'region-selection');
-    await b.getByLabel('Metro area', { exact: true }).selectOption('41860');
+    await b.getByLabel('Metro area', { exact: true }).selectOption('06:41860');
     await expect(b.getByRole('heading', { name: 'No items here yet', exact: true })).toBeVisible();
     await capture(b, 'empty-region');
 
@@ -143,7 +143,7 @@ test('two independent users complete the integrated marketplace journey with tru
 
     await b.reload(); await expect(b.getByRole('heading', { name: '2 available items', exact: true })).toBeVisible();
     await capture(b, 'discovery');
-    await b.getByRole('group', { name: 'Category', exact: true }).getByRole('button', { name: 'Office & Lighting', exact: true }).click();
+    await b.getByRole('group', { name: 'Category', exact: true }).getByRole('button', { name: 'Others', exact: true }).click();
     await b.getByRole('group', { name: 'Item type', exact: true }).getByRole('button', { name: 'Desk', exact: true }).click();
     await filterPanel(b);
     await b.getByLabel('Condition', { exact: true }).selectOption('good');
