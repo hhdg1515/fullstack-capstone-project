@@ -124,3 +124,13 @@ test('a successful form response cannot authenticate a user when /me returns HTM
   renderAuth(); await screen.findByText('anonymous:'); fireEvent.click(screen.getByText('Sign in'));
   expect(await screen.findByText('error:')).toBeInTheDocument(); expect(screen.queryByText('authenticated:Server')).not.toBeInTheDocument();
 });
+
+test('an already anonymous focus check keeps its viewer scope while the session response is pending', async () => {
+  fetch.mockResolvedValueOnce(reply(401, { error: { code: 'UNAUTHENTICATED' } }));
+  renderAuth(); await screen.findByText('anonymous:');
+  let resolve; fetch.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  act(() => { fireEvent(window, new Event('focus')); });
+  expect(screen.getByText('anonymous:')).toBeVisible();
+  await act(async () => resolve(reply(401, { error: { code: 'UNAUTHENTICATED' } })));
+  expect(screen.getByText('anonymous:')).toBeVisible();
+});

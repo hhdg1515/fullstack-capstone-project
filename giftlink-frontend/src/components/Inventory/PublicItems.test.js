@@ -464,3 +464,38 @@ test('optional v2 city and neighborhood fields do not create blank filter option
  expect(within(screen.getByLabelText('City')).getAllByRole('option')).toHaveLength(1);
  expect(within(screen.getByLabelText('Neighborhood')).getAllByRole('option').map(option=>option.textContent)).toEqual(['All neighborhoods','Synthetic area']);
 });
+
+test('detail focus refresh preserves the selected loaded photo while updating availability; manual refresh retries failures', async () => {
+  const photo = n => { const id = String(n).padStart(24, '0'); return { id, thumbnail: { url: `/api/item-images/${id}/thumbnail`, width: 400, height: 300 }, display: { url: `/api/item-images/${id}/display`, width: 800, height: 600 } }; };
+  let value = { ...a, imageAvailability: 'ready', images: [photo(1), photo(2)] };
+  handler = async () => reply(200, { item: value });
+  mount('/app/items/' + a.id);
+  await screen.findByRole('heading', { name: a.name });
+  fireEvent.click(screen.getByRole('button', { name: 'Next photo' }));
+  const selected = screen.getByRole('img', { name: a.name + ' (2 of 2)' }); fireEvent.load(selected);
+  const delayed = pending(); handler = () => delayed.promise;
+  await act(async () => { fireEvent(window, new Event('focus')); });
+  expect(screen.getByRole('img', { name: a.name + ' (2 of 2)' })).toBe(selected);
+  expect(screen.queryByText('Loading photo…')).not.toBeInTheDocument();
+  value = { ...value, isReserved: true };
+  await act(async () => delayed.resolve(reply(200, { item: value })));
+  expect(await screen.findByText('Pickup arranged')).toBeVisible();
+  expect(screen.getByRole('img', { name: a.name + ' (2 of 2)' })).toBe(selected);
+  expect(screen.queryByText('Loading photo…')).not.toBeInTheDocument();
+  handler = async () => reply(200, { item: value });
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh listings' }));
+  await waitFor(() => expect(screen.getByRole('img', { name: a.name + ' (2 of 2)' })).toBe(selected));
+  expect(screen.queryByText('Loading photo…')).not.toBeInTheDocument();
+  fireEvent.error(selected);
+  expect(screen.getByText(/Photo unavailable. Choose another/)).toBeVisible();
+  await act(async () => { fireEvent(window, new Event('focus')); });
+  expect(screen.getByText(/Photo unavailable. Choose another/)).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh listings' }));
+  const retried = await screen.findByRole('img', { name: a.name + ' (2 of 2)' });
+  expect(retried).not.toBe(selected); fireEvent.load(retried);
+  expect(screen.queryByText('Loading photo…')).not.toBeInTheDocument();
+  handler = async () => reply(404, { error: { code: 'NOT_FOUND', message: 'Not found' } });
+  await act(async () => { fireEvent(window, new Event('focus')); });
+  expect(await screen.findByText('This listing is no longer available.')).toBeVisible();
+  expect(screen.queryByRole('img')).not.toBeInTheDocument();
+});

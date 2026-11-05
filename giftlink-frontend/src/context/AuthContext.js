@@ -11,17 +11,19 @@ export const AuthProvider = ({ children }) => {
   const [error, setError] = useState('');
   const [sessionMessage, setSessionMessage] = useState('');
   const revision = useRef(0);
+  const sessionChecked = useRef(false);
   const hasSession = useRef(false);
   const userId = useRef(null);
   const invalidate = useCallback(() => { ++revision.current; }, []);
 
   const refreshSession = useCallback(async () => {
     const current = ++revision.current;
-    if (!hasSession.current) setStatus('loading');
+    if (!hasSession.current && !sessionChecked.current) setStatus('loading');
     setError('');
     try {
       const data = await apiRequest('/api/me', { notifyUnauthorized: false, validate: userResponse });
       if (current !== revision.current) return;
+      sessionChecked.current = true;
       if (userId.current !== data.user.id) { advanceSessionGeneration(); userId.current = data.user.id; }
       setUser(data.user);
       hasSession.current = true;
@@ -30,6 +32,7 @@ export const AuthProvider = ({ children }) => {
       return data.user;
     } catch (failure) {
       if (current !== revision.current) return;
+      sessionChecked.current = true;
       // Reconfirming an already anonymous visitor does not change identity.
       // Otherwise every anonymous focus check invalidates concurrent public GETs.
       if (hasSession.current || userId.current !== null) advanceSessionGeneration();
