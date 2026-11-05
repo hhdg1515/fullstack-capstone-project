@@ -46,7 +46,7 @@ export function MyListings() {
       <h2>{item.status === 'available' ? <Link id={'owner-listing-' + item.id} to={'/app/items/' + item.id}>{item.name}</Link> :
         item.capabilities.editDraft || item.capabilities.legacyEditor ? <Link id={'owner-listing-' + item.id} to={'/app/items/' + item.id + '/edit'}>{item.name}</Link> : item.name}</h2>
       <p>{item.classification?.itemType?.label || 'Type not selected'}{item.classification?.category?.label ? ' · ' + item.classification.category.label : ''}</p>
-      {item.classification?.condition?.label && <p>{item.classification.condition.label}</p>}
+      <p className="owner-listing-condition" aria-hidden={!item.classification?.condition?.label || undefined}>{item.classification?.condition?.label || '\u00a0'}</p>
       <p>{statuses[item.status] || 'Status unavailable'}{item.pickupSummary?.reserved ? ' · Reserved' : ''}</p>
       <p>{[item.location.metroLabel, item.location.stateLabel, item.location.city, item.location.neighborhood].filter(Boolean).join(' · ') || 'Location not selected'}</p>
       <p>{item.pickup.availableUntil ? 'Pickup deadline: ' + item.pickup.availableUntil : 'No pickup deadline'}</p>

@@ -138,7 +138,9 @@ test('public details and browser Back/Forward preserve shared discovery filters'
   mount('/app/items?stateId=06&metroId=31080&city=Irvine&neighborhood=Woodbridge&q=table');
   await click(await screen.findByRole('link', { name: item.name }));
   expect(await screen.findByRole('heading', { name: item.name })).toBeInTheDocument();
-  expect(context('Find').getByRole('link', { name: 'Browse listings' })).toHaveAttribute('href', '/app/items?stateId=06&metroId=31080&city=Irvine&neighborhood=Woodbridge&q=table');
+  expect(screen.getByRole('link', { name: 'Back to items' })).toHaveAttribute('href', '/app/items?stateId=06&metroId=31080&city=Irvine&neighborhood=Woodbridge&q=table');
+  expect(screen.queryByRole('navigation', { name: 'Find' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Refresh listings' })).not.toBeInTheDocument();
   await click(screen.getByRole('button', { name: 'Browser Back' }));
   expect(await screen.findByLabelText('Search items')).toHaveValue('table');
   expect(screen.getByLabelText('City', { exact: true })).toHaveValue('Irvine');
