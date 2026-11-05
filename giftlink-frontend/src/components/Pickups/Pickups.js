@@ -156,29 +156,27 @@ function RequestDetail({ requestId }) {
     <Link className="pickup-back" to={back}>Back to requests</Link>
     <PageHeader title="Pickup request" action={<button className="ui-button ui-button--secondary" disabled={busy || data.loading} onClick={data.retry}>Reload request</button>} />
     <LoadState data={data} />{error && <Feedback error><p>{error}</p><p>Reload the request and review its current state before trying again.</p></Feedback>}
-    {request && <>
+    {request && <Surface className="pickup-thread">
       {(data.loading || data.error) && <Feedback>Showing last loaded details. Reload to confirm current status and pickup time.</Feedback>}
-      <Surface as="article" className="pickup-summary" aria-label="Request summary">
+      <article className="pickup-summary" aria-label="Request summary">
         <div className="pickup-item-context">
           {request.item && participant(request) && pickupLabels[request.status] && request.id === requestId && !data.loading && !data.error && <PickupItemPhoto key={request.item.coverImage?.id || request.item.id} item={request.item} />}
-          <div className="pickup-item-identity pickup-card-heading"><h2>{request.item?.name || 'Former listing'}</h2>
+          <div className="pickup-item-identity pickup-card-heading"><h2>{request.item ? <Link to={`/app/items/${request.item.id}`}>{request.item.name}</Link> : 'Former listing'}</h2>
             {request.status !== 'pending' && <span className="ui-status">{pickupLabels[request.status] || 'Status unavailable'}</span>}{headingCancel && actionButton('cancel')}</div>
         </div>
         {request.item && <p>{placeLabel(request.item)}</p>}
-        {request.status === 'pending' && <p>Not reserved. Waiting for the giver to accept a pickup time.</p>}
         {request.status === 'accepted' && <p>Pickup arranged. The item is reserved; handoff has not been recorded.</p>}
         {request.cancellationReason && <p>Cancellation reason: {request.cancellationReason.replace(/_/g, ' ')}.</p>}
         {actions.some(name => !(headingCancel && name === 'cancel')) && <div className="pickup-actions">{actions.filter(name => !(headingCancel && name === 'cancel')).map(actionButton)}</div>}
-      </Surface>
-      <Surface aria-label="Pickup arrangement" className="pickup-arrangement" aria-busy={data.loading || false}>
-        <h2 id="pickup-arrangement-heading" tabIndex={-1}>Pickup arrangement</h2><Appointment request={request} />
+      </article>
+      <section aria-label="Pickup arrangement" className="pickup-arrangement" aria-busy={data.loading || false}>
+        <h2 className="visually-hidden" id="pickup-arrangement-heading" tabIndex={-1}>Pickup arrangement</h2><Appointment request={request} />
         {request.item && <p className="pickup-help">Pickup window: {request.item.availableFrom || 'Now'} through {request.item.effectiveAvailableUntil}.</p>}
-      </Surface>
-      <PickupConversation requestId={request.id} requestStatus={request.status} />
-      <Surface className="pickup-secondary" aria-label="Request details">
+      </section>
+      <PickupConversation requestId={request.id} requestStatus={request.status} refreshToken={request} />
+      <section className="pickup-secondary" aria-label="Request details">
         {request.note && <details className="pickup-request-details"><summary>Pickup note</summary><p className="pickup-note">{request.note}</p></details>}
-        {request.item && <p><Link to={`/app/items/${request.item.id}`}>View item</Link></p>}
-      </Surface>
-    </>}
+      </section>
+    </Surface>}
   </main>;
 }

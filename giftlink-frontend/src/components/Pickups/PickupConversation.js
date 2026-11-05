@@ -4,7 +4,7 @@ import { useAppContext } from '../../context/AuthContext';
 import { useUnsavedForm } from '../../forms/UnsavedChanges';
 import useFormErrors from '../../forms/useFormErrors';
 import { closedStates, mergeMessages, mergeRanges, openStates, roles, validMessage, validPage } from './conversationHistory';
-import { Surface, Feedback } from '../../design-system/primitives';
+import { Feedback } from '../../design-system/primitives';
 import './PickupConversation.css';
 
 const roleLabel = role => role === 'giver' ? 'giver' : 'requester';
@@ -33,7 +33,7 @@ export default function PickupConversation(props) {
   return <Conversation key={`${user.id}:${props.requestId}`} {...props} />;
 }
 
-function Conversation({ requestId, requestStatus }) {
+function Conversation({ requestId, requestStatus, refreshToken }) {
   const root = `/api/pickup-requests/${encodeURIComponent(requestId)}/conversation`;
   const [view, setView] = useState({ context: null, ranges: [] });
   const current = useRef(view);
@@ -97,6 +97,13 @@ function Conversation({ requestId, requestStatus }) {
     return () => { alive.current = false; inFlight.current = false; };
   }, [load]);
 
+  const previousRefresh = useRef(refreshToken);
+  useEffect(() => {
+    if (previousRefresh.current === refreshToken) return;
+    previousRefresh.current = refreshToken;
+    load();
+  }, [refreshToken, load]);
+
   const context = view.context;
   const closed = closedStates.includes(requestStatus) || closedStates.includes(context?.status);
   const canSend = context && openStates.includes(context.status) && openStates.includes(requestStatus) && !closed && !blocked;
@@ -133,9 +140,9 @@ function Conversation({ requestId, requestStatus }) {
     }
   };
   const messages = view.ranges.flatMap(range => range.messages);
-  return <Surface id="conversation" className="pickup-conversation" aria-labelledby="conversation-heading">
-    <div className="chat-header"><h2 id="conversation-heading" tabIndex={-1}>Pickup conversation</h2>
-      <button type="button" className="ui-button ui-button--secondary" disabled={Boolean(busy)} onClick={() => { validation.reset(); load(); }}>{context ? 'Refresh conversation' : 'Retry conversation'}</button></div>
+  return <section id="conversation" className="pickup-conversation" aria-labelledby="conversation-heading">
+    <h2 id="conversation-heading" className="visually-hidden" tabIndex={-1}>Pickup conversation</h2>
+    {(error || blocked || uncertain) && <button type="button" className="ui-button ui-button--secondary" disabled={Boolean(busy)} onClick={() => { validation.reset(); load(); }}>{context ? 'Refresh conversation' : 'Retry conversation'}</button>}
     {error && <Feedback error>{error}</Feedback>}
     <p role="status" className="visually-hidden">{busy === 'send' ? 'Sending message…' : busy ? (busy === 'earlier' ? 'Loading earlier messages…' : 'Loading conversation…') : notice}</p>
     {(context || draft.length > 0) && <div className="chat-box">{context && <>
@@ -151,19 +158,22 @@ function Conversation({ requestId, requestStatus }) {
         ])}</ol>}
       </div></>}
     {((!closed && context) || draft.length > 0) && <form ref={validation.formRef} className="chat-composer" noValidate onSubmit={send} aria-busy={busy === 'send'}>
-      <div className="ui-field"><label htmlFor="chat-text" className="visually-hidden">{canSend ? 'Message' : 'Unsent message'}</label>
-        <textarea ref={composer} id="chat-text" name="text" rows={3} value={draft} readOnly={!canSend || busy === 'send'}
-          placeholder="Up to 2,000 characters. Plain text. Keep residential addresses and sensitive account details out of messages."
-          {...validation.fieldProps('text')} onChange={event => { setDraft(event.target.value); validation.clear('text'); }} />
+      <div className="ui-field chat-input"><label htmlFor="chat-text" className="visually-hidden">{canSend ? 'Message' : 'Unsent message'}</label>
+        <div className="chat-compose-control"><textarea ref={composer} id="chat-text" name="text" rows={3} value={draft} readOnly={!canSend || busy === 'send'}
+          {...validation.fieldProps('text')} aria-describedby={[validation.fieldProps('text')['aria-describedby'], 'chat-privacy'].filter(Boolean).join(' ')} onChange={event => { setDraft(event.target.value); validation.clear('text'); }} />
+        <button type="submit" className="chat-send" aria-label="Send message" title="Send message" disabled={!canSend || Boolean(busy)}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M12 19V5m-6 6 6-6 6 6" /></svg>
+        </button></div>
+        <span id="chat-privacy" className="visually-hidden">Up to 2,000 characters. Plain text. Keep residential addresses and sensitive account details out of messages.</span>
         {validation.errors.text && <p id="text-error" className="ui-field-error">{validation.errors.text}</p>}</div>
       {uncertain && !closed && <p>Check recent messages after refreshing before deciding whether to send this draft again.</p>}
       {!canSend && draft && <p>Your unsent text is kept here. Refresh to check access, or discard the draft.</p>}
-      <div className="chat-actions"><button type="submit" className="ui-button" disabled={!canSend || Boolean(busy)}>Send message</button>
+      <div className="chat-actions">
         {!canSend && draft && <button type="button" className="ui-button ui-button--secondary" disabled={Boolean(busy)} onClick={() => {
           if (guard.confirmDiscard()) { setDraft(''); setUncertain(false); validation.reset(); }
         }}>Discard draft</button>}</div>
     </form>}
     </div>}
     {validation.error && <Feedback error ref={validation.summaryRef} tabIndex={-1}>{validation.error}</Feedback>}
-  </Surface>;
+  </section>;
 }

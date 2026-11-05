@@ -63,12 +63,12 @@ test('giver detail links to the public listing and shows its pickup dates', asyn
   me = { ...me, id: 'giver', firstName: 'Giver' };
   mount('/app/pickups/64b000000000000000000002');
   expect(await screen.findByText(/Pickup window: Now through 2030-07-03\./)).toBeVisible();
-  expect(screen.getByRole('link', { name: 'View item' })).toHaveAttribute('href', '/app/items/' + item.id);
+  expect(screen.getByRole('link', { name: item.name })).toHaveAttribute('href', '/app/items/' + item.id);
 });
 
 test('requester detail links to the listing page instead of the owner view', async () => {
   mount('/app/pickups/64b000000000000000000002');
-  expect(await screen.findByRole('link', { name: 'View item' })).toHaveAttribute('href', '/app/items/' + item.id);
+  expect(await screen.findByRole('link', { name: item.name })).toHaveAttribute('href', '/app/items/' + item.id);
   expect(screen.queryByRole('link', { name: 'Manage listing' })).not.toBeInTheDocument();
 });
 

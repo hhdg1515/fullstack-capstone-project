@@ -192,11 +192,11 @@ test('two independent users complete the integrated marketplace journey with tru
     const original = (await read(giver, api)).request.proposedAt;
     await a.getByRole('button', { name: 'Send message', exact: true }).click(); await expect(a.getByLabel('Message', { exact: true })).toHaveValue('');
     expect((await read(requester, api)).request.proposedAt).toBe(original);
-    await b.getByRole('button', { name: 'Refresh conversation', exact: true }).click();
+    await b.getByRole('button', { name: 'Reload request', exact: true }).click();
     await expect(b.getByText("Let's meet at 3 PM.\nPlease use the formal time proposal to confirm.", { exact: true })).toBeVisible();
     await b.getByLabel('Message', { exact: true }).fill('I will approve the formal proposal.');
     await b.getByRole('button', { name: 'Send message', exact: true }).click(); await expect(b.getByLabel('Message', { exact: true })).toHaveValue('');
-    await a.getByRole('button', { name: 'Refresh conversation', exact: true }).click();
+    await a.getByRole('button', { name: 'Reload request', exact: true }).click();
     await expect(a.locator('.chat-message')).toHaveCount(2); await capture(a, 'conversation');
     await expect(a.getByRole('button', { name: /Propose new time|Confirm handoff|Record no-show/ })).toHaveCount(0);
 

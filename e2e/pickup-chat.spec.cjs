@@ -56,9 +56,9 @@ test('participants exchange private text, retain reading position and drafts, th
     const receiverText = b.getByLabel('Message', { exact: true }); await receiverText.fill('Ready to collect.\nSee you by the library.');
     await receiverText.evaluate(element => { element.form.requestSubmit(); element.form.requestSubmit(); });
     await expect(b.getByText('Message sent.', { exact: true })).toBeAttached(); expect(posts).toBe(1); await expect(receiverText).toHaveValue('');
-    await a.getByRole('button', { name: 'Refresh conversation', exact: true }).scrollIntoViewIfNeeded();
+    await a.getByRole('button', { name: 'Reload request', exact: true }).scrollIntoViewIfNeeded();
     await history.evaluate(element => { element.scrollTop = 160; }); const anchor = await relativeTop(a, 'Local history message 08');
-    await a.getByRole('button', { name: 'Refresh conversation', exact: true }).click(); await expect(history.locator('.chat-message')).toHaveCount(24);
+    await a.getByRole('button', { name: 'Reload request', exact: true }).click(); await expect(history.locator('.chat-message')).toHaveCount(24);
     expect(Math.abs(await relativeTop(a, 'Local history message 08') - anchor)).toBeLessThan(3);
     await expect(a.getByLabel('Message', { exact: true })).toHaveValue('Unsent giver draft');
     const input = a.getByLabel('Message', { exact: true }); await input.fill('😀'.repeat(2001));
@@ -71,7 +71,7 @@ test('participants exchange private text, retain reading position and drafts, th
     const rules = (await new AxeBuilder({ page: a }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()).violations.map(row => row.id);
     await test.step('Authenticated conversation WCAG rules: ' + (rules.join(', ') || 'none'), async () => expect(rules).toEqual([]));
     if (process.env.M62_CAPTURE_DOCS === '1') {
-      await a.getByRole('heading', { name: 'Pickup conversation', exact: true }).click();
+      await a.getByRole('region', { name: 'Message history' }).click();
       await expect(a.getByRole('link', { name: 'Skip to main content', exact: true })).not.toBeInViewport();
       const directory = path.resolve(__dirname, '../docs/assets/milestone-6.2'); fs.mkdirSync(directory, { recursive: true });
       await a.locator('.pickup-conversation').screenshot({ path: path.join(directory, 'conversation-' + testInfo.project.name + '.png') });
@@ -82,7 +82,7 @@ test('participants exchange private text, retain reading position and drafts, th
     await input.fill('Do not lose this draft.'); await a.getByRole('button', { name: 'Send message', exact: true }).click();
     await expect(a.getByRole('alert').filter({ hasText: 'Sending could not be confirmed' })).toBeVisible();
     await expect(a.getByLabel('Unsent message', { exact: true })).toHaveAttribute('readonly'); await expect(a.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
-    fail = false; await a.getByRole('button', { name: 'Refresh conversation', exact: true }).click(); await expect(a.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
+    fail = false; await a.getByRole('button', { name: 'Reload request', exact: true }).click(); await expect(a.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled();
     await expect(a.getByLabel('Message', { exact: true })).toHaveValue('Do not lose this draft.'); await expect(history.locator('.chat-message')).toHaveCount(25);
     // Only this fixture's verified disposable DB is available here. Exhaust the
     // hour budget without hundreds of synthetic writes or changing remote limits.
@@ -111,7 +111,7 @@ test('participants exchange private text, retain reading position and drafts, th
     await a.getByRole('button', { name: 'Decline request', exact: true }).click(); await expect(a.getByText(/This request is closed/)).toBeVisible();
     await expect(a.getByLabel('Unsent message', { exact: true })).toHaveAttribute('readonly'); await expect(a.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
     await a.getByRole('button', { name: 'Discard draft', exact: true }).click(); await expect(a.getByRole('button', { name: 'Send message', exact: true })).toHaveCount(0);
-    await b.getByRole('button', { name: 'Refresh conversation', exact: true }).click(); await expect(b.getByText(/This request is closed/)).toBeVisible();
+    await b.getByRole('button', { name: 'Reload request', exact: true }).click(); await expect(b.getByText(/This request is closed/)).toBeVisible();
     await expect(b.getByRole('region', { name: 'Message history', exact: true }).locator('.chat-message')).toHaveCount(22);
     await b.getByRole('button', { name: 'Load earlier messages', exact: true }).click();
     await expect(b.getByRole('region', { name: 'Message history', exact: true }).locator('.chat-message')).toHaveCount(25);
