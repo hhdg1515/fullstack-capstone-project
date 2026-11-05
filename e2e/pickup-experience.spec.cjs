@@ -28,14 +28,14 @@ test('participants enter canonical conversations and keep request context, decis
     const a = await giver.newPage(), b = await requester.newPage(), stranger = await outsider.newPage();
     a.on('dialog', d => d.accept()); b.on('dialog', d => d.accept());
     if (testInfo.project.name === 'mobile') for (const p of [a, b, stranger]) await p.setViewportSize({ width: 320, height: 1000 });
-    await a.goto('/app/pickups/incoming'); await a.getByLabel('Request status', { exact: true }).selectOption('pending');
+    await a.goto('/app/pickups/incoming'); await expect(a.getByLabel('Request status', { exact: true })).toHaveCount(0);
     await expect(a.getByRole('link', { name: /^Open conversation/ })).toHaveCount(0);
     const entry = a.getByRole('link', { name: 'View request from Requester for Local coordination desk', exact: true });
     await expect(entry).toHaveAttribute('href', '/app/pickups/' + request.id);
     await entry.click(); await expect(a.getByRole('region', { name: 'Message history' })).toBeVisible();
     await expect(a.getByText('Conversation loaded.', { exact: true })).toBeAttached(); await expect(a.getByText('Applicant: Requester', { exact: true })).toHaveCount(0);
-    await a.getByRole('link', { name: 'Back to requests', exact: true }).click(); await expect(a.getByLabel('Request status', { exact: true })).toHaveValue('pending');
-    expect(new URL(a.url()).searchParams.get('status')).toBe('pending');
+    await a.getByRole('link', { name: 'Back to requests', exact: true }).click(); await expect(a.getByRole('region', { name: 'Active requests', exact: true })).toBeVisible();
+    expect(new URL(a.url()).searchParams.get('status')).toBeNull();
     await a.getByRole('link', { name: 'View request from Requester for Local coordination desk', exact: true }).click();
     await expect(a.getByText('Conversation loaded.', { exact: true })).toBeAttached(); await a.getByLabel('Message', { exact: true }).fill('Keep this private draft while accepting.');
     await a.getByRole('button', { name: 'Accept pickup', exact: true }).click(); await expect(a.getByText('Accepted', { exact: true })).toBeVisible();

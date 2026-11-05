@@ -128,13 +128,15 @@ function createPickupService({ connectToDatabase, now = () => new Date(), imageM
         }
     }
     async function list(userId, role, query) {
-        if (Object.keys(query).some(key => !['cursor', 'status'].includes(key)) || query.cursor !== undefined && (typeof query.cursor !== 'string' || !/^[a-f0-9]{24}$/.test(query.cursor)) ||
-            query.status !== undefined && !['pending', 'accepted', 'declined', 'cancelled', 'completed', 'no_show'].includes(query.status)) {
+        if (Object.keys(query).some(key => !['cursor', 'status', 'view'].includes(key)) || query.cursor !== undefined && (typeof query.cursor !== 'string' || !/^[a-f0-9]{24}$/.test(query.cursor)) ||
+            query.status !== undefined && !['pending', 'accepted', 'declined', 'cancelled', 'completed', 'no_show'].includes(query.status) ||
+            query.view !== undefined && (role !== 'giver' || !['active', 'past'].includes(query.view) || query.status !== undefined)) {
             throw new InventoryError(400, 'INVALID_PICKUP_QUERY', 'Use the continuation from the previous request page.');
         }
         const db = await connectToDatabase();
         const filter = { [role === 'giver' ? 'giverId' : 'receiverId']: userId };
         if (query.status) filter.status = query.status;
+        if (query.view) filter.status = { $in: query.view === 'active' ? ['pending', 'accepted'] : ['declined', 'cancelled', 'completed', 'no_show'] };
         if (query.cursor) filter._id = { $lt: new ObjectId(query.cursor) };
         const rows = await db.collection('pickupRequests').find(filter).sort({ _id: -1 }).limit(26).toArray();
         const selected = rows.slice(0, 25);

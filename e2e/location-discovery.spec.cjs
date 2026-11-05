@@ -48,7 +48,7 @@ test('regional discovery, structured items, counts and ownership work without ch
     page.on('request', value => { if (value.url().includes('/api/items?')) listingGets++; });
     await page.goto('/app/items'); await expect(page.getByRole('heading', { name: 'Choose a metro area', exact: true })).toBeVisible();
     expect(listingGets).toBe(0);
-    await page.getByLabel('Metro area', { exact: true }).selectOption('41860');
+    await page.getByLabel('Metro area', { exact: true }).selectOption('06:41860');
     await expect(page.getByRole('heading', { name: /1 available/ })).toBeVisible();
     const results = page.getByRole('list', { name: 'Available items', exact: true });
     await expect(results.getByRole('link', { name: 'Comfortable seat', exact: true })).toBeVisible(); await expect(results.getByText('Sofa · Living Room', { exact: true })).toBeVisible(); await expect(results.getByText('Condition: Good', { exact: true })).toBeVisible();
@@ -63,7 +63,7 @@ test('regional discovery, structured items, counts and ownership work without ch
     const preference = await page.evaluate(() => JSON.parse(localStorage.getItem('moveout.browse-region.v1')));
     expect(preference).toEqual({ stateId: '06', metroId: '41860' });
     await page.goto('/app/items'); await expect(page.getByRole('heading', { name: /1 available/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Change region', exact: true })).toHaveCount(0); await page.getByLabel('Metro area', { exact: true }).selectOption('31080');
+    await expect(page.getByRole('button', { name: 'Change region', exact: true })).toHaveCount(0); await page.getByLabel('Metro area', { exact: true }).selectOption('06:31080');
     await expect(results.getByRole('link', { name: 'Other metro couch', exact: true })).toBeVisible(); await expect(page.getByRole('heading', { name: /1 available/ })).toBeVisible();
     const savedPlan = await (await giver.request.get('/api/move-out-plans/' + planId)).json(); expect(savedPlan.plan.metroId).toBe('41860');
     await page.mouse.move(0, 0); await page.locator('main').evaluate(async node => { await Promise.all(node.getAnimations({ subtree: true }).map(animation => animation.finished.catch(() => {}))); });

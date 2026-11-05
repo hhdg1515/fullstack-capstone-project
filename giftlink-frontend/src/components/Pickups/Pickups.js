@@ -74,7 +74,58 @@ export function RequestPickup() {
     </>}
   </main>;
 }
+function PickupCards({ requests, incoming, state }) {
+  return (<ul className="pickup-cards" aria-label="Pickup requests">{requests.map(request => <Surface as="li" className="pickup-request-card" key={request.id}>
+        <div className="pickup-card-heading"><h2>{request.item ? <Link to={`/app/items/${request.item.id}`}>{request.item.name}</Link> : 'Former listing'}</h2>
+          {request.status !== 'pending' && <span className="ui-status">{pickupLabels[request.status] || 'Status unavailable'}</span>}</div>
+        <Appointment request={request} compact />
+        {Number.isFinite(Date.parse(request.createdAt)) && <p className="pickup-help">Requested <time dateTime={request.createdAt}>{new Date(request.createdAt).toLocaleString()}</time></p>}
+        <div className="pickup-actions"><Link className="ui-button" to={`/app/pickups/${request.id}`} state={state}
+          aria-label={`View request ${incoming ? 'from' : 'to'} ${request.counterpart.firstName} for ${request.item?.name || 'former listing'}`}>View request</Link></div>
+        {request.note && <details className="pickup-request-details"><summary>Pickup note</summary><p className="pickup-note">{request.note}</p></details>}
+        {!request.item && <p>The listing is no longer available. You can still review the request.</p>}
+      </Surface>)}</ul>);
+}
+function IncomingPage({ past = false }) {
+  const [params, setParams] = useSearchParams();
+  const cursorKey = past ? 'pastCursor' : 'cursor';
+  const cursor = !past && params.has('status') ? '' : params.get(cursorKey) || '';
+  const query = new URLSearchParams({ view: past ? 'past' : 'active' });
+  if (cursor) query.set('cursor', cursor);
+  const data = usePlansData(`/api/pickup-requests/received?${query}`);
+  const move = value => {
+    const next = new URLSearchParams(params); next.delete('status');
+    if (value) next.set(cursorKey, value); else next.delete(cursorKey);
+    setParams(next);
+  };
+  return <>
+    <LoadState data={data} />
+    {data.data && <>
+      {!data.data.requests.length && <p>{past ? 'No past requests.' : 'No active requests.'}</p>}
+      <PickupCards requests={data.data.requests} incoming state={{ journey: 'give', returnSearch: params.toString() }} />
+      <div className="pickup-actions">{cursor && <button className="ui-button ui-button--secondary" onClick={() => move('')}>First page</button>}
+        {data.data.nextCursor && <button className="ui-button" onClick={() => move(data.data.nextCursor)}>Next requests</button>}</div>
+    </>}
+  </>;
+}
+function IncomingRequests() {
+  const [params, setParams] = useSearchParams();
+  const pastOpen = params.get('past') === '1';
+  return <main className="ui-page pickup-page"><JourneyNav journey="give" />
+    <h1 className="visually-hidden">Incoming requests</h1>
+    <section aria-label="Active requests"><IncomingPage /></section>
+    <details className="pickup-past" open={pastOpen} onToggle={event => {
+      if (event.currentTarget.open === pastOpen) return;
+      const next = new URLSearchParams(params);
+      if (event.currentTarget.open) next.set('past', '1'); else next.delete('past');
+      setParams(next);
+    }}><summary>Past requests</summary>{pastOpen && <section aria-label="Past requests"><IncomingPage past /></section>}</details>
+  </main>;
+}
 export function PickupDashboard({ incoming = false }) {
+  return incoming ? <IncomingRequests /> : <RequestDashboard />;
+}
+function RequestDashboard({ incoming = false }) {
   const [params, setParams] = useSearchParams();
   const status = params.get('status') || '', cursor = params.get('cursor') || '';
   const query = new URLSearchParams(); if (cursor) query.set('cursor', cursor); if (status) query.set('status', status);
@@ -93,16 +144,7 @@ export function PickupDashboard({ incoming = false }) {
       {!data.data.requests.length && <Surface className="ui-empty">{status ? <><h2>No requests match this status.</h2>
         <button className="ui-button ui-button--secondary" onClick={() => setStatus('')}>Clear status filter</button></> : <><h2>No pickup requests here yet.</h2>
           {!incoming && <Link className="ui-button" to="/app/items">Find items</Link>}</>}</Surface>}
-      <ul className="pickup-cards" aria-label="Pickup requests">{data.data.requests.map(request => <Surface as="li" className="pickup-request-card" key={request.id}>
-        <div className="pickup-card-heading"><h2>{request.item ? <Link to={`/app/items/${request.item.id}`}>{request.item.name}</Link> : 'Former listing'}</h2>
-          {request.status !== 'pending' && <span className="ui-status">{pickupLabels[request.status] || 'Status unavailable'}</span>}</div>
-        <Appointment request={request} compact />
-        {Number.isFinite(Date.parse(request.createdAt)) && <p className="pickup-help">Requested <time dateTime={request.createdAt}>{new Date(request.createdAt).toLocaleString()}</time></p>}
-        <div className="pickup-actions"><Link className="ui-button" to={`/app/pickups/${request.id}`} state={state}
-          aria-label={`View request ${incoming ? 'from' : 'to'} ${request.counterpart.firstName} for ${request.item?.name || 'former listing'}`}>View request</Link></div>
-        {request.note && <details className="pickup-request-details"><summary>Pickup note</summary><p className="pickup-note">{request.note}</p></details>}
-        {!request.item && <p>The listing is no longer available. You can still review the request.</p>}
-      </Surface>)}</ul>
+      <PickupCards requests={data.data.requests} incoming={incoming} state={state} />
       <div className="pickup-actions">{cursor && <button className="ui-button ui-button--secondary" onClick={() => setCursor('')}>First page</button>}
         {data.data.nextCursor && <button className="ui-button" onClick={() => setCursor(data.data.nextCursor)}>Next requests</button>}</div>
     </>}
@@ -150,7 +192,7 @@ function RequestDetail({ requestId }) {
   // A requester's Cancel sits where the status would be; pending needs no badge.
   const headingCancel = request?.role === 'receiver' && actions.includes('cancel');
   const returnQuery = new URLSearchParams(typeof location.state?.returnSearch === 'string' ? location.state.returnSearch : '');
-  const backQuery = new URLSearchParams(); for (const name of ['status', 'cursor']) if (returnQuery.get(name)) backQuery.set(name, returnQuery.get(name));
+  const backQuery = new URLSearchParams(); for (const name of ['status', 'cursor', 'past', 'pastCursor']) if (returnQuery.get(name)) backQuery.set(name, returnQuery.get(name));
   const back = ((request ? request.role === 'giver' : location.state?.journey === 'give') ? '/app/pickups/incoming' : '/app/pickups') + (backQuery.toString() ? `?${backQuery}` : '');
   return <main className="ui-page pickup-page">{request && <JourneyNav journey={request.role === 'giver' ? 'give' : 'find'} planId={request.plan?.id} />}
     <Link className="pickup-back" to={back}>Back to requests</Link>

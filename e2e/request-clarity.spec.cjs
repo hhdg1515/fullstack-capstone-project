@@ -39,8 +39,9 @@ test('giver distinguishes requests for the same item and reviews the selected ap
     await page.getByText('Pickup note', { exact: true }).click();
     await expect(page.getByText('Cafe entrance', { exact: true })).toBeVisible(); await expect(page.getByText('Library entrance', { exact: true })).toHaveCount(0);
     await page.getByRole('link', { name: 'Back to requests', exact: true }).click();
-    await page.getByLabel('Request status', { exact: true }).selectOption('accepted');
-    await expect(page.getByText('No requests match this status.', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Clear status filter', exact: true }).click(); await expect(page.getByRole('link', { name: 'View request from Alex for Shared desk', exact: true })).toBeVisible();
+    await expect(page.getByLabel('Request status', { exact: true })).toHaveCount(0);
+    await page.getByText('Past requests', { exact: true }).click();
+    await expect(page.getByText('No past requests.', { exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'View request from Alex for Shared desk', exact: true })).toBeVisible();
   } finally { for (const context of contexts) await context.close(); }
 });

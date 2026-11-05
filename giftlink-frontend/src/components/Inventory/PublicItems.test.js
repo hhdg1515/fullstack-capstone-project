@@ -282,7 +282,7 @@ test('an unselected region asks for a metro area without requesting any listings
   expect(screen.getByRole('heading', { name: 'Choose a metro area' })).toBeInTheDocument();
   expect(screen.getByLabelText('Metro area')).toBeEnabled(); expect(screen.getByLabelText('City')).toBeDisabled(); expect(screen.getByLabelText('Search items')).toBeDisabled();
   expect(apiCalls()).toHaveLength(0); expect(screen.queryByText(/0 available/)).not.toBeInTheDocument();
-  await act(async () => fireEvent.change(screen.getByLabelText('Metro area'), { target: { value: '41860' } })); await ready();
+  await act(async () => fireEvent.change(screen.getByLabelText('Metro area'), { target: { value: '06:41860' } })); await ready();
   expect(screen.getByLabelText('Current URL')).toHaveTextContent('stateId=06&metroId=41860');
   expect(JSON.parse(localStorage.getItem('moveout.browse-region.v1'))).toEqual({ stateId: '06', metroId: '41860' });
 });
@@ -297,7 +297,7 @@ test('an explicit URL overrides the saved preference and changing region clears 
   mount('/app/items?stateId=06&metroId=41860&city=Oakland&neighborhood=Temescal&q=seat'); await ready();
   expect(screen.getByLabelText('Current URL')).toHaveTextContent('metroId=41860');
   handler = async () => feed([{ ...a, metroId: '31080', name: 'Other metro item' }]);
-  await act(async () => fireEvent.change(screen.getByLabelText('Metro area'), { target: { value: '31080' } }));
+  await act(async () => fireEvent.change(screen.getByLabelText('Metro area'), { target: { value: '06:31080' } }));
   await screen.findByRole('link', { name: 'Other metro item' });
   const url = screen.getByLabelText('Current URL').textContent;
   expect(url).toContain('metroId=31080'); expect(url).toContain('q=seat'); expect(url).not.toContain('city='); expect(url).not.toContain('neighborhood=');
@@ -321,7 +321,7 @@ test('controlled category/type/condition filters combine with text and reset inc
   fireEvent.change(screen.getByLabelText('Search items'), { target: { value: 'couch' } }); await submit();
   expect(screen.getByLabelText('Current URL')).toHaveTextContent('categoryId=living-room&itemTypeId=sofa&condition=good');
   expect(category.getByRole('button', { name: 'Living Room' })).toHaveAttribute('aria-pressed', 'true');
-  fireEvent.click(category.getByRole('button', { name: 'Office & Lighting' }));
+  fireEvent.click(category.getByRole('button', { name: 'Others' }));
   const types = within(screen.getByRole('group', { name: 'Item type' }));
   expect(types.getByRole('button', { name: 'All item types' })).toHaveAttribute('aria-pressed', 'true'); expect(types.queryByRole('button', { name: 'Sofa' })).not.toBeInTheDocument();
 });
@@ -356,12 +356,12 @@ test('location-first hierarchy keeps the page title short, all filter controls v
   expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/^Find items$/);
   expect(screen.queryByRole('region', { name: 'Browsing area' })).not.toBeInTheDocument(); expect(screen.queryByRole('button', { name: 'Change region' })).not.toBeInTheDocument();
   for (const name of ['Condition', 'Sort items']) expect(screen.getByLabelText(name)).toBeVisible();
-  expect(within(screen.getByRole('group', { name: 'Category' })).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
+  expect(within(screen.getByRole('group', { name: 'Category' })).getAllByRole('button')).toHaveLength(4);
   expect(screen.queryByLabelText('Pickup availability')).not.toBeInTheDocument();
   // Item type chips appear only once a category is chosen.
   expect(screen.queryByRole('group', { name: 'Item type' })).not.toBeInTheDocument();
   for (const name of ['Metro area', 'City', 'Neighborhood']) expect(screen.getByLabelText(name)).toBeVisible();
-  expect(screen.getByLabelText('Metro area')).toHaveValue('41860');
+  expect(screen.getByLabelText('Metro area')).toHaveValue('06:41860');
 });
 test('an invalid explicit URL never restores a different saved area or triggers a global query', () => {
   localStorage.setItem('moveout.browse-region.v1', JSON.stringify({ stateId: '06', metroId: '41860' }));
@@ -372,7 +372,7 @@ test('an invalid explicit URL never restores a different saved area or triggers 
 test('changing region removes the old cursor and local labels but retains shared classification and sort choices', async () => {
   mount('/app/items?stateId=06&metroId=41860&cursor=old&city=Oakland&neighborhood=Temescal&categoryId=living-room&itemTypeId=sofa&sort=deadline'); await ready();
   handler = async () => feed([{ ...a, metroId: '31080' }]);
-  await act(async () => fireEvent.change(screen.getByLabelText('Metro area'), { target: { value: '31080' } })); await ready();
+  await act(async () => fireEvent.change(screen.getByLabelText('Metro area'), { target: { value: '06:31080' } })); await ready();
   const query = new URL(screen.getByLabelText('Current URL').textContent, 'http://localhost').searchParams;
   for (const name of ['cursor', 'city', 'neighborhood']) expect(query.has(name)).toBe(false);
   expect(query.get('sort')).toBe('deadline'); expect(query.get('itemTypeId')).toBe('sofa'); expect(query.get('categoryId')).toBe('living-room');
@@ -389,7 +389,7 @@ test('reset is offered only when useful and clears unsubmitted filters without l
   mount(); await ready(); expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Living Room' }));
   await click('Reset'); await ready();
-  expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true'); expect(screen.getByLabelText('Current URL')).toHaveTextContent('metroId=41860');
+  expect(screen.getByRole('group', { name: 'Category' }).querySelector('[aria-pressed="true"]')).toBeNull(); expect(screen.getByLabelText('Current URL')).toHaveTextContent('metroId=41860');
   expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument();
 });
 
@@ -498,4 +498,33 @@ test('detail focus refresh preserves the selected loaded photo while updating av
   await act(async () => { fireEvent(window, new Event('focus')); });
   expect(await screen.findByText('This listing is no longer available.')).toBeVisible();
   expect(screen.queryByRole('img')).not.toBeInTheDocument();
+});
+
+test('four category groups toggle off and Others retains office item types without changing canonical IDs', async () => {
+  mount(); await ready();
+  const group = within(screen.getByRole('group', { name: 'Category' }));
+  expect(group.getAllByRole('button').map(button => button.textContent)).toEqual(['Kitchen', 'Living Room', 'Bedroom', 'Others']);
+  fireEvent.click(group.getByRole('button', { name: 'Others' }));
+  fireEvent.click(within(screen.getByRole('group', { name: 'Item type' })).getByRole('button', { name: 'Desk' }));
+  await submit(); expect(screen.getByLabelText('Current URL')).toHaveTextContent('categoryId=others&itemTypeId=desk');
+  fireEvent.click(group.getByRole('button', { name: 'Others' })); await submit();
+  expect(screen.getByLabelText('Current URL').textContent).not.toContain('categoryId');
+  expect(screen.getByLabelText('Current URL').textContent).not.toContain('itemTypeId');
+});
+
+test('metro groups sort by state then metro and cross-state selection preserves the chosen state', async () => {
+  handler = async () => feed([{ ...a, metroId: '38900', stateId: '41' }]);
+  mount('/app/items?stateId=41&metroId=38900'); await ready();
+  const metro = screen.getByLabelText('Metro area');
+  expect([...metro.querySelectorAll('optgroup')].map(group => group.label)).toEqual(['California', 'Oregon', 'Washington']);
+  for (const group of metro.querySelectorAll('optgroup')) {
+    const labels = [...group.querySelectorAll('option')].map(option => option.textContent);
+    expect(labels).toEqual(labels.slice().sort((a, b) => a.localeCompare(b)));
+  }
+  fireEvent.click(metro);
+  const list = screen.getByRole('listbox', { name: 'Metro area options' }); expect(list).toHaveClass('discovery-area-menu');
+  fireEvent.keyDown(metro, { key: 'Escape' }); expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  await act(async () => fireEvent.change(metro, { target: { value: '53:38900' } }));
+  await waitFor(() => expect(screen.getByLabelText('Current URL')).toHaveTextContent('stateId=53'));
+  expect(JSON.parse(localStorage.getItem('moveout.browse-region.v1'))).toEqual({ stateId: '53', metroId: '38900' });
 });
