@@ -45,7 +45,7 @@
 .discovery-count { font-size: clamp(2.5rem, 5vw, 3.5rem); line-height: 1; font-weight: 700; letter-spacing: -.045em; color: var(--ui-ink); }
 .discovery-feed .discovery-summary { margin: 0; color: var(--ui-muted); font-size: .875rem; }
 .discovery-loading { margin: 0; font-size: 1.0625rem; font-weight: 600; color: var(--ui-muted); }
-.discovery-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr)); gap: 2.75rem 1.5rem; }
+.discovery-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2.75rem 1.5rem; }
 .discovery-listing { position: relative; display: flex; flex-direction: column; gap: .125rem; min-width: 0; }
 .discovery-listing p { margin: 0; padding: 0 2px; font-size: .875rem; color: var(--ui-muted); }
 .discovery-listing .discovery-listing-place { color: var(--ui-ink); }
@@ -123,6 +123,7 @@
   .public-item-card-link:hover .public-item-cover img { transform: none; }
 }
 @media (max-width: 900px) {
+  .discovery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .discovery-bar { grid-template-columns: 1fr; border-radius: 28px; }
   .discovery-where { border-right: 0; border-bottom: 1px solid #d5d9d6; }
   .public-item-layout { grid-template-columns: 1fr; gap: 2rem; }

@@ -84,6 +84,12 @@ test('one explicit item submit sequences the real photo batch and preserves corr
     await page.goto('/app/plans/' + plan.id + '/items');
     await page.getByLabel('Item name', { exact: true }).fill('Synthetic photo chair');
     const picker = page.getByLabel('Choose photos', { exact: true }); await expect(picker).toBeEnabled();
+    const addPhotos = page.getByRole('button', { name: 'Add photos', exact: true });
+    await expect(addPhotos).toHaveClass(/ui-button--secondary/);
+    await expect(addPhotos).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(addPhotos).toHaveCSS('color', 'rgb(13, 20, 17)');
+    await expect(addPhotos).toHaveCSS('border-top-color', 'rgb(13, 20, 17)');
+    expect(await addPhotos.evaluate(node => parseFloat(getComputedStyle(node).borderTopWidth))).toBeGreaterThan(0);
     await evidence(page, testInfo, 'empty'); await audit(page, 'empty');
     const chooser = page.waitForEvent('filechooser'); await page.getByRole('button', { name: 'Add photos', exact: true }).click(); await (await chooser).setFiles([file, file]);
     await expect(page.getByAltText('Local preview of selected photo 2')).toBeVisible();

@@ -528,3 +528,13 @@ test('metro groups sort by state then metro and cross-state selection preserves 
   await waitFor(() => expect(screen.getByLabelText('Current URL')).toHaveTextContent('stateId=53'));
   expect(JSON.parse(localStorage.getItem('moveout.browse-region.v1'))).toEqual({ stateId: '53', metroId: '38900' });
 });
+
+
+test('items without optional city or neighborhood remain visible with only All location options', async () => {
+  locationHandler = async () => reply(200, { locations: [{ city: '', neighborhoods: [''] }], truncated: false });
+  handler = async () => feed([{ ...a, city: '', neighborhood: '' }], null, 1);
+  mount(); await ready();
+  expect(within(screen.getByLabelText('City')).getAllByRole('option').map(option => option.textContent)).toEqual(['All cities']);
+  expect(within(screen.getByLabelText('Neighborhood')).getAllByRole('option').map(option => option.textContent)).toEqual(['All neighborhoods']);
+  expect(screen.getByRole('link', { name: a.name })).toBeInTheDocument();
+});

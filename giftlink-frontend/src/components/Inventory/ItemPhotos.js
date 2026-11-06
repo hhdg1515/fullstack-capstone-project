@@ -353,7 +353,7 @@ const PhotoSession = forwardRef(function PhotoSession({ planId, item = {}, onClo
     </ul>}
     {data && data.images.length > 0 && !data.capabilities.imageRead && <p role="status">Saved photos are temporarily unavailable.</p>}
     <div className="item-photos-footer">
-      <button ref={addButton} type="button" className={'ui-button' + (entries.length ? ' ui-button--secondary' : '')} disabled={selectionDisabled}
+      <button ref={addButton} type="button" className="ui-button ui-button--secondary item-photos-add" disabled={selectionDisabled}
         aria-describedby={'photo-format-help' + (error?.field === 'file' ? ' ' + fileErrorId : '')} onClick={() => fileInput.current?.click()}>Add photos</button>
       <input ref={fileInput} id="item-photo-files" type="file" aria-label="Choose photos" hidden accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple disabled={selectionDisabled}
         aria-invalid={error?.field === 'file' || undefined} aria-describedby={'photo-format-help' + (error?.field === 'file' ? ' ' + fileErrorId : '')} onChange={add} />
