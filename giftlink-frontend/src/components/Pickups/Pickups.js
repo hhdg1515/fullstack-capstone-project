@@ -24,7 +24,7 @@ function Appointment({ request, compact = false }) {
     <PickupTime value={handedOver ? { ...request, proposedAt: request.completedAt } : request} compact={compact} /></p>;
 }
 function LoadState({ data }) {
-  if (data.loading) return <Feedback>Loading pickup requests…</Feedback>;
+  if (data.loading) return <p className="visually-hidden" role="status">Loading pickup requests…</p>;
   if (data.error) return <Feedback error><p>{data.error.status === 404 ? 'This pickup request is unavailable.' : data.error.message}</p>
     <button className="ui-button ui-button--secondary" onClick={data.retry}>Retry requests</button></Feedback>;
   return null;
@@ -116,26 +116,24 @@ function IncomingRequests() {
 export function PickupDashboard({ incoming = false }) {
   return incoming ? <IncomingRequests /> : <RequestDashboard />;
 }
-function RequestDashboard({ incoming = false }) {
+function RequestDashboard() {
   const [params, setParams] = useSearchParams();
-  const status = params.get('status') || '', cursor = params.get('cursor') || '';
-  const query = new URLSearchParams(); if (cursor) query.set('cursor', cursor); if (status) query.set('status', status);
-  const data = usePlansData(`/api/pickup-requests/${incoming ? 'received' : 'sent'}?${query}`);
-  const setStatus = value => { const next = new URLSearchParams(); if (value) next.set('status', value); setParams(next); };
-  const setCursor = value => { const next = new URLSearchParams(query); if (value) next.set('cursor', value); else next.delete('cursor'); setParams(next); };
-  const state = { journey: incoming ? 'give' : 'find', returnSearch: query.toString() };
-  return <main className="ui-page pickup-page"><JourneyNav journey={incoming ? 'give' : 'find'} />
-    <PageHeader title={incoming ? 'Incoming pickup requests' : 'My pickup requests'} description={incoming ? 'Review requests and arrange pickup.' : 'Check your requests and pickup arrangements.'}
-      action={<button className="ui-button ui-button--secondary" disabled={data.loading} onClick={data.retry}>Refresh requests</button>} />
-    <div className="ui-field pickup-filter"><label htmlFor="pickup-filter">Request status</label><select id="pickup-filter" value={status} onChange={event => setStatus(event.target.value)}>
-      <option value="">All requests</option>{Object.entries(pickupLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
-    </select></div>
+  // Obsolete status-filter links open the complete list, starting at page one.
+  const cursor = params.has('status') ? '' : params.get('cursor') || '';
+  const query = new URLSearchParams(); if (cursor) query.set('cursor', cursor);
+  const data = usePlansData(`/api/pickup-requests/sent?${query}`);
+  useEffect(() => {
+    window.addEventListener('focus', data.retry);
+    return () => window.removeEventListener('focus', data.retry);
+  }, [data.retry]);
+  const setCursor = value => { const next = new URLSearchParams(); if (value) next.set('cursor', value); setParams(next); };
+  return <main className="ui-page pickup-page" aria-busy={data.loading || false}>
+    <h1 className="visually-hidden">My pickup requests</h1>
     <LoadState data={data} />
     {data.data && <>
-      {!data.data.requests.length && <Surface className="ui-empty">{status ? <><h2>No requests match this status.</h2>
-        <button className="ui-button ui-button--secondary" onClick={() => setStatus('')}>Clear status filter</button></> : <><h2>No pickup requests here yet.</h2>
-          {!incoming && <Link className="ui-button" to="/app/items">Find items</Link>}</>}</Surface>}
-      <PickupCards requests={data.data.requests} incoming={incoming} state={state} />
+      {!data.data.requests.length && <Surface className="ui-empty pickup-empty"><h2>No pickup requests here yet.</h2>
+        <Link className="ui-button" to="/app/items">Find items</Link></Surface>}
+      <PickupCards requests={data.data.requests} state={{ journey: 'find', returnSearch: query.toString() }} />
       <div className="pickup-actions">{cursor && <button className="ui-button ui-button--secondary" onClick={() => setCursor('')}>First page</button>}
         {data.data.nextCursor && <button className="ui-button" onClick={() => setCursor(data.data.nextCursor)}>Next requests</button>}</div>
     </>}
@@ -185,27 +183,29 @@ function RequestDetail({ requestId }) {
   };
   const actionButton = name => <button key={name} className={`ui-button${name === 'picked_up' ? '' : ' ui-button--secondary'}`}
     disabled={busy || blocked || data.loading || Boolean(data.error)} onClick={() => action(name)}>{actionLabels[name]}</button>;
-  // A requester's Cancel sits where the status would be; pending needs no badge.
-  const headingCancel = request?.role === 'receiver' && actions.includes('cancel');
   const returnQuery = new URLSearchParams(typeof location.state?.returnSearch === 'string' ? location.state.returnSearch : '');
   const backQuery = new URLSearchParams(); for (const name of ['status', 'cursor', 'past', 'pastCursor']) if (returnQuery.get(name)) backQuery.set(name, returnQuery.get(name));
   const back = ((request ? request.role === 'giver' : location.state?.journey === 'give') ? '/app/pickups/incoming' : '/app/pickups') + (backQuery.toString() ? `?${backQuery}` : '');
-  return <main className="ui-page pickup-page">{request && <JourneyNav journey={request.role === 'giver' ? 'give' : 'find'} planId={request.plan?.id} />}
+  return <main className="ui-page pickup-page" aria-busy={data.loading || false}>
     <Link className="pickup-back" to={back}>Back to requests</Link>
     <PageHeader title="Pickup request" />
     <LoadState data={data} />{error && <Feedback error><p>{error}</p><p>Check the current request before trying again.</p><button className="ui-button ui-button--secondary" disabled={data.loading} onClick={data.retry}>Check request</button></Feedback>}
     {request && <Surface className="pickup-thread">
-      {(data.loading || data.error) && <Feedback>Showing last loaded details. Reload to confirm current status and pickup time.</Feedback>}
+      {data.error && <Feedback>Showing last loaded details. Reload to confirm current status and pickup time.</Feedback>}
       <article className="pickup-summary" aria-label="Request summary">
-        <div className="pickup-item-context">
-          {request.item && participant(request) && pickupLabels[request.status] && request.id === requestId && !data.loading && !data.error && <PickupItemPhoto key={request.item.coverImage?.id || request.item.id} item={request.item} />}
-          <div className="pickup-item-identity pickup-card-heading"><h2>{request.item ? <Link to={`/app/items/${request.item.id}`}>{request.item.name}</Link> : 'Former listing'}</h2>
-            {request.status !== 'pending' && <span className="ui-status">{pickupLabels[request.status] || 'Status unavailable'}</span>}{headingCancel && actionButton('cancel')}</div>
+        <div className="pickup-summary-heading">
+          <div className="pickup-item-context">
+            {request.item && participant(request) && pickupLabels[request.status] && request.id === requestId && !data.loading && !data.error && <PickupItemPhoto key={request.item.coverImage?.id || request.item.id} item={request.item} />}
+            <div className="pickup-item-identity"><h2>{request.item ? <Link to={`/app/items/${request.item.id}`}>{request.item.name}</Link> : 'Former listing'}</h2></div>
+          </div>
+          <div className="pickup-summary-controls">
+            {request.status !== 'pending' && <span className="ui-status">{pickupLabels[request.status] || 'Status unavailable'}</span>}
+            {actions.map(actionButton)}
+          </div>
         </div>
         {request.item && <p>{placeLabel(request.item)}</p>}
         {request.status === 'accepted' && <p>Pickup arranged. The item is reserved; handoff has not been recorded.</p>}
         {request.cancellationReason && <p>Cancellation reason: {request.cancellationReason.replace(/_/g, ' ')}.</p>}
-        {actions.some(name => !(headingCancel && name === 'cancel')) && <div className="pickup-actions">{actions.filter(name => !(headingCancel && name === 'cancel')).map(actionButton)}</div>}
       </article>
       <section aria-label="Pickup arrangement" className="pickup-arrangement" aria-busy={data.loading || false}>
         <h2 className="visually-hidden" id="pickup-arrangement-heading" tabIndex={-1}>Pickup arrangement</h2><Appointment request={request} />

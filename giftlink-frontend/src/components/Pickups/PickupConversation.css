@@ -34,6 +34,7 @@
 .pickup-conversation .chat-message:last-child { margin-bottom: 0; }
 .pickup-conversation .chat-composer { padding: 1rem 0; }
 .chat-compose-control { position: relative; }
-.chat-composer .chat-input textarea { display: block; width: 100%; box-sizing: border-box; min-height: 7rem; padding: 1rem 4.25rem 1rem 1rem; border: 1px solid var(--ui-control-border); border-radius: 1.5rem; background: var(--ui-fill, #f3f4f2); }
+.chat-composer .chat-input textarea { display: block; width: 100%; box-sizing: border-box; min-height: 7rem; padding: 1rem 4.25rem 1rem 1rem; border: 0; border-radius: 1.5rem; background: var(--ui-fill, #f3f4f2); }
+.chat-composer .chat-input textarea:focus-visible { outline: none; box-shadow: inset 0 -3px 0 var(--ui-focus); }
 .chat-send { position: absolute; right: .75rem; bottom: .75rem; width: 44px; height: 44px; border: 0; border-radius: 50%; background: var(--ui-ink, #0d1411); color: white; display: grid; place-items: center; cursor: pointer; }
 .chat-send:disabled { opacity: .4; cursor: not-allowed; }

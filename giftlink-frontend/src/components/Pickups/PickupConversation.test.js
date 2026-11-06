@@ -41,9 +41,10 @@ afterEach(() => jest.restoreAllMocks());
 test.each(['giver', 'receiver'])('uses the server %s role, not equal display names, to distinguish messages', async role => {
   handler = async url => url.endsWith('/conversation') ? reply(context(role)) : reply({ messages: [message(1, 'giver'), message(2, 'receiver')], nextCursor: null });
   mount(); await ready();
-  expect(screen.getByText(`You (${role === 'giver' ? 'giver' : 'requester'})`)).toBeInTheDocument();
-  const other = role === 'giver' ? 'requester' : 'giver'; expect(screen.getByText(`Alex (${other})`)).toBeInTheDocument();
-  expect(screen.getByText('You (' + (role === 'giver' ? 'giver' : 'requester') + ')').closest('li')).toHaveClass('chat-mine');
+  expect(screen.getByText('You', { exact: true })).toBeInTheDocument();
+  expect(screen.getByText('Alex', { exact: true })).toBeInTheDocument();
+  expect(screen.queryByText(/\((giver|requester)\)/)).not.toBeInTheDocument();
+  expect(screen.getByText('You', { exact: true }).closest('li')).toHaveClass('chat-mine');
   expect(screen.queryByText(user.email)).not.toBeInTheDocument(); expect(document.querySelector('time')).toHaveAttribute('datetime', message(1).createdAt);
 });
 test('shows initial loading, empty history and recoverable network failure', async () => {

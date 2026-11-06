@@ -16,6 +16,7 @@ async function audit(page, name, info) {
   await test.step('Chat handoff ' + name + ' WCAG: ' + (errors.join(', ') || 'none'), async () => expect(errors).toEqual([]));
   if (process.env.CHAT_HANDOFF_EVIDENCE) {
     fs.mkdirSync(process.env.CHAT_HANDOFF_EVIDENCE, { recursive: true });
+    await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: path.join(process.env.CHAT_HANDOFF_EVIDENCE, info.project.name + '-' + name + '.png'), fullPage: true });
   }
 }
@@ -43,11 +44,53 @@ test('giver chats with multiple applicants then confirms the actual recipient on
     const getPublic = await outsider.request.get('/api/items/' + item.id); expect(getPublic.status()).toBe(200); expect((await getPublic.json()).item.isReserved).toBe(false);
     expect((await outsider.request.get('/api/item-images/' + upload.id + '/thumbnail')).status()).toBe(200);
     const giver = await owner.newPage(), receiver = await alice.newPage(), other = await bob.newPage();
-    await giver.goto('/app/pickups/' + b.id); await expect(giver.getByText('Bob can collect it too.', { exact: true })).toBeVisible();
+    const empty = await outsider.newPage();
+    await empty.goto('/app/pickups?status=accepted&cursor=' + a.id);
+    await expect(empty.getByRole('link', { name: 'Find items', exact: true })).toBeVisible();
+    await expect(empty.getByRole('heading', { name: 'My pickup requests', exact: true })).toBeAttached();
+    await expect(empty.getByRole('heading', { name: 'My pickup requests', exact: true })).toHaveCSS('clip', 'rect(0px, 0px, 0px, 0px)');
+    await expect(empty.getByRole('navigation', { name: 'Find', exact: true })).toHaveCount(0);
+    await expect(empty.getByRole('button', { name: 'Refresh requests' })).toHaveCount(0);
+    await expect(empty.getByLabel('Request status', { exact: true })).toHaveCount(0);
+    const emptyTitle = await empty.getByRole('heading', { name: 'No pickup requests here yet.' }).boundingBox();
+    const findButton = await empty.getByRole('link', { name: 'Find items', exact: true }).boundingBox();
+    expect(findButton.y - emptyTitle.y - emptyTitle.height).toBeGreaterThanOrEqual(16);
+    await audit(empty, 'empty-requester', info);
+    await receiver.goto('/app/pickups');
+    await expect(receiver.getByRole('link', { name: 'View request to Giver for ' + item.name, exact: true })).toBeVisible();
+    await expect(receiver.getByRole('navigation', { name: 'Find', exact: true })).toHaveCount(0);
+    await audit(receiver, 'requester-list', info);
+    let releaseDetail;
+    const detailGate = new Promise(resolve => { releaseDetail = resolve; });
+    const detailPath = '**/api/pickup-requests/' + b.id;
+    await giver.route(detailPath, async route => { await detailGate; await route.continue(); });
+    try {
+      await giver.goto('/app/pickups/' + b.id);
+      await expect(giver.getByText('Loading pickup requests…', { exact: true })).toBeAttached();
+      await expect(giver.getByText('Loading pickup requests…', { exact: true })).toHaveCSS('clip', 'rect(0px, 0px, 0px, 0px)');
+      await expect(giver.locator('.ui-feedback')).toHaveCount(0);
+    } finally { releaseDetail(); }
+    await expect(giver.getByText('Bob can collect it too.', { exact: true })).toBeVisible();
+    await giver.unroute(detailPath);
     await giver.getByLabel('Message', { exact: true }).fill('Thanks, I will coordinate here.'); await giver.getByRole('button', { name: 'Send message', exact: true }).click();
     await expect(giver.getByText('Thanks, I will coordinate here.', { exact: true })).toBeVisible();
     await giver.goto('/app/pickups/' + a.id); await expect(giver.getByText('Alice can collect it.', { exact: true })).toBeVisible();
     await expect(giver.getByRole('button', { name: /Accept pickup|Decline request/ })).toHaveCount(0);
+    await expect(giver.getByRole('link', { name: 'Back to requests', exact: true })).toHaveCount(1);
+    await expect(giver.getByRole('link', { name: 'Incoming requests', exact: true })).toHaveCount(0);
+    await expect(giver.locator('.chat-message-heading strong')).toHaveText(['Alice']);
+    const composer = giver.getByLabel('Message', { exact: true });
+    expect(await composer.evaluate(node => getComputedStyle(node).borderWidth)).toBe('0px');
+    await composer.focus();
+    expect(await composer.evaluate(node => getComputedStyle(node).outlineStyle)).toBe('none');
+    expect(await composer.evaluate(node => getComputedStyle(node).boxShadow)).not.toBe('none');
+    await composer.evaluate(node => node.blur());
+    if (info.project.name === 'desktop') {
+      const title = await giver.getByRole('heading', { name: item.name, exact: true }).boundingBox();
+      const button = await giver.getByRole('button', { name: 'Mark as picked up', exact: true }).boundingBox();
+      expect(button.x).toBeGreaterThan(title.x + title.width);
+      expect(Math.abs(button.y - title.y)).toBeLessThan(5);
+    }
     await receiver.goto('/app/pickups/' + a.id); await expect(receiver.getByRole('button', { name: 'Mark as picked up' })).toHaveCount(0);
     await other.goto('/app/pickups/' + b.id); await expect(other.getByText('Bob can collect it too.', { exact: true })).toBeVisible();
     await audit(giver, 'open', info);
