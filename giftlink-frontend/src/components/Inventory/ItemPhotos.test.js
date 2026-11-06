@@ -70,6 +70,7 @@ test('keeps the default panel minimal with a count, Add photos and a one-line hi
   mount(); await loaded();
   expect(screen.getByRole('heading', { name: 'Photos for Synthetic chair' })).toBeInTheDocument();
   expect(screen.getByText('0 / 5')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Add photos' })).toHaveClass('ui-button--secondary', 'item-photos-add');
   expect(screen.getByRole('button', { name: 'Add photos' })).toHaveAccessibleDescription('Up to 5 photos. JPEG, PNG or static WebP, up to 20 MiB each.');
   expect(screen.queryByText('Photo tips')).not.toBeInTheDocument();
   expect(screen.queryByText('Photo allowance')).not.toBeInTheDocument();

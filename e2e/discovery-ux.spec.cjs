@@ -1,3 +1,4 @@
+const fs = require('node:fs'), path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const AxeBuilder = require('@axe-core/playwright').default;
 const { test: base, expect } = require('./fixtures.cjs');
@@ -31,7 +32,7 @@ test('expanded areas, responsive filters, truthful cards and recovery preserve s
     for (const actor of [giver, receiver]) await post(actor, '/api/auth/register', { firstName: 'Local', lastName: 'Discovery', email: randomUUID() + '@example.invalid', password: randomUUID() + '!' });
     const makePlan = async (stateId, metroId, city) => (await post(giver, '/api/move-out-plans', { stateId, metroId, city, neighborhood: 'Local neighborhood', pickupTimeZone: 'UTC', moveOutDeadline: day(15) })).plan;
     const pa = await makePlan('42', '37980', 'Philadelphia'), de = await makePlan('10', '37980', 'Wilmington'), other = await makePlan('20', '28140', 'Kansas City');
-    const makeItem = async (plan, name, extra = {}) => (await post(giver, '/api/move-out-plans/' + plan.id + '/items', { name,
+    const makeItem = async (plan, name, extra = {}, actor = giver) => (await post(actor, '/api/move-out-plans/' + plan.id + '/items', { name,
       description: 'Synthetic household item for local browser verification.', categoryId: 'living-room', itemTypeId: 'sofa', condition: 'good', publish: true, ...extra })).item;
     const first = await makeItem(pa, 'Comfortable reading sofa with a long name that wraps on narrow screens');
     await makeItem(de, 'Wilmington reading sofa'); await makeItem(other, 'Different metro sofa');
@@ -120,6 +121,26 @@ test('expanded areas, responsive filters, truthful cards and recovery preserve s
     await expect(count(0)).toBeVisible(); await expect(page.getByText(/No available items match these filters/)).toBeVisible(); await audit(page, 'empty filter');
     const before = gets; await page.goto('/app/items?stateId=56'); await expect(page.getByRole('heading', { name: 'Choose a metro area', exact: true })).toBeVisible(); expect(gets).toBe(before); await expect(count(0)).toHaveCount(0);
     expect((await (await receiver.request.get('/api/regions')).json()).metros).toHaveLength(50);
+    // Four synthetic public items demonstrate three desktop cards and a new row.
+    // The earlier giver-logout assertion remains in force. Use the still
+    // authenticated second account and its own plan for this final fixture.
+    const gridPlan = (await post(receiver, '/api/move-out-plans', { stateId: '42', metroId: '37980', city: 'Philadelphia',
+      neighborhood: 'Local neighborhood', pickupTimeZone: 'UTC', moveOutDeadline: day(15) })).plan;
+    for (const name of ['Comfortable household sofa', 'Wide reading sofa', 'Compact apartment sofa']) await makeItem(gridPlan, name, {}, receiver);
+    await page.setViewportSize({ width: testInfo.project.name === 'mobile' ? 375 : 1440, height: 1000 });
+    await page.goto('/app/items?stateId=42&metroId=37980'); await expect(count(4)).toBeVisible();
+    const columns = await results.evaluate(node => getComputedStyle(node).gridTemplateColumns.split(' ').length);
+    expect(columns).toBe(testInfo.project.name === 'mobile' ? 2 : 3);
+    if (testInfo.project.name === 'desktop') {
+      const cards = await results.locator('.discovery-listing').all(), boxes = await Promise.all(cards.map(card => card.boundingBox()));
+      expect(boxes[1].y).toBe(boxes[0].y); expect(boxes[2].y).toBe(boxes[0].y); expect(boxes[3].y).toBeGreaterThan(boxes[0].y);
+    }
+    await audit(page, 'wider discovery cards');
+    if (process.env.DISCOVERY_POLISH_EVIDENCE) {
+      fs.mkdirSync(process.env.DISCOVERY_POLISH_EVIDENCE, { recursive: true });
+      await page.evaluate(() => scrollTo(0, 0));
+      await page.screenshot({ path: path.join(process.env.DISCOVERY_POLISH_EVIDENCE, testInfo.project.name + '-discovery.png'), fullPage: true });
+    }
     expect(deployment.serverErrors).toEqual([]);
   } finally { for (const actor of contexts) await actor.close(); }
 });
