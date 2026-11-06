@@ -14,13 +14,13 @@ test('dirty forms survive declined navigation, native reload and local editor ca
     await post('/api/auth/register', { firstName: 'Local', lastName: 'Draft', email: randomUUID() + '@example.invalid', password: randomUUID() + '!' });
     await page.goto('/app/plans'); await page.getByRole('link', { name: 'Create your first plan', exact: true }).click();
     const title = page.getByLabel('Plan title (optional)', { exact: true }); await title.fill('Unfinished move');
-    await page.getByRole('link', { name: 'Move-Out Marketplace', exact: true }).click();
+    await page.getByRole('link', { name: 'Movelight', exact: true }).click();
     await expect(title).toHaveValue('Unfinished move');
     await page.evaluate(() => history.back()); await expect.poll(() => dialogs.length).toBe(2);
     await expect(title).toHaveValue('Unfinished move');
     await page.reload({ timeout: 2000 }).catch(() => null); await expect(title).toHaveValue('Unfinished move');
     expect(dialogs).toEqual(['confirm', 'confirm', 'beforeunload']);
-    accept = true; await page.getByRole('link', { name: 'Move-Out Marketplace', exact: true }).click();
+    accept = true; await page.getByRole('link', { name: 'Movelight', exact: true }).click();
     await page.waitForURL(deployment.origin + '/');
     const { plan } = await post('/api/move-out-plans', { city: 'Oakland', neighborhood: 'Temescal', pickupTimeZone: 'UTC', moveOutDeadline: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10) });
     await post('/api/move-out-plans/' + plan.id + '/items', { name: 'Desk' });

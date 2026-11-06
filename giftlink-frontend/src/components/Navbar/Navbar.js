@@ -29,7 +29,7 @@ export default function Navbar() {
   }}>
     {hostedDemo() && <p className="site-demo-note">Demo site: please don't enter real personal information.</p>}
     <div className="site-header-inner">
-      <Link className="site-brand" to="/" onClick={() => setOpen(false)}><span className="site-brand-mark" aria-hidden="true" />Move-Out Marketplace</Link>
+      <Link className="site-brand" to="/" onClick={() => setOpen(false)}><span className="site-brand-mark" aria-hidden="true" />Movelight</Link>
       <button className="site-menu-button" ref={menuButton} aria-expanded={open} aria-controls="primary-navigation" onClick={() => setOpen(value => !value)}>{open ? 'Close menu' : 'Menu'}</button>
       <nav id="primary-navigation" className={`site-navigation ${open ? 'is-open' : ''}`} aria-label="Primary">
         <ul onClick={() => setOpen(false)}>

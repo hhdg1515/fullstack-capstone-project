@@ -1,4 +1,4 @@
-# Move-Out Marketplace interface foundation
+# Movelight interface foundation
 
 Friendly, content-first Functional Minimalism: one obvious task, familiar words,
 truthful status and a short path to the next action. No new UI framework, font
