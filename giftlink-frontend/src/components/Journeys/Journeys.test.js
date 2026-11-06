@@ -154,7 +154,8 @@ test.each([['giver', 'Donate', 'Incoming requests'], ['receiver', 'Find', 'My pi
   sessionUser = user; detailRole = role; mount('/app/pickups/' + pickup.id);
   await screen.findByRole('heading', { name: item.name });
   await screen.findByText('Conversation loaded.');
-  expect(context(label).getByRole('link', { name: link })).toHaveAttribute('aria-current', 'location');
+  expect(screen.queryByRole('navigation', { name: label, exact: true })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: link, exact: true })).not.toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Back to requests' })).toHaveAttribute('href', role === 'giver' ? '/app/pickups/incoming' : '/app/pickups');
 });
 test('mobile menu exposes its state, supports Escape/focus return, and closes after navigation', async () => {

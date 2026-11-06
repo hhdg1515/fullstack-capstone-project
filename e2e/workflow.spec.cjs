@@ -214,7 +214,8 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     must(released.status() === 201, 'No-show did not release the reservation');
     const releasedRequest = (await released.json()).request;
     must((await write(receiver, '/api/pickup-requests/' + releasedRequest.id + '/actions', { action: 'cancel', version: releasedRequest.version })).status() === 200, 'Follow-up request cancellation failed');
-    await primary(b, 'Find'); await b.getByRole('navigation', { name: 'Find', exact: true }).getByRole('link', { name: 'My pickup requests', exact: true }).click(); await expect(b.getByRole('heading', { name: 'My pickup requests', exact: true })).toBeVisible();
+    await primary(b, 'Find'); await b.getByRole('navigation', { name: 'Find', exact: true }).getByRole('link', { name: 'My pickup requests', exact: true }).click(); await expect(b.getByRole('heading', { name: 'My pickup requests', exact: true })).toBeAttached();
+    await expect(b.getByRole('list', { name: 'Pickup requests', exact: true })).toBeVisible();
     await test.step('Completed handoff, cleared progress and no-show release verified', async () => {});
     const currentCookie = (await receiver.cookies()).find(cookie => cookie.name === '__Host-giftlink_session'); must(Boolean(currentCookie), 'Receiver session missing');
     await deployment.db.collection('sessions').updateOne({ _id: tokenHash(currentCookie.value), userId: userB._id }, { $set: { expiresAt: new Date(Date.now() - 1000) } });

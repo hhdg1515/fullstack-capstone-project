@@ -203,14 +203,16 @@ test('identically named applicants have separate exact review targets without vi
   expect(links.map(link => link.getAttribute('href'))).toEqual(requests.map(request => '/app/pickups/' + request.id));
   for (const request of requests) expect(screen.queryByText(request.id)).not.toBeInTheDocument();
 });
-test('filtered emptiness differs from no history and clearing it resets pagination', async () => {
-  mount('/app/pickups'); await screen.findByText('No pickup requests here yet.');
-  fireEvent.change(screen.getByLabelText('Request status'), { target: { value: 'accepted' } });
-  expect(await screen.findByText('No requests match this status.')).toBeInTheDocument();
-  expect(screen.queryByText('No pickup requests here yet.')).not.toBeInTheDocument();
-  await click(screen.getByRole('button', { name: 'Clear status filter' }));
-  expect(await screen.findByText('No pickup requests here yet.')).toBeInTheDocument();
+test('requester history ignores obsolete status filters and resets incompatible cursors', async () => {
+  mount('/app/pickups?status=accepted&cursor=' + base.id); await screen.findByText('No pickup requests here yet.');
   expect(fetch.mock.calls.at(-1)[0]).toMatch(/sent\?$/);
+  expect(screen.queryByLabelText('Request status')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Refresh requests' })).not.toBeInTheDocument();
+  expect(screen.queryByText('Check your requests and pickup arrangements.')).not.toBeInTheDocument();
+  expect(screen.queryByRole('navigation', { name: 'Find' })).not.toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'My pickup requests' })).toHaveClass('visually-hidden');
+  expect(screen.getByRole('link', { name: 'Find items' })).toHaveAttribute('href', '/app/items');
+  expect(screen.queryByRole('button', { name: 'First page' })).not.toBeInTheDocument();
 });
 test('sent cards keep missing-listing recovery explicit', async () => {
   fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : { requests: [{ ...base, item: null }], nextCursor: null }));
@@ -382,4 +384,34 @@ test('completed requests show the authoritative handoff time rather than a futur
   const { container } = mount('/app/pickups/' + base.id); await screen.findByText('Handed over:');
   expect(container.querySelector('.pickup-arrangement time')).toHaveAttribute('datetime', completedAt);
   expect(container.querySelector('.pickup-arrangement time')).not.toHaveAttribute('datetime', base.proposedAt);
+});
+
+
+test('initial detail loading is an accessible hidden status, without a feedback card or duplicate navigation', async () => {
+  const pending = deferred();
+  fetch.mockImplementation(async url => url.endsWith('/api/me') ? response({ user }) : pending.promise);
+  mount('/app/pickups/' + base.id);
+  expect(await screen.findByText('Loading pickup requests…')).toHaveClass('visually-hidden');
+  expect(document.querySelector('.ui-feedback')).toBeNull();
+  await act(async () => pending.resolve(response({ request: { ...base, role: 'giver' } })));
+  const handoff = await screen.findByRole('button', { name: 'Mark as picked up' });
+  expect(handoff.closest('.pickup-summary-controls')).not.toBeNull();
+  expect(screen.getAllByRole('link', { name: 'Back to requests' })).toHaveLength(1);
+  expect(screen.queryByRole('link', { name: 'Incoming requests' })).not.toBeInTheDocument();
+});
+
+test('requester history keeps all statuses, bounded next pages and focus revalidation', async () => {
+  let status = 'pending';
+  fetch.mockImplementation(async url => response(url.endsWith('/api/me') ? { user } : {
+    requests: [{ ...base, status }], nextCursor: url.includes('cursor=') ? null : base.id
+  }));
+  mount('/app/pickups'); await screen.findByRole('link', { name: 'View request to Giver for Kitchen box' });
+  await click(screen.getByRole('button', { name: 'Next requests' }));
+  await waitFor(() => expect(fetch.mock.calls.at(-1)[0]).toContain('sent?cursor=' + base.id));
+  await screen.findByRole('button', { name: 'First page' });
+  status = 'cancelled'; await act(async () => fireEvent(window, new Event('focus')));
+  expect(await screen.findByText('Cancelled', { exact: true })).toBeInTheDocument();
+  expect(fetch.mock.calls.at(-1)[0]).toContain('sent?cursor=' + base.id);
+  await click(screen.getByRole('button', { name: 'First page' }));
+  await waitFor(() => expect(fetch.mock.calls.at(-1)[0]).toMatch(/sent\?$/));
 });

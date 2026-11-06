@@ -49,3 +49,8 @@
 .pickup-thread .pickup-item-identity h2 a { color: inherit; text-decoration: none; }
 .pickup-thread .pickup-item-identity h2 a:hover { text-decoration: underline; }
 .pickup-thread .pickup-secondary:empty { display: none; }
+
+.pickup-summary-heading { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: var(--ui-space-4); margin-bottom: var(--ui-space-4); }
+.pickup-summary-heading > .pickup-item-context { flex: 1 1 18rem; margin-bottom: 0; min-width: 0; }
+.pickup-summary-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--ui-space-3); margin-inline-start: auto; max-width: 100%; }
+.pickup-page .pickup-empty h2 { margin-bottom: var(--ui-space-6); }

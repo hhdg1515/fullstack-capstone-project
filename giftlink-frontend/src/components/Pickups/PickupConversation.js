@@ -7,7 +7,6 @@ import { closedStates, mergeMessages, mergeRanges, openStates, roles, validMessa
 import { Feedback } from '../../design-system/primitives';
 import './PickupConversation.css';
 
-const roleLabel = role => role === 'giver' ? 'giver' : 'requester';
 const suggestedWait = failure => {
   const seconds = failure.retryAfterSeconds; if (!Number.isSafeInteger(seconds) || seconds < 1 || seconds > 3600) return '';
   const unit = seconds === 3600 ? 'hour' : seconds >= 60 ? 'minute' : 'second';
@@ -151,7 +150,7 @@ function Conversation({ requestId, requestStatus, refreshToken }) {
       <div ref={history} className="chat-history" role="region" aria-label="Message history" tabIndex={0}>
         {!messages.length ? <p>No messages yet.</p> : <ol>{view.ranges.slice().reverse().flatMap((range, index) => [
           ...range.messages.map(message => <li key={message.id} className={`chat-message${message.sender === context.role ? ' chat-mine' : ''}`}>
-            <div className="chat-message-heading"><strong>{message.sender === context.role ? 'You' : context.counterpart.firstName} ({roleLabel(message.sender)})</strong>
+            <div className="chat-message-heading"><strong>{message.sender === context.role ? 'You' : context.counterpart.firstName}</strong>
               <time dateTime={message.createdAt} title={fullMessageTime(message.createdAt)} aria-label={fullMessageTime(message.createdAt)}>{messageTime(message.createdAt)}</time></div>
             <p className="chat-text">{message.text}</p></li>),
           ...(index < view.ranges.length - 1 ? [<li key={`gap-${index}`} className="chat-gap">Some messages between these pages are not loaded yet. Use Load earlier messages to fill the gap.</li>] : [])

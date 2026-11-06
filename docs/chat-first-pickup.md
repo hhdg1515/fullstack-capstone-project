@@ -109,3 +109,27 @@ Actual synthetic local screenshots (visually inspected):
 | Confirmed handoff and retained unsent draft | [1440px](evidence/chat-first-handoff/desktop-picked-up.png) | [320px](evidence/chat-first-handoff/mobile-picked-up.png) |
  Local Chromium evidence does not verify physical Safari/iOS
 or real R2/Atlas/Vercel behavior.
+
+## Request interface cleanup
+
+Request detail uses one Back to requests link, with giver actions aligned to
+item context at the upper right (wrapping on narrow screens). Message labels
+show the other person's name or You; the server-derived roles still determine
+ownership and sending. The composer has no enclosing border; keyboard focus
+uses an inset underline. Request loading is announced to assistive technology
+without a visible feedback card. Errors, retry, uncertain-send recovery and
+loading-time action guards remain.
+
+The requester's history shows all statuses with server cursor pagination,
+without a status selector or repeated task navigation. Old filtered URLs restart
+the complete list at page one, so a filtered cursor is never reused. Returning
+window focus revalidates the history without polling or automatic mutations.
+The heading remains available to screen readers; empty-state Find items has
+explicit spacing. No backend, authorization or lifecycle contract changed.
+
+Current local screenshots: [desktop detail](evidence/pickup-thread-layout/desktop-open.png),
+[320px detail](evidence/pickup-thread-layout/mobile-open.png),
+[375px detail](evidence/pickup-thread-layout/mobile-open-375.png),
+[320px requester history](evidence/pickup-thread-layout/mobile-requester-list.png),
+[320px empty history](evidence/pickup-thread-layout/mobile-empty-requester.png).
+Rollback requires only the frontend; it does not undo or change recorded handoffs.
