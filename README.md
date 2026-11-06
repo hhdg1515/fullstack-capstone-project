@@ -5,7 +5,7 @@
 When people move out they throw away furniture, kitchenware and lamps that a neighbor would happily pick up. Move-Out Marketplace is a full-stack web app for exactly that handoff:
 
 - **Givers** list items with photos, a pickup area and a pickup deadline.
-- **Neighbors** browse by metro, city and neighborhood, request a pickup time and coordinate in a private chat.
+- **Neighbors** browse by metro area, request a pickup time and coordinate in a private chat.
 - **Handed over in person.** Givers and neighbors settle the details in a private chat; street addresses never appear on the site.
 
 The project started from the IBM Full-Stack capstone ("GiftLink") and was rebuilt into an item-first marketplace. The rebuild added real accounts, transactional pickups, a private photo pipeline, and accessibility and browser test coverage.
@@ -30,7 +30,7 @@ The full handoff needs two accounts, so use a normal browser window and a privat
 
 | Giver (Donate) | Neighbor (Find) |
 | --- | --- |
-| Create a listing: name, type, condition, description, up to 5 photos, pickup area and deadline | Browse anonymously by **metro area → city → neighborhood** |
+| Create a listing: name, type, condition, description, up to 5 photos, pickup area and deadline | Browse anonymously by **metro area** |
 | Publish it, then edit it in place or withdraw it from **Manage listing** | Search and filter (category, item type, condition, sort); results update as you type |
 | See the number of open requests on each listing card | Open a listing with its photo gallery and share link |
 | Chat with applicants; mark the actual recipient’s item as picked up | Sign in only when requesting a pickup date and time |

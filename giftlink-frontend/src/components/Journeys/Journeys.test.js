@@ -106,17 +106,16 @@ test('a protected shared pickup action survives login and registration navigatio
   expect(screen.getByTestId('route')).toHaveTextContent(path);
   expect(context('Find').getByRole('link', { name: 'My pickup requests' })).toHaveAttribute('href', '/app/pickups');
 });
-test('one account gives in Pasadena and searches Irvine without copying or enforcing its plan location', async () => {
+test('one account gives in Pasadena and browses another metro without copying or enforcing its plan location', async () => {
   sessionUser = user; mount('/app/plans');
   expect(await screen.findByRole('link', { name: 'Pasadena move' })).toBeInTheDocument();
   await click(primary().getByRole('link', { name: 'Find' }));
   await act(async () => fireEvent.change(screen.getByLabelText('Metro area'), { target: { value: '06:31080' } }));
-  await screen.findByRole('option', { name: 'Irvine' }); expect(screen.getByLabelText('City', { exact: true })).toHaveValue('');
-  fireEvent.change(screen.getByLabelText('City', { exact: true }), { target: { value: 'Irvine' } });
-  await waitFor(() => expect(screen.getByTestId('route')).toHaveTextContent('/app/items?stateId=06&metroId=31080&city=Irvine'));
+  await waitFor(() => expect(screen.getByTestId('route')).toHaveTextContent('/app/items?stateId=06&metroId=31080'));
+  expect(screen.queryByLabelText('City', { exact: true })).not.toBeInTheDocument();
   await click(primary().getByRole('link', { name: 'Donate' })); await screen.findByRole('heading', { name: 'My Listings' });
   await click(screen.getByRole('button', { name: 'Browser Back' }));
-  expect(await screen.findByLabelText('City', { exact: true })).toHaveValue('Irvine');
+  expect(await screen.findByLabelText('Metro area', { exact: true })).toHaveValue('06:31080');
   expect(screen.getByRole('button', { name: 'Logout' })).toBeInTheDocument();
   expect(fetch.mock.calls.some(([, options]) => options.method !== undefined && options.method !== 'GET')).toBe(false);
 });
@@ -137,15 +136,15 @@ test('Give Away provides consolidated incoming requests and per-plan inventory/c
   expect(fetch.mock.calls.some(([url]) => url.includes('/api/pickup-requests/sent'))).toBe(true);
 });
 test('public details and browser Back/Forward preserve shared discovery filters', async () => {
-  mount('/app/items?stateId=06&metroId=31080&city=Irvine&neighborhood=Woodbridge&q=table');
+  mount('/app/items?stateId=06&metroId=31080&q=table');
   await click(await screen.findByRole('link', { name: item.name }));
   expect(await screen.findByRole('heading', { name: item.name })).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Back to items' })).toHaveAttribute('href', '/app/items?stateId=06&metroId=31080&city=Irvine&neighborhood=Woodbridge&q=table');
+  expect(screen.getByRole('link', { name: 'Back to items' })).toHaveAttribute('href', '/app/items?stateId=06&metroId=31080&q=table');
   expect(screen.queryByRole('navigation', { name: 'Find' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Refresh listings' })).not.toBeInTheDocument();
   await click(screen.getByRole('button', { name: 'Browser Back' }));
   expect(await screen.findByLabelText('Search items')).toHaveValue('table');
-  expect(screen.getByLabelText('City', { exact: true })).toHaveValue('Irvine');
+  expect(screen.queryByLabelText('City', { exact: true })).not.toBeInTheDocument();
   await click(screen.getByRole('button', { name: 'Browser Forward' }));
   expect(await screen.findByRole('heading', { name: item.name })).toBeInTheDocument();
   expect(screen.getByLabelText('Share this listing')).toHaveValue('http://localhost/app/items/' + item.id);
