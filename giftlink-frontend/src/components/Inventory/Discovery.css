@@ -5,9 +5,9 @@
 .discovery-head .journey-nav { margin: 0; }
 .discovery-feed .discovery-help { color: var(--ui-muted); font-size: var(--ui-text-small); margin: .75rem 0 0; }
 
-/* Command bar: Where (metro, city, neighborhood) and Search in one pill. */
-.discovery-bar { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: center; background: var(--ui-fill); border-radius: var(--ui-radius-pill); padding: 6px; }
-.discovery-where { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; border-right: 1px solid #d5d9d6; }
+/* Command bar: Metro and Search in one pill. */
+.discovery-bar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); align-items: center; background: var(--ui-fill); border-radius: var(--ui-radius-pill); padding: 6px; }
+.discovery-where { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; border-right: 1px solid #d5d9d6; }
 .discovery-segment { position: relative; display: flex; flex-direction: column; justify-content: center; gap: 0; min-height: 64px; padding: 4px 1.5rem; border-radius: var(--ui-radius-pill); min-width: 0; transition: background .2s, box-shadow .2s; }
 .discovery-segment:focus-within { background: var(--ui-surface); box-shadow: 0 2px 12px rgb(13 20 17 / 14%); }
 .discovery-segment label { margin: 0; font-size: .875rem; line-height: 1.2; font-weight: 700; color: var(--ui-ink); }

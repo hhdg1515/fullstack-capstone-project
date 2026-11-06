@@ -132,14 +132,13 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     }
     await expect(b.getByRole('button', { name: 'Load more', exact: true })).toHaveCount(0);
     await filters(b);
-    await b.getByRole('option', { name: 'E2E City', exact: true }).waitFor({ state: 'attached' });
-    await b.getByLabel('City', { exact: true }).selectOption('E2E City');
-    await b.getByLabel('Neighborhood', { exact: true }).selectOption('E2E Neighborhood');
+    await expect(b.getByLabel('City', { exact: true })).toHaveCount(0);
+    await expect(b.getByLabel('Neighborhood', { exact: true })).toHaveCount(0);
     await b.getByLabel('Sort items', { exact: true }).selectOption('deadline');
     await expect(b).toHaveURL(/sort=deadline/); await expect(results.getByRole('listitem')).toHaveCount(3);
     await expect(results.getByRole('link').first()).toHaveText(prefix + ' desk');
     await b.reload(); await expect(results.getByRole('listitem')).toHaveCount(3);
-    await expect(b.getByLabel('Neighborhood', { exact: true })).toHaveValue('E2E Neighborhood');
+    await expect(b.getByLabel('Metro area', { exact: true })).toHaveValue('06:41860');
     await expect(b.getByLabel('Sort items', { exact: true })).toHaveValue('deadline');
     await filters(b);
     await b.getByLabel('Search items', { exact: true }).fill(prefix + ' nothing matches');
@@ -147,7 +146,7 @@ test('two real accounts complete discovery, pickup coordination and secure sessi
     await filters(b);
     await b.getByLabel('Search items', { exact: true }).fill(prefix + ' desk');
     await expect(results.getByRole('listitem')).toHaveCount(1);
-    await test.step('Anonymous live search, city/neighborhood filters, sorting, pagination and reload verified', async () => {});
+    await test.step('Anonymous metro-only search, sorting, pagination and reload verified', async () => {});
     const appointment = Math.ceil((deployment.now() + (deployment.local ? 120000 : 90000)) / 60000) * 60000;
     const localTime = Temporal.Instant.fromEpochMilliseconds(appointment).toZonedDateTimeISO('America/Los_Angeles').toPlainDateTime().toString({ smallestUnit: 'minute' });
     await b.getByRole('link', { name: prefix + ' desk', exact: true }).click();

@@ -35,13 +35,17 @@ test('expanded areas, responsive filters, truthful cards and recovery preserve s
     const makeItem = async (plan, name, extra = {}, actor = giver) => (await post(actor, '/api/move-out-plans/' + plan.id + '/items', { name,
       description: 'Synthetic household item for local browser verification.', categoryId: 'living-room', itemTypeId: 'sofa', condition: 'good', publish: true, ...extra })).item;
     const first = await makeItem(pa, 'Comfortable reading sofa with a long name that wraps on narrow screens');
-    await makeItem(de, 'Wilmington reading sofa'); await makeItem(other, 'Different metro sofa');
+    await makeItem(de, 'Wilmington reading sofa', { condition: 'fair' }); await makeItem(other, 'Different metro sofa');
     await makeItem(pa, 'Private draft sofa', { publish: false });
     const reserved = await makeItem(pa, 'Reserved sofa');
     const { request } = await post(receiver, '/api/pickup-requests', { itemId: reserved.id, localDateTime: day(2) + 'T12:00', timeZone: 'UTC' });
     await post(giver, '/api/pickup-requests/' + request.id + '/actions', { action: 'accept', version: request.version });
-    const page = await anonymous.newPage(); let gets = 0;
-    page.on('request', req => { if (new URL(req.url()).pathname === '/api/items') gets++; });
+    const page = await anonymous.newPage(); let gets = 0, locationReads = 0, fineLocationQueries = 0;
+    page.on('request', req => {
+      const url = new URL(req.url());
+      if (url.pathname === '/api/items') { gets++; if (url.searchParams.has('city') || url.searchParams.has('neighborhood')) fineLocationQueries++; }
+      if (url.pathname === '/api/items/locations') locationReads++;
+    });
     let releaseCatalog;
     const catalogGate = new Promise(resolve => { releaseCatalog = resolve; });
     await page.route('**/api/regions', async route => { await catalogGate; await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: { message: 'Local catalog unavailable' } }) }); });
@@ -66,12 +70,17 @@ test('expanded areas, responsive filters, truthful cards and recovery preserve s
     await expect(areaMenu).toHaveCount(0);
     const count = value => page.getByRole('heading', { name: value + ' available ' + (value === 1 ? 'item' : 'items'), exact: true });
     await expect(count(2)).toBeVisible();
+    await page.goto('/app/items?stateId=42&metroId=37980&city=Unlisted&neighborhood=Unknown&cursor=old-filtered-page&q=sofa');
+    await expect(count(2)).toBeVisible();
+    await expect(page).not.toHaveURL(/city=|neighborhood=|cursor=/);
+    expect(new URL(page.url()).searchParams.get('q')).toBe('sofa');
     const results = page.getByRole('list', { name: 'Available items' });
     await expect(results.getByRole('link', { name: first.name, exact: true })).toBeVisible();
     await expect(results.getByRole('link', { name: 'Wilmington reading sofa', exact: true })).toBeVisible();
     for (const name of ['Reserved sofa', 'Private draft sofa', 'Different metro sofa']) await expect(results.getByRole('link', { name, exact: true })).toHaveCount(0);
     await expect(results.getByText('Sofa · Living Room', { exact: true })).toHaveCount(2);
-    await expect(results.getByText('Condition: Good', { exact: true })).toHaveCount(2);
+    await expect(results.getByText('Condition: Good', { exact: true })).toHaveCount(1);
+    await expect(results.getByText('Condition: Fair', { exact: true })).toHaveCount(1);
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('moveout.browse-region.v1')))).toEqual({ stateId: '42', metroId: '37980' });
     const widths = testInfo.project.name === 'mobile' ? [375, 320] : [1440, 768, 640];
     for (const width of widths) {
@@ -79,16 +88,18 @@ test('expanded areas, responsive filters, truthful cards and recovery preserve s
       await page.evaluate(zoom => { document.documentElement.style.fontSize = zoom ? '200%' : ''; }, width === 640);
       await audit(page, 'populated ' + width);
       await expect(page.getByRole('button', { name: /^Filters/ })).toHaveCount(0);
-      await expect(page.getByLabel('City', { exact: true })).toBeVisible();
+      await expect(page.getByLabel('City', { exact: true })).toHaveCount(0);
+      await expect(page.getByLabel('Neighborhood', { exact: true })).toHaveCount(0);
       await audit(page, 'filters ' + width);
-      await page.getByLabel('City', { exact: true }).focus(); await page.keyboard.press('Escape');
-      await expect(page.getByLabel('City', { exact: true })).toBeFocused(); await expect(page.getByLabel('City', { exact: true })).toBeVisible();
-      expect(await page.getByLabel('City', { exact: true }).evaluate(node => getComputedStyle(node.closest('.discovery-segment')).boxShadow)).not.toBe('none');
+      await page.getByLabel('Metro area', { exact: true }).focus(); await page.keyboard.press('Escape');
+      await expect(page.getByLabel('Metro area', { exact: true })).toBeFocused(); await expect(page.getByLabel('City', { exact: true })).toHaveCount(0);
+      await expect(page.getByLabel('Neighborhood', { exact: true })).toHaveCount(0);
+      expect(await page.getByLabel('Metro area', { exact: true }).evaluate(node => getComputedStyle(node.closest('.discovery-segment')).boxShadow)).not.toBe('none');
     }
     await page.evaluate(() => { document.documentElement.style.fontSize = ''; });
     await page.getByRole('group', { name: 'Category', exact: true }).getByRole('button', { name: 'Living Room', exact: true }).click(); await page.getByRole('group', { name: 'Item type', exact: true }).getByRole('button', { name: 'Sofa', exact: true }).click();
     await page.getByLabel('Condition', { exact: true }).selectOption('good'); await page.getByLabel('Sort items', { exact: true }).selectOption('deadline');
-    await page.getByLabel('City', { exact: true }).selectOption('Philadelphia'); await page.getByLabel('Search items', { exact: true }).fill('couch');
+    await page.getByLabel('Search items', { exact: true }).fill('couch');
     await expect(page.getByRole('button', { name: 'Find free items', exact: true })).toHaveCount(0); await expect(count(1)).toBeVisible();
     await expect(results.getByRole('link', { name: first.name, exact: true })).toBeVisible();
     const url = new URL(page.url()); expect(url.searchParams.get('q')).toBe('couch'); expect(url.searchParams.get('sort')).toBe('deadline'); expect(url.searchParams.get('itemTypeId')).toBe('sofa');
@@ -141,6 +152,7 @@ test('expanded areas, responsive filters, truthful cards and recovery preserve s
       await page.evaluate(() => scrollTo(0, 0));
       await page.screenshot({ path: path.join(process.env.DISCOVERY_POLISH_EVIDENCE, testInfo.project.name + '-discovery.png'), fullPage: true });
     }
+    expect(locationReads).toBe(0); expect(fineLocationQueries).toBe(0);
     expect(deployment.serverErrors).toEqual([]);
   } finally { for (const actor of contexts) await actor.close(); }
 });

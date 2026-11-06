@@ -10,13 +10,11 @@ const a = { id: '64a000000000000000000001', name: 'Kitchen supplies', descriptio
   city: 'Oakland', neighborhood: 'Temescal', metroId: '41860', stateId: '06', pickupTimeZone: 'UTC', isOwner: false, status: 'available', isReserved: false, availability: 'now', availableFrom: null, availableUntil: null,
   effectiveAvailableUntil: day(20), moveOutDeadline: day(20), publishedAt: '2026-01-01T12:00:00.000Z' };
 const b = { ...a, id: '64a000000000000000000002', name: 'Reading lamp', availability: 'later', availableFrom: day(5), neighborhood: 'Rockridge' };
-const places = { locations: [{ city: 'Oakland', neighborhoods: ['Temescal', 'Rockridge'] }, { city: 'Berkeley', neighborhoods: ['Temescal', 'Downtown'] }], truncated: false };
 const reply = (status, data) => ({ status, ok: status >= 200 && status < 300, json: async () => data });
 const feed = (items, cursor = null, total = items.length ? 2 : 0) => reply(200, { items, total, today: day(0), page: { limit: 12, hasMore: Boolean(cursor), nextCursor: cursor } });
 const pending = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 let mockAuth;
 let handler;
-let locationHandler;
 function Navigation() {
   const location = useLocation(); const navigate = useNavigate();
   return <><output aria-label="Current URL">{location.pathname}{location.search}</output><button onClick={() => navigate(-1)}>Browser back</button></>;
@@ -35,8 +33,11 @@ function mount(path = '/app/items', unselected = false) {
 }
 beforeEach(() => {
   mockAuth = undefined; localStorage.clear();
-  handler = async () => feed([a, b]); locationHandler = async () => reply(200, places);
-  global.fetch = jest.fn(async (url, options) => url.includes('/api/items/locations') ? locationHandler(url, options) : handler(url, options));
+  handler = async () => feed([a, b]);
+  global.fetch = jest.fn(async (url, options) => {
+    if (url.includes('/api/items/locations')) throw Error('Metro browsing must not request inventory-derived location options');
+    return handler(url, options);
+  });
 });
 const ready = () => screen.findByRole('link', { name: a.name });
 // Enter in the form applies at once; otherwise filters apply shortly after each change.
@@ -107,7 +108,7 @@ test('an older response without reservation data describes a window rather than 
 
 test('anonymous discovery uses the selected metro without an account and shows useful now/later text cards', async () => {
   mount(); await ready();
-  expect(screen.getByLabelText('City')).toHaveValue(''); expect(screen.getByLabelText('Neighborhood')).toHaveValue('');
+  expect(screen.queryByLabelText('City')).not.toBeInTheDocument(); expect(screen.queryByLabelText('Neighborhood')).not.toBeInTheDocument();
   const cards = screen.getByRole('list', { name: 'Available items' });
   expect(within(cards).getByText('Available Now')).toBeInTheDocument(); expect(within(cards).getByText('Available Later')).toBeInTheDocument();
   expect(within(cards).getAllByText(a.category)).toHaveLength(2); expect(within(cards).getAllByText(/Pickup until/)).toHaveLength(2);
@@ -123,22 +124,24 @@ test('search applies a name/description/tag phrase on the server and persists it
   await waitFor(() => expect(apiCalls().some(([url]) => new URL(url, 'http://localhost').searchParams.get('q') === 'cookware and utensils')).toBe(true));
   expect(screen.getByLabelText('Search items')).toHaveValue('cookware and utensils');
 });
-test('city options populate from listings and changing city clears an incompatible neighborhood', async () => {
-  mount(); await ready(); await screen.findByRole('option', { name: 'Oakland' });
-  fireEvent.change(screen.getByLabelText('Neighborhood'), { target: { value: 'Rockridge' } });
-  fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Berkeley' } });
-  expect(screen.getByLabelText('Neighborhood')).toHaveValue('');
-  expect(within(screen.getByLabelText('Neighborhood')).queryByRole('option', { name: 'Rockridge' })).not.toBeInTheDocument();
-  await submit(); await waitFor(() => expect(screen.getByLabelText('Current URL')).toHaveTextContent('city=Berkeley'));
-  expect(screen.getByLabelText('Current URL')).not.toHaveTextContent('neighborhood=');
+test('legacy city and neighborhood URLs drop invisible filters and their cursor before the first request', async () => {
+  mount('/app/items?stateId=06&metroId=41860&city=Unknown&neighborhood=Old&cursor=filtered-page&q=lamp&sort=deadline'); await ready();
+  await waitFor(() => expect(screen.getByLabelText('Current URL').textContent).not.toMatch(/city=|neighborhood=|cursor=/));
+  for (const [url] of apiCalls()) {
+    const query = new URL(url, 'http://localhost').searchParams;
+    for (const name of ['city', 'neighborhood', 'cursor']) expect(query.has(name)).toBe(false);
+    expect(query.get('metroId')).toBe('41860'); expect(query.get('q')).toBe('lamp'); expect(query.get('sort')).toBe('deadline');
+  }
+  expect(screen.queryByLabelText('City')).not.toBeInTheDocument(); expect(screen.queryByLabelText('Neighborhood')).not.toBeInTheDocument();
 });
-test('neighborhood-only filtering spans cities and does not require an eligibility location', async () => {
-  mount(); await ready(); await screen.findByRole('option', { name: 'Oakland' });
-  expect(within(screen.getByLabelText('Neighborhood')).getAllByRole('option', { name: 'Temescal' })).toHaveLength(1);
-  fireEvent.change(screen.getByLabelText('Neighborhood'), { target: { value: 'Temescal' } }); await submit();
-  await waitFor(() => expect(screen.getByLabelText('Current URL')).toHaveTextContent('neighborhood=Temescal'));
-  expect(screen.getByLabelText('Current URL')).not.toHaveTextContent('city=');
+
+test('a neighborhood-only legacy link cannot invisibly narrow a metro', async () => {
+  mount('/app/items?neighborhood=Unlisted+community&cursor=old'); await ready();
+  expect(await screen.findByRole('link', { name: b.name })).toBeInTheDocument();
+  for (const [url] of apiCalls()) expect(url).not.toMatch(/neighborhood=|cursor=/);
+  expect(screen.getByLabelText('Current URL').textContent).not.toMatch(/neighborhood=|cursor=/);
 });
+
 test('deadline sorting is preserved in the request and URL', async () => {
   mount(); await ready();
   fireEvent.change(screen.getByLabelText('Sort items'), { target: { value: 'deadline' } });
@@ -147,13 +150,13 @@ test('deadline sorting is preserved in the request and URL', async () => {
 });
 test('shared URLs restore filters and browser back restores the previous query after clearing', async () => {
   mount('/app/items?q=lamp&city=Oakland&availability=later&sort=deadline'); await ready();
-  expect(screen.getByLabelText('Search items')).toHaveValue('lamp'); expect(screen.getByLabelText('City')).toHaveValue('Oakland');
+  expect(screen.getByLabelText('Search items')).toHaveValue('lamp'); expect(screen.queryByLabelText('City')).not.toBeInTheDocument();
   expect(screen.getByLabelText('Sort items')).toHaveValue('deadline');
   await click('Reset');
   await waitFor(() => expect(screen.getByLabelText('Current URL')).toHaveTextContent(/^\/app\/items\?stateId=06&metroId=41860$/));
   await click('Browser back');
   await waitFor(() => expect(screen.getByLabelText('Search items')).toHaveValue('lamp'));
-  expect(screen.getByLabelText('City')).toHaveValue('Oakland');
+  expect(screen.queryByLabelText('City')).not.toBeInTheDocument();
 });
 test('Load More appends a server page, retains filters, deduplicates live records, and prevents duplicate clicks', async () => {
   const next = pending();
@@ -162,7 +165,7 @@ test('Load More appends a server page, retains filters, deduplicates live record
   await click('Load more');
   expect(screen.getByRole('button', { name: 'Loading more…' })).toBeDisabled();
   const query = new URL(apiCalls().at(-1)[0], 'http://localhost').searchParams;
-  expect(query.get('cursor')).toBe('opaque-next'); expect(query.get('city')).toBe('Oakland'); expect(query.get('sort')).toBe('deadline');
+  expect(query.get('cursor')).toBe('opaque-next'); expect(query.has('city')).toBe(false); expect(query.get('sort')).toBe('deadline');
   await act(async () => next.resolve(feed([a, b])));
   expect(await screen.findByRole('link', { name: b.name })).toBeInTheDocument();
   expect(screen.getAllByRole('link', { name: a.name })).toHaveLength(1); expect(screen.getByText('Showing 2 items')).toBeInTheDocument();
@@ -207,15 +210,14 @@ test('changing filters ignores an outstanding old-page response and resets pagin
   expect(screen.queryByRole('link', { name: 'Stale result' })).not.toBeInTheDocument();
   expect(screen.queryByRole('link', { name: a.name })).not.toBeInTheDocument();
 });
-test('location metadata failures do not block anonymous browsing and have an independent retry', async () => {
-  let calls = 0;
-  locationHandler = async () => ++calls === 1 ? reply(500, { error: { message: 'Metadata failed' } }) : reply(200, places);
+test('anonymous metro discovery no longer depends on an inventory-derived locations request', async () => {
   mount(); await ready();
-  expect(await screen.findByRole('alert')).toHaveTextContent('Location options could not be loaded');
-  await click('Retry location options');
-
-  expect(await screen.findByRole('option', { name: 'Berkeley' })).toBeInTheDocument();
+  expect(fetch.mock.calls.some(([url]) => url.includes('/api/items/locations'))).toBe(false);
+  expect(screen.queryByText(/Loading location options|Location options could not be loaded/)).not.toBeInTheDocument();
+  await act(async () => fireEvent(window, new Event('focus'))); await ready();
+  expect(fetch.mock.calls.some(([url]) => url.includes('/api/items/locations'))).toBe(false);
 });
+
 test('loading, empty, error and retry states support searching again', async () => {
   const request = pending(); handler = () => request.promise;
   mount(); expect(screen.getByText('Loading listings…')).toBeInTheDocument();
@@ -246,7 +248,7 @@ test('detail navigation returns to the applied filters and direct unavailable li
   handler = async url => url.includes(a.id) ? reply(200, { item: a }) : feed([a]);
   mount('/app/items?city=Oakland&availability=now'); await ready(); await act(async () => { fireEvent.click(screen.getByRole('link', { name: a.name })); });
   expect(await screen.findByRole('heading', { name: a.name, level: 1 })).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Back to items' })).toHaveAttribute('href', '/app/items?city=Oakland&availability=now&stateId=06&metroId=41860');
+  expect(screen.getByRole('link', { name: 'Back to items' })).toHaveAttribute('href', '/app/items?availability=now&stateId=06&metroId=41860');
   handler = async () => reply(404, { error: { message: 'Listing unavailable' } });
   await act(async () => { fireEvent(window, new Event('focus')); });
   expect(await screen.findByRole('alert')).toHaveTextContent('This listing is no longer available');
@@ -272,15 +274,15 @@ test('filters stay visible and apply shortly after typing, with no submit button
 test('shared URL conditions remain visible with their saved values', async () => {
   mount('/app/items?q=lamp&city=Oakland&availability=later&sort=deadline'); await ready();
   expect(screen.queryByRole('button', { name: /^Filters/ })).not.toBeInTheDocument();
-  expect(screen.getByLabelText('Applied filters')).toHaveTextContent('Search: lamp · City: Oakland · Sort: earliest pickup deadline');
-  expect(screen.getByLabelText('City')).toBeVisible();
-  expect(screen.getByLabelText('City')).toHaveValue('Oakland');
+  expect(screen.getByLabelText('Applied filters')).toHaveTextContent('Search: lamp · Sort: earliest pickup deadline');
+  expect(screen.queryByLabelText('City')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Neighborhood')).not.toBeInTheDocument();
 });
 
 test('an unselected region asks for a metro area without requesting any listings or showing a false zero', async () => {
   mount('/app/items', true);
   expect(screen.getByRole('heading', { name: 'Choose a metro area' })).toBeInTheDocument();
-  expect(screen.getByLabelText('Metro area')).toBeEnabled(); expect(screen.getByLabelText('City')).toBeDisabled(); expect(screen.getByLabelText('Search items')).toBeDisabled();
+  expect(screen.getByLabelText('Metro area')).toBeEnabled(); expect(screen.queryByLabelText('City')).not.toBeInTheDocument(); expect(screen.getByLabelText('Search items')).toBeDisabled();
   expect(apiCalls()).toHaveLength(0); expect(screen.queryByText(/0 available/)).not.toBeInTheDocument();
   await act(async () => fireEvent.change(screen.getByLabelText('Metro area'), { target: { value: '06:41860' } })); await ready();
   expect(screen.getByLabelText('Current URL')).toHaveTextContent('stateId=06&metroId=41860');
@@ -360,7 +362,8 @@ test('location-first hierarchy keeps the page title short, all filter controls v
   expect(screen.queryByLabelText('Pickup availability')).not.toBeInTheDocument();
   // Item type chips appear only once a category is chosen.
   expect(screen.queryByRole('group', { name: 'Item type' })).not.toBeInTheDocument();
-  for (const name of ['Metro area', 'City', 'Neighborhood']) expect(screen.getByLabelText(name)).toBeVisible();
+  expect(screen.getByLabelText('Metro area')).toBeVisible();
+  for (const name of ['City', 'Neighborhood']) expect(screen.queryByLabelText(name)).not.toBeInTheDocument();
   expect(screen.getByLabelText('Metro area')).toHaveValue('06:41860');
 });
 test('an invalid explicit URL never restores a different saved area or triggers a global query', () => {
@@ -434,20 +437,17 @@ test('session changes clear owner-aware cards immediately and ignore an old acco
   expect(screen.queryByRole('link', { name: 'Stale owner listing' })).not.toBeInTheDocument();
   expect(screen.queryByText('Your listing')).not.toBeInTheDocument();
 });
-test('session changes reload location options and discard late old-session options', async () => {
-  const old = pending(); let calls = 0;
+test('session changes revalidate metro results without an auxiliary location request', async () => {
   mockAuth = { status: 'authenticated', user: { id: 'account-a' } };
-  locationHandler = async () => ++calls === 1 ? old.promise : reply(200, { locations: [{ city: 'Current city', neighborhoods: ['Current neighborhood'] }], truncated: false });
-  mount(); await ready();
+  mount(); await ready(); const initial = apiCalls().length;
   mockAuth = { status: 'authenticated', user: { id: 'account-b' } };
   const { advanceSessionGeneration } = require('../../api/client'); advanceSessionGeneration();
   fireEvent.change(screen.getByLabelText('Search items'), { target: { value: 'New session' } });
-  await screen.findByRole('option', { name: 'Current neighborhood' });
-  await act(async () => old.resolve(reply(200, { locations: [{ city: 'Old city', neighborhoods: ['Old neighborhood'] }], truncated: false })));
-  expect(calls).toBe(2); expect(screen.getByRole('option', { name: 'Current neighborhood' })).toBeInTheDocument();
-  expect(screen.queryByRole('option', { name: 'Old neighborhood' })).not.toBeInTheDocument();
-  expect(screen.queryByText(/Location options are unavailable/)).not.toBeInTheDocument();
+  await waitFor(() => expect(apiCalls().length).toBeGreaterThan(initial));
+  expect(fetch.mock.calls.some(([url]) => url.includes('/api/items/locations'))).toBe(false);
+  expect(screen.queryByRole('option', { name: /neighborhood/i })).not.toBeInTheDocument();
 });
+
 test('public reads wait for the initial session check, then read once as the resolved viewer',async()=>{
   let calls=0;mockAuth={status:'loading',user:null};
   handler=async()=>{calls++;return feed([b]);};mount();
@@ -459,10 +459,10 @@ test('public reads wait for the initial session check, then read once as the res
 });
 
 
-test('optional v2 city and neighborhood fields do not create blank filter options', async () => {
- locationHandler = async () => reply(200,{locations:[{city:'',neighborhoods:['','Synthetic area']}],truncated:false}); mount(); await ready();
- expect(within(screen.getByLabelText('City')).getAllByRole('option')).toHaveLength(1);
- expect(within(screen.getByLabelText('Neighborhood')).getAllByRole('option').map(option=>option.textContent)).toEqual(['All neighborhoods','Synthetic area']);
+test('optional location labels can still describe a card without becoming browse controls', async () => {
+  handler = async () => feed([{ ...a, city: '', neighborhood: 'Synthetic area' }], null, 1); mount(); await ready();
+  expect(within(screen.getByRole('list', { name: 'Available items' })).getByText(/Synthetic area/)).toBeInTheDocument();
+  expect(screen.queryByLabelText('City')).not.toBeInTheDocument(); expect(screen.queryByLabelText('Neighborhood')).not.toBeInTheDocument();
 });
 
 test('detail focus refresh preserves the selected loaded photo while updating availability; contextual retry restores failures', async () => {
@@ -530,11 +530,10 @@ test('metro groups sort by state then metro and cross-state selection preserves 
 });
 
 
-test('items without optional city or neighborhood remain visible with only All location options', async () => {
-  locationHandler = async () => reply(200, { locations: [{ city: '', neighborhoods: [''] }], truncated: false });
+test('items without optional city or neighborhood remain visible with metro selection alone', async () => {
   handler = async () => feed([{ ...a, city: '', neighborhood: '' }], null, 1);
   mount(); await ready();
-  expect(within(screen.getByLabelText('City')).getAllByRole('option').map(option => option.textContent)).toEqual(['All cities']);
-  expect(within(screen.getByLabelText('Neighborhood')).getAllByRole('option').map(option => option.textContent)).toEqual(['All neighborhoods']);
+  expect(screen.queryByLabelText('City')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Neighborhood')).not.toBeInTheDocument();
   expect(screen.getByRole('link', { name: a.name })).toBeInTheDocument();
 });

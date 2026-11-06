@@ -220,8 +220,9 @@ test('public discovery searches published listings without requiring sign-in or 
   handler = async url => reply(200, url.includes('/api/items/locations') ? { locations: [{ city: plan.city, neighborhoods: [plan.neighborhood] }] } : url.includes(item.id) ? { item: visible } : { items: [visible], total: 1, page: { hasMore: false, nextCursor: null } });
   mount('/app/items?stateId=06&metroId=41860');
   expect(await screen.findByRole('link', { name: item.name })).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText('Neighborhood'), { target: { value: 'Temescal' } });
-  await waitFor(() => expect(fetch.mock.calls.some(([url]) => url.includes('neighborhood=Temescal'))).toBe(true));
+  expect(screen.queryByLabelText('Neighborhood')).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Search items'), { target: { value: item.name } });
+  await waitFor(() => expect(fetch.mock.calls.some(([url]) => new URL(url, 'http://localhost').searchParams.get('q') === item.name)).toBe(true));
   await click(await screen.findByRole('link', { name: item.name }));
   expect(await screen.findByRole('heading', { name: item.name })).toBeInTheDocument();
   expect(screen.queryByText(user.email)).not.toBeInTheDocument();

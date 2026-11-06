@@ -16,8 +16,7 @@ import { validPickupTimeZone } from '../../forms/pickupTime';
 import { placeLabel } from '../Pickups/placeLabel';
 
 const normalize = value => value.trim().replace(/\s+/g, ' ');
-const key = value => normalize(value).toLowerCase();
-const fieldsFrom = params => ({ categoryId: params.get('categoryId') || '', itemTypeId: params.get('itemTypeId') || '', condition: params.get('condition') || '', q: params.get('q') || '', city: params.get('city') || '', neighborhood: params.get('neighborhood') || '',
+const fieldsFrom = params => ({ categoryId: params.get('categoryId') || '', itemTypeId: params.get('itemTypeId') || '', condition: params.get('condition') || '', q: params.get('q') || '',
   sort: params.get('sort') || 'newest' });
 const laterPickup = item => (item.availability || (item.availableFrom && item.availableFrom > utcToday() ? 'later' : 'now')) === 'later';
 function AvailabilityChip({ item }) {
@@ -62,8 +61,17 @@ const validFeed = data => Array.isArray(data.items) && Number.isSafeInteger(data
     ['now', 'later'].includes(item.availability) && (item.availability !== 'later' || isCalendarDate(item.availableFrom))) &&
   data.page && typeof data.page.hasMore === 'boolean' && (data.page.hasMore ? typeof data.page.nextCursor === 'string' && Boolean(data.page.nextCursor) : data.page.nextCursor === null);
 const sameQuery = (a, b) => { const x = new URLSearchParams(a), y = new URLSearchParams(b); x.sort(); y.sort(); return x.toString() === y.toString(); };
+// Legacy fine-grained links must not apply invisible filters or reuse a
+// cursor whose result set included those filters. Item location data stays intact.
+const discoveryQuery = params => {
+  const next = new URLSearchParams(params);
+  if (next.has('city') || next.has('neighborhood')) {
+    for (const name of ['city', 'neighborhood', 'cursor']) next.delete(name);
+  }
+  return next.toString();
+};
 function Discovery() {
-  const [params, setParams] = useSearchParams(); const query = params.toString();
+  const [params, setParams] = useSearchParams(); const query = discoveryQuery(params);
   const auth = useAppContext(); const viewer = auth?.status === 'authenticated' ? auth.user.id : auth?.status || 'anonymous';
   const directory = usePublicCatalog('/api/regions'), catalog = usePublicCatalog('/api/item-taxonomy');
   const stateId = params.get('stateId') || '', metroId = params.get('metroId') || '';
@@ -75,9 +83,12 @@ function Discovery() {
   // Filters apply as they change; `pushed` marks URL updates that came from the
   // form itself so a slower URL round-trip never overwrites newer typing.
   const pushed = useRef(null);
-  const [attempt, setAttempt] = useState(0), [locationAttempt, setLocationAttempt] = useState(0);
-  const [places, setPlaces] = useState({ locations: [] }), [result, setResult] = useState({});
+  const [attempt, setAttempt] = useState(0);
+  const [result, setResult] = useState({});
   const revision = useRef(null), moreFlight = useRef(false), changedAvailability = useRef(null);
+  useEffect(() => {
+    if (params.has('city') || params.has('neighborhood')) setParams(new URLSearchParams(query), { replace: true });
+  }, [params, query, setParams]);
   useEffect(() => {
     const own = pushed.current !== null && sameQuery(query, pushed.current); pushed.current = null;
     if (!own) setFields(fieldsFrom(new URLSearchParams(query)));
@@ -103,32 +114,16 @@ function Discovery() {
     return () => { current.active = false; };
   }, [scope, query, metroId, selected, attempt, viewer]);
   useEffect(() => {
-    let active = true; setPlaces({ loading: Boolean(selected), locations: [] });
-    if (selected) apiRequest(`/api/items/locations?${new URLSearchParams({ stateId, metroId })}`, {
-      validate: data => Array.isArray(data.locations) && data.locations.every(place => typeof place.city === 'string' && Array.isArray(place.neighborhoods) && place.neighborhoods.every(value => typeof value === 'string'))
-    }).then(data => { if (active) setPlaces({ ...data, loading: false }); })
-      .catch(error => { if (active) setPlaces({ loading: false, locations: [], error }); });
-    return () => { active = false; };
-  }, [stateId, metroId, selected, locationAttempt, viewer]);
-  useEffect(() => {
-    const refresh = () => { setAttempt(value => value + 1); setLocationAttempt(value => value + 1); };
+    const refresh = () => setAttempt(value => value + 1);
     window.addEventListener('focus', refresh); return () => window.removeEventListener('focus', refresh);
   }, []);
   const visible = result.key === scope ? result : { loading: Boolean(selected), items: [] };
-  const city = places.locations.find(place => key(place.city) === key(fields.city))?.city || normalize(fields.city);
-  const neighborhoods = Array.from(new Map(places.locations.filter(place => !city || key(place.city) === key(city))
-    .flatMap(place => place.neighborhoods).filter(Boolean).map(value => [key(value), value])).values()).sort((a, b) => a.localeCompare(b));
-  const neighborhood = neighborhoods.find(value => key(value) === key(fields.neighborhood)) || normalize(fields.neighborhood);
-  const cities = places.locations.map(place => place.city).filter(Boolean);
-  if (city && !cities.includes(city)) cities.unshift(city);
-  if (neighborhood && !neighborhoods.includes(neighborhood)) neighborhoods.unshift(neighborhood);
   const primaryCategories = [['dining-kitchen', 'Kitchen'], ['living-room', 'Living Room'], ['bedroom', 'Bedroom']];
   const others = (catalog.data?.categories || []).filter(entry => !primaryCategories.some(([id]) => id === entry.id));
   const groups = [...primaryCategories.map(([id, label]) => ({ id, label })), { id: 'others', label: 'Others' }];
   const category = fields.categoryId === 'others' ? { itemTypes: others.flatMap(entry => entry.itemTypes) } : catalog.data?.categories.find(entry => entry.id === fields.categoryId);
   const applied = [];
   if (params.get('q')) applied.push(`Search: ${params.get('q')}`);
-  for (const name of ['city', 'neighborhood']) if (params.get(name)) applied.push(`${name === 'city' ? 'City' : 'Neighborhood'}: ${params.get(name)}`);
   for (const [name, label] of [['categoryId', 'Category'], ['itemTypeId', 'Item type'], ['condition', 'Condition']]) {
     const id = params.get(name);
     const entries = name === 'categoryId' ? [...(catalog.data?.categories || []), { id: 'others', label: 'Others' }] : name === 'condition' ? catalog.data?.conditions : catalog.data?.categories.flatMap(entry => entry.itemTypes);
@@ -148,7 +143,7 @@ function Discovery() {
   };
   const filterQuery = () => {
     const next = new URLSearchParams({ stateId, metroId });
-    for (const [name, value] of Object.entries({ q: normalize(fields.q), city, neighborhood, categoryId: fields.categoryId, itemTypeId: fields.itemTypeId, condition: fields.condition, sort: fields.sort })) {
+    for (const [name, value] of Object.entries({ q: normalize(fields.q), categoryId: fields.categoryId, itemTypeId: fields.itemTypeId, condition: fields.condition, sort: fields.sort })) {
       if (value && !(name === 'sort' && value === 'newest')) next.set(name, value);
     }
     return next;
@@ -159,7 +154,7 @@ function Discovery() {
     const next = filterQuery(); if (sameQuery(next, query)) return undefined;
     const timer = setTimeout(() => apply(next), 300);
     return () => clearTimeout(timer);
-  }, [selected, query, fields, city, neighborhood]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selected, query, fields]); // eslint-disable-line react-hooks/exhaustive-deps
   const submit = event => {
     event.preventDefault(); if (!selected) return;
     // Enter commits the search: show the normalized text the server receives.
@@ -187,7 +182,7 @@ function Discovery() {
   };
   const change = event => {
     const { name, value } = event.target;
-    setFields(previous => ({ ...previous, [name]: value, ...(name === 'city' ? { neighborhood: '' } : {}), ...(name === 'categoryId' ? { itemTypeId: '' } : {}) }));
+    setFields(previous => ({ ...previous, [name]: value, ...(name === 'categoryId' ? { itemTypeId: '' } : {}) }));
   };
   const filtersOff = !selected || catalog.loading || Boolean(catalog.error);
   const chip = (label, pressed, onClick) => <button type="button" key={label} className="discovery-chip" aria-pressed={pressed} disabled={filtersOff} onClick={onClick}>{label}</button>;
@@ -199,15 +194,11 @@ function Discovery() {
     {directory.error && <Feedback error><p>Region options are unavailable.</p><button className="ui-button ui-button--secondary" onClick={directory.retry}>Retry region options</button></Feedback>}
     {directory.loading && <p role="status" className="discovery-help">Loading region options…</p>}
     <form aria-label="Search and filters" className="discovery-filters" onSubmit={submit} noValidate>
-      {/* Where (metro → city → neighborhood) and search share one command bar. */}
+      {/* Metro and search are sufficient; pickup details stay with the item/chat. */}
       <div className="discovery-bar">
         <div className="discovery-where" role="group" aria-label="Where">
           <div className="discovery-segment"><label htmlFor="browse-metro">Metro area</label><AreaSelect id="browse-metro" name="metroId" value={selected ? stateId + ':' + selected.id : ''} onChange={changeMetro} disabled={directory.loading || Boolean(directory.error)}>
             <option value="">{directory.loading ? 'Loading metro areas…' : 'Choose a metro area'}</option>{(directory.data?.states || []).slice().sort((a, b) => a.label.localeCompare(b.label)).filter(state => metros.some(metro => metro.stateIds.includes(state.id))).map(state => <optgroup key={state.id} label={state.label}>{metros.filter(metro => metro.stateIds.includes(state.id)).map(metro => <option key={metro.id} value={state.id + ':' + metro.id}>{metro.label}</option>)}</optgroup>)}</AreaSelect></div>
-          <div className="discovery-segment"><label htmlFor="browse-city">City</label><AreaSelect id="browse-city" name="city" value={city} onChange={change} disabled={!selected}><option value="">All cities</option>
-            {cities.map(value => <option key={key(value)} value={value}>{value}</option>)}</AreaSelect></div>
-          <div className="discovery-segment"><label htmlFor="browse-neighborhood">Neighborhood</label><AreaSelect id="browse-neighborhood" name="neighborhood" value={neighborhood} onChange={change} disabled={!selected}><option value="">All neighborhoods</option>
-            {neighborhoods.map(value => <option key={key(value)} value={value}>{value}</option>)}</AreaSelect></div>
         </div>
         <div className="discovery-segment discovery-search"><label htmlFor="browse-q">Search items</label>
           <input id="browse-q" name="q" maxLength={100} placeholder="Name, description or item type" value={fields.q} onChange={change} disabled={!selected} /></div>
@@ -236,9 +227,6 @@ function Discovery() {
     {!selected && !directory.loading && !directory.error && <div className="discovery-first"><h2>Choose a metro area</h2><p>Pick a metro area above to see items near you.</p></div>}
     {selected && <>
     {catalog.error && <Feedback error><p>Item filter options are unavailable.</p><button className="ui-button ui-button--secondary" onClick={catalog.retry}>Retry item filters</button></Feedback>}
-    {places.loading && <p role="status" className="discovery-help">Loading location options…</p>}
-    {places.error && <Feedback error><p>Location options could not be loaded. You can still browse this metro.</p><button className="ui-button ui-button--secondary" onClick={() => setLocationAttempt(value => value + 1)}>Retry location options</button></Feedback>}
-    {places.truncated && <p>Location suggestions are limited. Shared city/neighborhood filters still work beyond these suggestions.</p>}
     <section aria-label="Search results" aria-busy={visible.loading || visible.moreLoading || false}>
       <div className="discovery-results-head">
         {!visible.loading && !visible.error && Number.isSafeInteger(visible.total) && <h2 className="discovery-results-heading"><span className="discovery-count">{visible.total}</span> available {visible.total === 1 ? 'item' : 'items'}</h2>}

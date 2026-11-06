@@ -93,7 +93,8 @@ test('item-centered creation, owner editing, visible filters and private request
       await page.goto('/app/items?stateId=06&metroId=41860'); await expect(page.getByLabel('Search items', { exact: true })).toBeVisible(); await capture(page, width, 'discovery');
       if (!before) {
         await expect(page.getByRole('button', { name: /^Filters/ })).toHaveCount(0);
-        for (const label of ['Category', 'Condition', 'Sort items', 'Metro area', 'City', 'Neighborhood']) await expect(page.getByLabel(label, { exact: true })).toBeVisible();
+        for (const label of ['Category', 'Condition', 'Sort items', 'Metro area']) await expect(page.getByLabel(label, { exact: true })).toBeVisible();
+        await expect(page.getByLabel('City', { exact: true })).toHaveCount(0); await expect(page.getByLabel('Neighborhood', { exact: true })).toHaveCount(0);
         await expect(page.getByRole('group', { name: 'Item type', exact: true })).toHaveCount(0);
         await audit(page, width + ' discovery');
       }
