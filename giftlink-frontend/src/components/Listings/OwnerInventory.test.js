@@ -48,3 +48,15 @@ test('missing optional condition retains a blank row before status and location'
  expect(rows[0].textContent.trim()).toBe('');expect(rows[1]).toHaveTextContent('Good');
  expect(rows[1]).not.toHaveAttribute('aria-hidden');
 });
+
+
+test('closed and expired cards retain an owner-only detail link without offering ordinary editing', async () => {
+ const closed={...item('a','Completed chair'),status:'cleared',capabilities:{editDraft:false,reopenDraft:true}};
+ const expired={...item('b','Old lamp'),status:'expired',capabilities:{editDraft:false}};
+ listOwnerListings.mockResolvedValue({items:[closed,expired],nextCursor:null});mount();await screen.findByText('Completed chair');
+ for(const row of [closed,expired]){
+  expect(screen.getByRole('link',{name:row.name,exact:true})).toHaveAttribute('href','/app/listings/'+row.id);
+  expect(screen.getByRole('link',{name:'View '+row.name})).toHaveAttribute('href','/app/listings/'+row.id);
+  expect(screen.queryByRole('link',{name:'Manage '+row.name})).not.toBeInTheDocument();
+ }
+});

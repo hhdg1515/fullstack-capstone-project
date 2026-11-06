@@ -20,12 +20,13 @@ const id = value => typeof value === 'string' && /^[a-fA-F0-9]{24}$/.test(value)
 const integer = value => Number.isSafeInteger(value) && value >= 1;
 const pickupFields = ['stateId', 'metroId', 'city', 'neighborhood', 'pickupTimeZone', 'availableFrom', 'availableUntil'];
 function checkInput(input, editing = false, action = false) {
-    const allowed = action ? ['action', 'version', 'confirmCancelRequests'] : editable.concat('publish', editing ? ['version'] : []);
+    const allowed = action ? ['action', 'version', 'confirmCancelRequests', 'confirmRelist'] : editable.concat('publish', editing ? ['version'] : []);
     if (!input || Array.isArray(input) || typeof input !== 'object' || !Object.keys(input).length || Object.keys(input).some(key => !allowed.includes(key))) {
         throw new InventoryError(400, 'VALIDATION_FAILED', 'Unsupported or missing fields.');
     }
     if (editing && !integer(input.version) || input.publish !== undefined && typeof input.publish !== 'boolean' ||
         input.confirmCancelRequests !== undefined && typeof input.confirmCancelRequests !== 'boolean' ||
+        input.confirmRelist !== undefined && (typeof input.confirmRelist !== 'boolean' || !action || input.action !== 'reopen') ||
         input.pickupTimeZoneConfirmed !== undefined && typeof input.pickupTimeZoneConfirmed !== 'boolean' ||
         action && !['publish', 'withdraw', 'unlist', 'clear', 'reopen'].includes(input.action)) throw new InventoryError(400, 'VALIDATION_FAILED', 'Check the action, version and confirmation fields.');
 }
@@ -89,7 +90,7 @@ function createOwnerListingService({ connectToDatabase, imageMetadata = null, im
             photoPreview: { availability: preview.availability, images: preview.images },
             pickupSummary: v2 ? { supported: independentPickups, reserved: independentPickups && Boolean(item.isReserved) } : { supported: true, reserved: Boolean(item.isReserved) },
             pendingRequests: (v2 ? independentPickups : true) && Array.isArray(item.pendingRequestCount) ? (item.pendingRequestCount.length ? item.pendingRequestCount[0].count : 0) : 0,
-            capabilities: { editDraft: v2 && (item.status === 'draft' || independentPublication && ['unlisted', 'available'].includes(item.status)), legacyEditor: !v2, publish: v2 && independentPublication && ['draft', 'unlisted'].includes(item.status), withdraw: v2 && independentPublication && item.status === 'available', photos: v2 && independentPhotos && !['expired', 'cleared'].includes(item.status) },
+            capabilities: { editDraft: v2 && (item.status === 'draft' || independentPublication && ['unlisted', 'available'].includes(item.status)), legacyEditor: !v2, publish: v2 && independentPublication && ['draft', 'unlisted'].includes(item.status), withdraw: v2 && independentPublication && item.status === 'available', reopenDraft: v2 && independentPublication && item.status === 'cleared', photos: v2 && independentPhotos && !['expired', 'cleared'].includes(item.status) },
             createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() };
     }
     async function owned(db, ownerId, itemId, session) {
@@ -150,7 +151,10 @@ function createOwnerListingService({ connectToDatabase, imageMetadata = null, im
                 throw lifecycleDisabled();
             }
             let saved;
-            if (['withdraw', 'unlist'].includes(transition)) {
+            if (transition === 'reopen') {
+                if (ctx.item.status !== 'cleared') throw lifecycleDisabled();
+                saved = await require('./listing-publication').reopenAsDraft(db, session, ctx.item, ownerId, now, input.confirmRelist);
+            } else if (['withdraw', 'unlist'].includes(transition)) {
                 if (ctx.item.status !== 'available') throw lifecycleDisabled();
                 saved = await require('./listing-publication').withdraw(db, session, ctx.item, ownerId, now, input.confirmCancelRequests);
             } else if (ctx.item.status === 'available' && independentPublication && !action) {
