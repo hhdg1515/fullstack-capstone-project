@@ -119,5 +119,57 @@ test('giver chats with multiple applicants then confirms the actual recipient on
     const stored = await deployment.db.collection('pickupRequests').find({ itemId: new (require('../giftlink-backend/node_modules/mongodb').ObjectId)(item.id) }).toArray();
     expect(stored.filter(row => row.status === 'completed')).toHaveLength(1); expect(stored.some(row => row.active)).toBe(false);
     expect(await deployment.db.collection('moveOutPlans').countDocuments()).toBe(0);
+    // The owner can inspect a closed item privately, then deliberately relist.
+    // Use a second page so the independent unsent chat draft above stays intact.
+    const manage = await owner.newPage();
+    await manage.goto('/app/listings');
+    await expect(manage.getByRole('link', { name: item.name, exact: true })).toHaveAttribute('href', '/app/listings/' + item.id);
+    await audit(manage, 'completed-inventory', info);
+    await manage.getByRole('link', { name: 'View ' + item.name, exact: true }).click();
+    await expect(manage).toHaveURL(deployment.origin + '/app/listings/' + item.id);
+    await expect(manage.getByRole('heading', { name: item.name, exact: true })).toBeVisible();
+    await expect(manage.getByText('One synthetic bookshelf for local acceptance.', { exact: true })).toBeVisible();
+    await expect(manage.getByRole('img')).toBeVisible();
+    expect((await owner.request.get('/api/item-images/' + upload.id + '/thumbnail')).status()).toBe(200);
+    await expect(manage.getByRole('textbox')).toHaveCount(0);
+    await audit(manage, 'private-completed-detail', info);
+    const denied = await outsider.newPage(); await denied.goto('/app/listings/' + item.id);
+    await expect(denied.getByRole('alert')).toBeVisible(); await expect(denied.getByRole('heading', { name: item.name, exact: true })).toHaveCount(0);
+    await expect(denied.getByRole('button', { name: 'Relist as draft' })).toHaveCount(0);
+    const requestId = new (require('../giftlink-backend/node_modules/mongodb').ObjectId)(a.id);
+    const closedBefore = await deployment.db.collection('pickupRequests').findOne({ _id: requestId });
+    const messagesBefore = await deployment.db.collection('pickupMessages').find({ requestId }).sort({ _id: 1 }).toArray();
+    expect(messagesBefore).toHaveLength(1);
+    const quotaBefore = (await (await owner.request.get(prefix + '/images')).json()).allowance;
+    let relists = 0; manage.on('request', r => { if (r.method() === 'POST' && new URL(r.url()).pathname === prefix + '/actions') relists++; });
+    manage.once('dialog', d => d.dismiss()); await manage.getByRole('button', { name: 'Relist as draft' }).click(); expect(relists).toBe(0);
+    manage.once('dialog', d => d.accept()); await manage.getByRole('button', { name: 'Relist as draft' }).focus(); await manage.keyboard.press('Enter');
+    await expect(manage).toHaveURL(deployment.origin + '/app/items/' + item.id + '/edit');
+    await expect(manage.getByLabel('Item name', { exact: true })).toHaveValue(item.name); expect(relists).toBe(1);
+    await expect(manage.getByRole('img', { name: /^(Saved|Uploaded) photo 1$/ })).toBeVisible();
+    expect((await outsider.request.get(prefix)).status()).toBe(404);
+    expect((await outsider.request.get('/api/item-images/' + upload.id + '/thumbnail')).status()).toBe(404);
+    expect(await deployment.db.collection('pickupRequests').findOne({ _id: requestId })).toEqual(closedBefore);
+    expect(await deployment.db.collection('pickupMessages').find({ requestId }).sort({ _id: 1 }).toArray()).toEqual(messagesBefore);
+    const historical = (await (await owner.request.get('/api/pickup-requests/' + a.id)).json()).request;
+    expect(historical.status).toBe('completed'); expect(historical.item.status).toBe('draft');
+    const quotaAfter = (await (await owner.request.get(prefix + '/images')).json()).allowance;
+    const { newUploadsAllowed: oldAdmission, ...oldCounters } = quotaBefore;
+    const { newUploadsAllowed: newAdmission, ...newCounters } = quotaAfter;
+    expect(oldAdmission).toBe(false); expect(newAdmission).toBe(true); expect(newCounters).toEqual(oldCounters);
+    await audit(manage, 'restored-draft', info);
+    await manage.getByLabel('Item name', { exact: true }).fill('Relisted synthetic bookshelf');
+    await manage.getByRole('button', { name: 'Save Draft', exact: true }).click();
+    await expect(manage).toHaveURL(deployment.origin + '/app/listings');
+    await manage.getByRole('link', { name: 'Manage Relisted synthetic bookshelf', exact: true }).click();
+    manage.once('dialog', d => d.accept()); await manage.getByRole('button', { name: 'Publish', exact: true }).click();
+    await expect(manage).toHaveURL(deployment.origin + '/app/listings'); expect((await outsider.request.get(prefix)).status()).toBe(200);
+    expect((await outsider.request.get('/api/item-images/' + upload.id + '/thumbnail')).status()).toBe(200);
+    for (const [context, row, status] of [[alice, a, 'completed'], [bob, b, 'cancelled']]) {
+      const old = (await (await context.request.get('/api/pickup-requests/' + row.id)).json()).request; expect(old.status).toBe(status);
+      const r = await context.request.post('/api/pickup-requests/' + row.id + '/conversation/messages', { headers, data: { text: 'Old requests must remain closed.' } }); expect(r.status()).toBe(404);
+    }
+    await expect(giver.getByLabel('Unsent message', { exact: true })).toHaveValue('Keep this unsent text independent.');
+
   } finally { for (const context of contexts) await context.close(); }
 });

@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import ListingFormView from './ListingForm';
 import { listOwnerListings, getOwnerListing, actOnOwnerListing } from '../../api/ownerListings';
 import Inventory from '../Inventory/Inventory';
@@ -44,19 +44,69 @@ export function MyListings() {
         {item.pendingRequests} {item.pendingRequests === 1 ? 'request' : 'requests'}</Link>}
       <OwnerPreview key={item.id + ':' + (item.photoPreview?.images?.[0]?.id || '')} item={item} />
       <h2>{item.status === 'available' ? <Link id={'owner-listing-' + item.id} to={'/app/items/' + item.id}>{item.name}</Link> :
-        item.capabilities.editDraft || item.capabilities.legacyEditor ? <Link id={'owner-listing-' + item.id} to={'/app/items/' + item.id + '/edit'}>{item.name}</Link> : item.name}</h2>
+        item.capabilities.editDraft || item.capabilities.legacyEditor ? <Link id={'owner-listing-' + item.id} to={'/app/items/' + item.id + '/edit'}>{item.name}</Link> : <Link id={'owner-listing-' + item.id} to={'/app/listings/' + item.id}>{item.name}</Link>}</h2>
       <p>{item.classification?.itemType?.label || 'Type not selected'}{item.classification?.category?.label ? ' · ' + item.classification.category.label : ''}</p>
       <p className="owner-listing-condition" aria-hidden={!item.classification?.condition?.label || undefined}>{item.classification?.condition?.label || '\u00a0'}</p>
       <p>{statuses[item.status] || 'Status unavailable'}{item.pickupSummary?.reserved ? ' · Reserved' : ''}</p>
       <p>{[item.location.metroLabel, item.location.stateLabel, item.location.city, item.location.neighborhood].filter(Boolean).join(' · ') || 'Location not selected'}</p>
       <p>{item.pickup.availableUntil ? 'Pickup deadline: ' + item.pickup.availableUntil : 'No pickup deadline'}</p>
-      {(item.capabilities.editDraft || item.capabilities.legacyEditor) && <Link className="ui-button ui-button--secondary" aria-label={'Manage ' + item.name} to={'/app/items/' + item.id + '/edit'}>Manage listing</Link>}</Surface>)}</ul>
+      {(item.capabilities.editDraft || item.capabilities.legacyEditor) ? <Link className="ui-button ui-button--secondary" aria-label={'Manage ' + item.name} to={'/app/items/' + item.id + '/edit'}>Manage listing</Link> : <Link className="ui-button ui-button--secondary" aria-label={'View ' + item.name} to={'/app/listings/' + item.id}>View listing</Link>}</Surface>)}</ul>
     {cursor && !error && <button className="ui-button" disabled={busy} onClick={() => load(true)}>Load More</button>}</main>;
 }
-// Old status-page links (e.g. bookmarks) open the editor, which decides where to go.
+// Editable listings keep their established editor route. Closed listings have
+// an owner-only read view instead of losing their detail entry altogether.
 export function ListingRedirect() {
   const { itemId } = useParams();
-  return <Navigate replace to={'/app/items/' + itemId + '/edit'} />;
+  return <SavedListing key={itemId} itemId={itemId} />;
+}
+function SavedListing({ itemId }) {
+  const [state, setState] = useState({}), [attempt, setAttempt] = useState(0);
+  const [busy, setBusy] = useState(false), [blocked, setBlocked] = useState(false), [error, setError] = useState(null);
+  const alive = useRef(false), flight = useRef(false); const navigate = useNavigate();
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  useEffect(() => {
+    let active = true; setState({});
+    getOwnerListing(itemId).then(result => {
+      if (result?.item?.id !== itemId) throw new Error('This listing is unavailable.');
+      if (active) { setState(result); setBlocked(false); setError(null); }
+    }).catch(failure => { if (active) setState({ error: failure }); });
+    return () => { active = false; };
+  }, [itemId, attempt]);
+  const item = state.item;
+  const relist = async () => {
+    if (flight.current || blocked || !item?.capabilities.reopenDraft) return;
+    if (!window.confirm('Restore this item as a private draft? Previous pickup requests and conversations will stay closed. You must publish it again.')) return;
+    flight.current = true; setBusy(true); setError(null);
+    try {
+      const result = await actOnOwnerListing(itemId, { action: 'reopen', version: item.version, confirmRelist: true });
+      if (!alive.current) return;
+      if (result?.item?.id !== itemId || result.item.status !== 'draft' || result.item.version <= item.version) throw new Error('Restoring could not be confirmed. Check the listing before trying again.');
+      navigate('/app/items/' + itemId + '/edit', { replace: true });
+    } catch (failure) { if (alive.current) { setError(failure); setBlocked(true); } }
+    finally { if (alive.current) { flight.current = false; setBusy(false); } }
+  };
+  if (item?.capabilities.editDraft || item?.capabilities.legacyEditor || state.error?.code === 'OWNER_LISTINGS_DISABLED') return <Navigate replace to={'/app/items/' + itemId + '/edit'} />;
+  const rows = item ? [
+    ['Status', statuses[item.status] || 'Status unavailable'],
+    ['Type', item.classification?.customItemType || item.classification?.itemType?.label],
+    ['Category', item.classification?.category?.label], ['Condition', item.classification?.condition?.label],
+    ['Pickup area', [item.location.metroLabel, item.location.stateLabel, item.location.city, item.location.neighborhood].filter(Boolean).join(' · ')],
+    ['Pickup deadline', item.pickup.availableUntil], ['Pickup timezone', item.pickup.timeZone]
+  ].filter(([, value]) => value) : [];
+  return <main className="ui-page owner-listing-detail">
+    <Link to="/app/listings">Back to My Listings</Link>
+    {!item && !state.error && <p role="status">Loading listing…</p>}
+    {state.error && <Failure error={state.error} retry={() => setAttempt(value => value + 1)} />}
+    {item && <><PageHeader title={item.name} action={item.capabilities.reopenDraft && <button className="ui-button" disabled={busy || blocked} onClick={relist}>Relist as draft</button>} />
+      {error && <Feedback error><p>{error.message}</p><button className="ui-button ui-button--secondary" disabled={busy} onClick={() => setAttempt(value => value + 1)}>Check listing</button></Feedback>}
+      <Surface>
+        {item.photoPreview?.availability === 'ready' && item.photoPreview.images.length > 0 ? <ul className="owner-listing-photos" aria-label="Saved photos">
+          {item.photoPreview.images.slice(0, 5).map((image, index) => <li key={image.id}><OwnerPreview item={{ ...item, name: item.name + ' — photo ' + (index + 1), photoPreview: { availability: 'ready', images: [image] } }} /></li>)}
+        </ul> : <OwnerPreview item={item} />}
+        {item.description && <p className="owner-listing-description">{item.description}</p>}
+        <dl className="owner-listing-facts">{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+      </Surface></>}
+  </main>;
 }
 export function ListingEditor() {
   const { itemId } = useParams(); const [state, setState] = useState({});
@@ -64,7 +114,7 @@ export function ListingEditor() {
   if (state.item?.capabilities.legacyEditor || state.error?.code === 'OWNER_LISTINGS_DISABLED') return <Inventory />;
   if (state.error) return <main className="ui-page"><Failure error={state.error} /></main>;
   if (!state.item) return <p role="status">Loading listing…</p>;
-  if (!state.item.capabilities.editDraft) return <Navigate replace to="/app/listings" />;
+  if (!state.item.capabilities.editDraft) return <Navigate replace to={'/app/listings/' + itemId} />;
   return <ListingFormView key={itemId} item={state.item} photoCapabilities={state.photoCapabilities || null} publicationEnabled={state.publicationEnabled === true}
     withdraw={state.item.capabilities.withdraw ? confirmed => actOnOwnerListing(itemId, { action: 'withdraw', version: state.item.version, ...(confirmed ? { confirmCancelRequests: true } : {}) }) : null} />;
 }

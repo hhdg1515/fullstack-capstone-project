@@ -39,7 +39,7 @@ Under the existing plan/item or independent-item transaction fence, the action:
    before invalidation.
 
 Concurrent completions, cancellation, creation and withdrawal share the same
-fence. Exactly one recipient can win; stale requests fail closed. The UI prevents
+fence. Exactly one recipient can win per publication cycle; stale requests fail closed. The UI prevents
 in-flight duplicate submissions and requires an authoritative read after an
 uncertain outcome rather than automatically replaying the POST.
 
@@ -133,3 +133,10 @@ Current local screenshots: [desktop detail](evidence/pickup-thread-layout/deskto
 [320px requester history](evidence/pickup-thread-layout/mobile-requester-list.png),
 [320px empty history](evidence/pickup-thread-layout/mobile-empty-requester.png).
 Rollback requires only the frontend; it does not undo or change recorded handoffs.
+
+## Deliberate relisting
+
+[Closed listing details and deliberate relisting](completed-listing-relist.md)
+adds an owner-confirmed private-draft transition for cleared v2 items. It never
+reopens old requests or conversations. A separately published new cycle may
+have its own new recipient without rewriting the original handoff.
