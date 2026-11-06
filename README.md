@@ -1,8 +1,8 @@
-# Move-Out Marketplace
+# Movelight
 
 **Pass on what you can't take with you. Find what you need nearby.**
 
-When people move out they throw away furniture, kitchenware and lamps that a neighbor would happily pick up. Move-Out Marketplace is a full-stack web app for exactly that handoff:
+When people move out they throw away furniture, kitchenware and lamps that a neighbor would happily pick up. Movelight is a full-stack web app for exactly that handoff:
 
 - **Givers** list items with photos, a pickup area and a pickup deadline.
 - **Neighbors** browse by metro area, request a pickup time and coordinate in a private chat.

@@ -176,7 +176,7 @@ test('private item editors keep My Listings active instead of public discovery',
 test('brand and logout navigation return to the two-path homepage', async () => {
   sessionUser = user; mount('/app/profile'); await screen.findByRole('heading', { name: 'Your account' });
   expect(primary().queryByRole('link', { name: 'Account' })).not.toBeInTheDocument();
-  await click(screen.getByRole('link', { name: 'Move-Out Marketplace' })); expect(screen.getByRole('link', { name: 'Start Giving' })).toBeInTheDocument();
+  await click(screen.getByRole('link', { name: 'Movelight' })); expect(screen.getByRole('link', { name: 'Start Giving' })).toBeInTheDocument();
   await click(screen.getByRole('button', { name: 'Logout' }));
   expect(primary().getByRole('link', { name: 'Log in' })).toHaveAttribute('href', '/app/login');
   expect(screen.getByTestId('route')).toHaveTextContent('/');
