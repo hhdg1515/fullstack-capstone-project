@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { ListingEditor, ListingRedirect } from './Listings';
 import { getOwnerListing, actOnOwnerListing, updateOwnerListing } from '../../api/ownerListings';
@@ -39,8 +39,22 @@ test('drafts have no Withdraw action', async () => {
   getOwnerListing.mockResolvedValue(listing('draft', { editDraft: true, publish: true })); mount();
   await screen.findByRole('heading', { name: 'Edit Listing' }); expect(screen.queryByRole('button', { name: 'Withdraw listing' })).not.toBeInTheDocument();
 });
-test('old status-page links open the editor, and listings that cannot be edited return to My Listings', async () => {
+test('old status-page links for editable items still open the editor', async () => {
   mount('/app/listings/' + id); expect(await screen.findByRole('heading', { name: 'Edit Listing' })).toBeInTheDocument();
+});
+test('an uneditable listing opens private saved details instead of bouncing back to My Listings', async () => {
   getOwnerListing.mockResolvedValue(listing('cleared', { editDraft: false })); mount();
-  await waitFor(() => expect(screen.getByRole('heading', { name: 'My Listings page' })).toBeInTheDocument());
+  expect(await screen.findByRole('heading', { name: 'Synthetic shelf' })).toBeInTheDocument();
+  expect(screen.getByText('Useful household shelf')).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'My Listings page' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+});
+
+test('an existing private draft can be saved without publishing while Publish stays explicit', async () => {
+  const restored = listing('draft', { editDraft: true, publish: true }); restored.item.pickup.timeZone = 'UTC';
+  getOwnerListing.mockResolvedValue(restored); updateOwnerListing.mockResolvedValue(restored); mount();
+  const name = await screen.findByLabelText('Item name'); fireEvent.change(name, { target: { value: 'Private edited shelf' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save Draft', exact: true }));
+  await screen.findByRole('heading', { name: 'My Listings page' });
+  const body = updateOwnerListing.mock.calls[0][1]; expect(body.name).toBe('Private edited shelf'); expect(body.pickupTimeZone).toBe('UTC'); expect(body).not.toHaveProperty('publish');
 });

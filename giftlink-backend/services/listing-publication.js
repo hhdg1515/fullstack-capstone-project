@@ -1,3 +1,4 @@
+const { ObjectId } = require('mongodb');
 const { InventoryError } = require('./inventory-error');
 const { validatePublication, listingPolicy } = require('./inventory');
 const { resolveListingContext } = require('./listing-context');
@@ -44,4 +45,26 @@ async function withdraw(db, session, item, actor, now, confirmed) {
     }
     return Object.assign({}, item, { status: 'unlisted', withdrawnAt: now });
 }
-module.exports = { publish, withdraw };
+// Relisting is not an undo: keep every completed/cancelled request, message,
+// handoff reference, image operation and quota hold. Only create a private draft.
+async function reopenAsDraft(db, session, item, actor, now, confirmed) {
+    if (confirmed !== true) throw new InventoryError(409, 'RELIST_CONFIRMATION_REQUIRED', 'Confirm restoring this item as a private draft. Previous requests and conversations will remain closed.');
+    const open = await db.collection('pickupRequests').findOne({ itemId: item._id,
+        $or: [{ active: true }, { status: { $in: ['pending', 'accepted'] } }] }, { session, projection: { _id: 1 }, maxTimeMS: 2000 });
+    if (open) throw new InventoryError(409, 'PICKUP_REQUESTS_OPEN', 'Resolve the open pickup records before relisting this item.');
+    if (item.clearedByPickupRequestId !== undefined) {
+        if (!(item.clearedByPickupRequestId instanceof ObjectId)) throw new InventoryError(409, 'PICKUP_REFERENCE_INVALID', 'The handoff record is unavailable.');
+        const row = await db.collection('pickupRequests').findOne({ _id: item.clearedByPickupRequestId, itemId: item._id, giverId: actor }, { session, maxTimeMS: 2000 });
+        const last = row && Array.isArray(row.history) && row.history[row.history.length - 1];
+        if (!row || referenceVersion(row) !== 2 || Object.prototype.hasOwnProperty.call(row, 'planId') || !originalParticipants(row) ||
+            row.status !== 'completed' || row.active !== false || !(row.completedAt instanceof Date) || !Number.isFinite(row.completedAt.getTime()) ||
+            !last || last.action !== 'completed' || last.actorRole !== 'giver' || !(last.actorId instanceof ObjectId) || !last.actorId.equals(actor) ||
+            !(last.at instanceof Date) || last.at.getTime() !== row.completedAt.getTime()) {
+            throw new InventoryError(409, 'PICKUP_REFERENCE_INVALID', 'The handoff record is unavailable.');
+        }
+    }
+    // Drafts must never retain a public publication marker. Preserve the
+    // original timestamp separately; a later explicit publish gets a fresh one.
+    return Object.assign({}, item, { status: 'draft', publishedAt: null, firstPublishedAt: item.firstPublishedAt || item.publishedAt, relistedAt: now });
+}
+module.exports = { publish, withdraw, reopenAsDraft };

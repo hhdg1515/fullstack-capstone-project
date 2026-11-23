@@ -48,7 +48,7 @@ function App() {
         <Route path="/app/register" element={<RegisterPage />} />
         <Route path="/app/listings" element={<RequireAuth><MyListings key={listingScope} /></RequireAuth>} />
         <Route path="/app/listings/new" element={<RequireAuth><ListingForm key={listingScope} /></RequireAuth>} />
-        <Route path="/app/listings/:itemId" element={<RequireAuth><ListingRedirect /></RequireAuth>} />
+        <Route path="/app/listings/:itemId" element={<RequireAuth><ListingRedirect key={listingScope} /></RequireAuth>} />
         <Route path="/app/plans" element={<RequireAuth><MyPlans /></RequireAuth>} />
         <Route path="/app/plans/new" element={<RequireAuth><CreatePlan /></RequireAuth>} />
         <Route path="/app/plans/:planId" element={<RequireAuth><PlanDetail /></RequireAuth>} />

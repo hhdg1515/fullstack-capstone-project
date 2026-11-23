@@ -45,8 +45,7 @@ export default function ListingForm({ item, photoCapabilities = null, publicatio
     if (Object.values(validation.errors).some(Boolean) && !Object.entries(validation.errors).some(([key, text]) => text && !Object.hasOwn(fields, key))) validation.reset();
     setValues(old => ({ ...old, ...fields }));
   };
-  const save = async event => {
-    const publishing = publicationEnabled;
+  const save = async (event, publishing = publicationEnabled) => {
     event.preventDefault(); if (pending.current || locked) return;
     if (photoBusy || intent.current || photoEntries.some(entry => entry.phase === 'preparing')) { validation.show({}, 'Wait for the current photo work to finish before saving.'); return; }
     validation.reset(); const issues = {};
@@ -65,7 +64,7 @@ export default function ListingForm({ item, photoCapabilities = null, publicatio
     if (Object.keys(issues).length) { validation.show(issues); return; }
     pending.current = true; setBusy(true);
     const clientIds = photoEntries.filter(isQueuedPhoto).map(entry => entry.clientUploadId);
-    const zone = [suggestion, item?.pickup.timeZone, localZone()].find(validPickupTimeZone) || null;
+    const zone = [item?.pickup.timeZone, suggestion, localZone()].find(validPickupTimeZone) || null;
     const body = { ...values, pickupTimeZone: zone, pickupTimeZoneConfirmed: Boolean(zone), ...(publishing ? { publish: true } : {}) }; nullable.forEach(key => { body[key] = body[key] || null; });
     try {
       const result = item ? await updateOwnerListing(item.id, { ...body, version: item.version }) : await createOwnerListing(body);
@@ -114,7 +113,7 @@ export default function ListingForm({ item, photoCapabilities = null, publicatio
       <fieldset disabled={locked}><legend>Pickup availability</legend>{field('availableFrom','Available from (optional)','date')}{field('availableUntil','Pickup deadline','date')}</fieldset>
       </div>
       {photos}
-      <div className="listing-form-actions" hidden={Boolean(photoItem)}>{submit}<button type="button" className="ui-button ui-button--secondary" disabled={busy || photoBusy} onClick={async () => {
+      <div className="listing-form-actions" hidden={Boolean(photoItem)}>{submit}{publicationEnabled && item?.status === 'draft' && <button className="ui-button ui-button--secondary" type="button" disabled={locked || photoBusy} onClick={event => save(event, false)}>{queued ? `Save draft with ${queued} ${queued === 1 ? 'photo' : 'photos'}` : 'Save Draft'}</button>}<button type="button" className="ui-button ui-button--secondary" disabled={busy || photoBusy} onClick={async () => {
         if (photoGuard.dirty ? await photoGuard.requestDiscard({ release: false, alsoText: guard.dirty }) : guard.confirmDiscard()) {
           // The photo dialog's approval also covers unsaved text; release both guards.
           photoGuard.markSaved(); guard.markSaved(); navigate('/app/listings');

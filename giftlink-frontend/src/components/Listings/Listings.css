@@ -10,3 +10,7 @@
 .owner-listing-photos img { display: block; max-width: 100%; height: auto; object-fit: cover; border-radius: var(--ui-radius-control); }
 
 .owner-listing-condition { min-height: 1.5em; }
+
+.owner-listing-description { white-space: pre-wrap; overflow-wrap: anywhere; margin-block: var(--ui-space-6); }
+.owner-listing-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: var(--ui-space-4); margin-block: var(--ui-space-6) 0; }
+.owner-listing-facts dd { margin: var(--ui-space-1) 0 0; overflow-wrap: anywhere; }
